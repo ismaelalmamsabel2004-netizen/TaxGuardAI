@@ -2,7 +2,8 @@
 
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect } from "react";
-import { UserButton, SignedIn, SignedOut, SignIn } from "@clerk/nextjs"; // 🔐 Importamos los guardianes de Clerk
+// 🆕 Usamos 'Show' y 'SignInButton' para la versión más reciente de Clerk
+import { UserButton, Show, SignInButton } from "@clerk/nextjs"; 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const data = [
@@ -47,8 +48,8 @@ export default function Home() {
 
   return (
     <>
-      {/* 🔐 SI EL USUARIO HA INICIADO SESIÓN: Se le muestra el panel completo */}
-      <SignedIn>
+      {/* 🔐 SI EL USUARIO HA INICIADO SESIÓN */}
+      <Show when="signed-in">
         <div className="flex min-h-screen bg-gray-50">
           <aside className="w-64 bg-white border-r border-gray-200 px-6 py-8 flex flex-col justify-between">
               <h2 className="text-2xl font-black text-slate-800 mb-10">TaxGuard<span className="text-blue-600">AI</span></h2>
@@ -78,20 +79,25 @@ export default function Home() {
             </div>
           </main>
         </div>
-      </SignedIn>
+      </Show>
 
-      {/* 🚪 SI EL USUARIO NO ESTÁ LOGUEADO: Se bloquea la pantalla y se le muestra el Login */}
-      <SignedOut>
+      {/* 🚪 SI EL USUARIO NO ESTÁ LOGUEADO */}
+      <Show when="signed-out">
         <div className="flex min-h-screen items-center justify-center bg-gray-50">
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center max-w-sm w-full">
             <h2 className="text-3xl font-black text-slate-800 mb-2">TaxGuard<span className="text-blue-600">AI</span></h2>
             <p className="text-gray-500 mb-8 text-sm">Inicia sesión para acceder de forma segura al análisis de tu negocio.</p>
             <div className="flex justify-center">
-              <SignIn />
+              {/* Le damos estilo de botón al componente de Clerk */}
+              <SignInButton mode="modal">
+                <button className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">
+                  Iniciar Sesión
+                </button>
+              </SignInButton>
             </div>
           </div>
         </div>
-      </SignedOut>
+      </Show>
     </>
   );
 }
