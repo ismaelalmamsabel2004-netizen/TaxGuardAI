@@ -11,20 +11,49 @@ export default function Home() {
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-
-  // Métricas de control financiero (KPIs)
-  const totalFacturado = data.reduce((sum, item) => sum + item.total, 0);
-  const promedio = data.length > 0 ? (totalFacturado / data.length) : 0;
-  const maximo = data.length > 0 ? Math.max(...data.map(i => i.total)) : 0;
+  
+  // 🆕 1. ESTADO PARA EL FILTRO ACTIVO
+  const [filtro, setFiltro] = useState("all");
 
   const ordenarPorFecha = (datos: any[]) => {
     return [...datos].sort((a, b) => {
       const pA = a.name.split('/');
       const pB = b.name.split('/');
-      const fechaA = new Date(pA[2], pA[1] - 1, pA[0]).getTime();
-      const fechaB = new Date(pB[2], pB[1] - 1, pB[0]).getTime();
+      const fechaA = new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
+      const fechaB = new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
       return fechaA - fechaB; 
     });
+  };
+
+  // 🆕 2. FUNCIÓN QUE CORTA EL TIEMPO
+  const filtrarDatos = (datosBase: any[], tipoFiltro: string) => {
+    if (tipoFiltro === "all") return datosBase;
+    
+    const ahora = new Date().getTime();
+    return datosBase.filter(item => {
+      const [d, m, y] = item.name.split('/');
+      const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+      const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
+      
+      if (tipoFiltro === 'month') return diffDias <= 30;
+      if (tipoFiltro === 'quarter') return diffDias <= 90;
+      if (tipoFiltro === 'year') return diffDias <= 365;
+      return true;
+    });
+  };
+
+  // 🆕 3. CÁLCULO EN TIEMPO REAL: Aplicamos el filtro al instante
+  const datosVisibles = filtrarDatos(data, filtro);
+
+  const totalFacturado = datosVisibles.reduce((sum, item) => sum + item.total, 0);
+  const promedio = datosVisibles.length > 0 ? (totalFacturado / datosVisibles.length) : 0;
+  const maximo = datosVisibles.length > 0 ? Math.max(...datosVisibles.map(i => i.total)) : 0;
+
+  // 🆕 4. ORDENAR A GEMINI QUE RE-ANALICE AL PULSAR EL BOTÓN
+  const cambiarFiltro = (nuevoFiltro: string) => {
+    setFiltro(nuevoFiltro);
+    const datosFiltrados = filtrarDatos(data, nuevoFiltro);
+    pedirAnalisisGemini(datosFiltrados);
   };
 
   useEffect(() => {
@@ -34,7 +63,7 @@ export default function Home() {
         if (d && d.length > 0) {
           const ordenados = ordenarPorFecha(d);
           setData(ordenados);
-          pedirAnalisisGemini(ordenados);
+          pedirAnalisisGemini(ordenados); 
         } else {
           setAiAnalysis("Sistema listo. Ingrese registros de facturación para activar la auditoría automatizada.");
         }
@@ -58,7 +87,10 @@ export default function Home() {
       const actualizados = ordenarPorFecha([...data, nuevo]);
       setData(actualizados);
       setIngreso('');
-      pedirAnalisisGemini(actualizados);
+      
+      // La IA analiza el contexto del filtro actual
+      const filtrados = filtrarDatos(actualizados, filtro);
+      pedirAnalisisGemini(filtrados);
     }
     setIsSaving(false);
   };
@@ -68,17 +100,22 @@ export default function Home() {
     if (res.ok) {
       const restantes = data.filter(item => item.id !== id);
       setData(restantes);
-      if (restantes.length >= 2) {
-        pedirAnalisisGemini(restantes);
+      
+      const filtrados = filtrarDatos(restantes, filtro);
+      if (filtrados.length >= 2) {
+        pedirAnalisisGemini(filtrados);
       } else {
-        setAiAnalysis("Muestras insuficientes para generar una proyección fiable.");
+        setAiAnalysis("Muestras insuficientes en este periodo para generar una proyección fiable.");
       }
     }
   };
 
   const pedirAnalisisGemini = (d: any[]) => {
-    if (d.length < 2) return;
-    setAiAnalysis("Procesando métricas estructurales...");
+    if (d.length < 2) {
+      setAiAnalysis("Muestras insuficientes en este periodo para generar una proyección fiable.");
+      return;
+    }
+    setAiAnalysis("Procesando métricas estructurales del periodo...");
     fetch('/api/analyze', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -89,27 +126,21 @@ export default function Home() {
       .catch(() => setAiAnalysis("Error en el servidor de inteligencia artificial."));
   };
 
-  // 🆕 Función mágica para exportar a Excel (CSV)
   const exportarAExcel = () => {
-    if (data.length === 0) {
-      alert("No hay datos para exportar.");
+    if (datosVisibles.length === 0) {
+      alert("No hay datos para exportar en este periodo.");
       return;
     }
-    
-    // 1. Crear las cabeceras del archivo
     let csvContent = "Fecha,Ingreso Neto (EUR)\n";
-    
-    // 2. Añadir cada fila de datos
-    data.forEach(row => {
+    // 🆕 Exporta solo los datos del filtro seleccionado
+    datosVisibles.forEach(row => {
       csvContent += `${row.name},${row.total}\n`;
     });
-    
-    // 3. Crear el archivo virtual y forzar la descarga
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "Exportacion_TaxGuardAI.csv");
+    link.setAttribute("download", `Exportacion_TaxGuardAI_${filtro}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -147,7 +178,7 @@ export default function Home() {
 
           <main className="flex-1 p-10 overflow-y-auto">
             
-            <header className="flex justify-between items-center mb-10 border-b border-slate-200 pb-6">
+            <header className="flex justify-between items-center mb-6 border-b border-slate-200 pb-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Panel de Control Ejecutivo</h1>
                 <p className="text-sm font-medium text-slate-500 mt-1">Supervisión integrada de flujos de caja corporativos.</p>
@@ -158,11 +189,27 @@ export default function Home() {
               </div>
             </header>
 
+            {/* 🆕 BARRA DE FILTROS DE TIEMPO */}
+            <div className="flex gap-3 mb-8 overflow-x-auto pb-2">
+              <button onClick={() => cambiarFiltro('all')} className={`px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>
+                Todo el Historial
+              </button>
+              <button onClick={() => cambiarFiltro('month')} className={`px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'month' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>
+                Últimos 30 días
+              </button>
+              <button onClick={() => cambiarFiltro('quarter')} className={`px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'quarter' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>
+                Último Trimestre
+              </button>
+              <button onClick={() => cambiarFiltro('year')} className={`px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>
+                Último Año
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {[
-                { title: 'Volumen Facturado (Total)', value: totalFacturado, color: 'text-blue-600' },
-                { title: 'Rendimiento Medio (Ticket)', value: Math.round(promedio), color: 'text-slate-900' },
-                { title: 'Techo de Ingresos (Pico)', value: maximo, color: 'text-slate-900' }
+                { title: 'Volumen Facturado', value: totalFacturado, color: 'text-blue-600' },
+                { title: 'Rendimiento Medio', value: Math.round(promedio), color: 'text-slate-900' },
+                { title: 'Techo de Ingresos', value: maximo, color: 'text-slate-900' }
               ].map((kpi, idx) => (
                 <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{kpi.title}</span>
@@ -196,11 +243,11 @@ export default function Home() {
               <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
                 <div>
                   <h3 className="text-md font-bold text-slate-900 mb-1">Curva de Tendencia Analítica</h3>
-                  <p className="text-xs text-slate-400 mb-6">Proyección y comportamiento de ingresos en la línea de tiempo.</p>
+                  <p className="text-xs text-slate-400 mb-6">Proyección y comportamiento de ingresos en el periodo.</p>
                 </div>
                 <div className="flex-1 min-h-[220px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <BarChart data={datosVisibles} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                       <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
@@ -213,23 +260,15 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
-                
-                {/* 🆕 CABECERA DE LA TABLA CON EL BOTÓN DE EXCEL */}
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
                   <div>
-                    <h3 className="text-md font-bold text-slate-900 mb-1">Libro Diario de Caja</h3>
-                    <p className="text-xs text-slate-400">Historial completo de transacciones.</p>
+                    <h3 className="text-md font-bold text-slate-900 mb-1">Libro Diario</h3>
+                    <p className="text-xs text-slate-400">Datos del periodo activo.</p>
                   </div>
-                  
-                  <button 
-                    onClick={exportarAExcel}
-                    className="flex items-center gap-2 text-xs font-bold bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg hover:bg-emerald-100 transition border border-emerald-200 shadow-sm"
-                    title="Descargar historial en formato CSV"
-                  >
+                  <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg hover:bg-emerald-100 transition border border-emerald-200 shadow-sm" title="Descargar vista actual">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    Exportar CSV
+                    Exportar
                   </button>
                 </div>
                 
@@ -243,7 +282,7 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                      {data.map((item) => (
+                      {datosVisibles.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/80 transition">
                           <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
                           <td className="px-6 py-3.5 text-blue-600 font-bold">{item.total.toLocaleString()} €</td>
@@ -254,9 +293,9 @@ export default function Home() {
                           </td>
                         </tr>
                       ))}
-                      {data.length === 0 && (
+                      {datosVisibles.length === 0 && (
                         <tr>
-                          <td colSpan={3} className="px-6 py-10 text-center text-xs text-slate-400">Ningún registro contable detectado.</td>
+                          <td colSpan={3} className="px-6 py-10 text-center text-xs text-slate-400">Sin registros en este periodo de tiempo.</td>
                         </tr>
                       )}
                     </tbody>
@@ -270,7 +309,7 @@ export default function Home() {
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                     <h3 className="text-md font-bold text-slate-900">Dictamen e Inteligencia Financiera</h3>
                   </div>
-                  <p className="text-xs text-slate-400 mb-6">Informe automatizado por el núcleo de inteligencia artificial.</p>
+                  <p className="text-xs text-slate-400 mb-6">Informe automatizado filtrado por el periodo actual.</p>
                 </div>
                 
                 <div className="flex-1 bg-slate-50/50 rounded-xl p-6 border border-slate-200/60 overflow-y-auto max-h-[300px]">
@@ -283,7 +322,6 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-
             </div>
 
           </main>
