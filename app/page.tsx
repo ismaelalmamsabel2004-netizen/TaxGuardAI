@@ -89,12 +89,37 @@ export default function Home() {
       .catch(() => setAiAnalysis("Error en el servidor de inteligencia artificial."));
   };
 
+  // 🆕 Función mágica para exportar a Excel (CSV)
+  const exportarAExcel = () => {
+    if (data.length === 0) {
+      alert("No hay datos para exportar.");
+      return;
+    }
+    
+    // 1. Crear las cabeceras del archivo
+    let csvContent = "Fecha,Ingreso Neto (EUR)\n";
+    
+    // 2. Añadir cada fila de datos
+    data.forEach(row => {
+      csvContent += `${row.name},${row.total}\n`;
+    });
+    
+    // 3. Crear el archivo virtual y forzar la descarga
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "Exportacion_TaxGuardAI.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <>
       <Show when="signed-in">
         <div className="flex min-h-screen bg-slate-50 font-sans">
           
-          {/* SIDEBAR CORPORATIVO */}
           <aside className="w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800">
             <div>
               <div className="flex items-center gap-3 mb-10 px-2">
@@ -120,10 +145,8 @@ export default function Home() {
             </div>
           </aside>
 
-          {/* CUERPO PRINCIPAL */}
           <main className="flex-1 p-10 overflow-y-auto">
             
-            {/* TOP BAR */}
             <header className="flex justify-between items-center mb-10 border-b border-slate-200 pb-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Panel de Control Ejecutivo</h1>
@@ -135,7 +158,6 @@ export default function Home() {
               </div>
             </header>
 
-            {/* BALANCE / KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {[
                 { title: 'Volumen Facturado (Total)', value: totalFacturado, color: 'text-blue-600' },
@@ -149,10 +171,7 @@ export default function Home() {
               ))}
             </div>
 
-            {/* FILA INTERMEDIA: REGISTRO + GRÁFICO */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-              
-              {/* FORMULARIO */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
                   <h3 className="text-md font-bold text-slate-900 mb-1">Asistente de Entrada</h3>
@@ -174,7 +193,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* GRÁFICO */}
               <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
                 <div>
                   <h3 className="text-md font-bold text-slate-900 mb-1">Curva de Tendencia Analítica</h3>
@@ -194,14 +212,25 @@ export default function Home() {
               </div>
             </div>
 
-            {/* FILA INFERIOR: TABLA DE DATOS + INFORME IA */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               
-              {/* TABLA DE AUDITORÍA (MÁS PROFESIONAL) */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
-                <div className="p-6 border-b border-slate-100">
-                  <h3 className="text-md font-bold text-slate-900 mb-1">Libro Diario de Caja</h3>
-                  <p className="text-xs text-slate-400">Historial completo con opción de revocación.</p>
+                
+                {/* 🆕 CABECERA DE LA TABLA CON EL BOTÓN DE EXCEL */}
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
+                  <div>
+                    <h3 className="text-md font-bold text-slate-900 mb-1">Libro Diario de Caja</h3>
+                    <p className="text-xs text-slate-400">Historial completo de transacciones.</p>
+                  </div>
+                  
+                  <button 
+                    onClick={exportarAExcel}
+                    className="flex items-center gap-2 text-xs font-bold bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg hover:bg-emerald-100 transition border border-emerald-200 shadow-sm"
+                    title="Descargar historial en formato CSV"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Exportar CSV
+                  </button>
                 </div>
                 
                 <div className="flex-1 max-h-[300px] overflow-y-auto">
@@ -235,7 +264,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* INFORME DE INTELIGENCIA ARTIFICIAL */}
               <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -262,7 +290,6 @@ export default function Home() {
         </div>
       </Show>
 
-      {/* LOGIN DE ACCESO COMPARTIDO */}
       <Show when="signed-out">
         <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
           <div className="bg-white p-10 rounded-3xl shadow-xl max-w-md w-full border border-slate-100 text-center">
