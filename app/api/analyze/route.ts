@@ -1,88 +1,52 @@
 import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("No se ha encontrado la GEMINI_API_KEY en el servidor.");
+      return NextResponse.json({ analysis: "⚠️ API Key no configurada en el servidor." }, { status: 500 });
     }
 
+    const genAI = new GoogleGenerativeAI(apiKey);
     const body = await request.json();
-    const { data, context } = body; 
-
-    // 1. Construimos el cerebro del Director Financiero
-    let prompt = `Actúa como un Director Financiero (CFO) de élite. Analiza este historial de ingresos y gastos: ${JSON.stringify(data)}. `;
-
-    if (context && context.nombre) {
-      prompt += `
-      IMPORTANTE - CONTEXTO DEL CLIENTE:
-      - Empresa: ${context.nombre}
-      - Sector/Industria: ${context.sector}
-      - Objetivo o Situación actual: ${context.detalles}
-
-      Instrucciones estrictas: 
-      1. Dirígete a la empresa por su nombre de forma profesional.
-      2. Adapta todo tu lenguaje, ejemplos y recomendaciones específicamente a su sector industrial.
-      3. Ten en cuenta su objetivo o situación actual para dar consejos útiles y realistas basados en los números que te he pasado.
-      4. Formatea la respuesta en Markdown profesional, con títulos, negritas y listas.`;
-    } else {
-      prompt += `\nGenera un informe financiero general en formato Markdown estructurado destacando márgenes y tendencias.`;
-    }
-
-    // 2. MODO AUTO-DESCUBRIMIENTO: Preguntamos a Google qué modelos tienes habilitados
-    const urlModelos = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-    const resModelos = await fetch(urlModelos);
-    const dataModelos = await resModelos.json();
-
-    if (!dataModelos.models) {
-      throw new Error("No se pudo leer tu cuenta de Google. Revisa que tu API Key sea correcta.");
-    }
-
-    // Filtramos para buscar un modelo de texto de Gemini que sirva para generar contenido
-    const modelosValidos = dataModelos.models.filter((m: any) => 
-      m.supportedGenerationMethods?.includes("generateContent") && 
-      m.name.includes("gemini") &&
-      !m.name.includes("vision") // Excluimos los de solo imagen
-    );
-
-    if (modelosValidos.length === 0) {
-      throw new Error("Tu API Key no tiene acceso a ningún modelo Gemini de texto en tu región.");
-    }
-
-    // Seleccionamos el mejor modelo disponible de tu lista personal
-    const modeloElegido = modelosValidos.find((m: any) => m.name.includes("1.5-flash")) 
-                       || modelosValidos.find((m: any) => m.name.includes("1.5-pro")) 
-                       || modelosValidos.find((m: any) => m.name.includes("1.0-pro")) 
-                       || modelosValidos[0];
-
-    console.log("¡Modelo auto-detectado con éxito! Usando:", modeloElegido.name);
-
-    // 3. HACEMOS LA PETICIÓN AL MODELO EXACTO QUE GOOGLE NOS HA DADO
-    // Usamos la propiedad .name que ya incluye "models/gemini-..."
-    const urlAnalisis = `https://generativelanguage.googleapis.com/v1beta/${modeloElegido.name}:generateContent?key=${apiKey}`;
     
-    const response = await fetch(urlAnalisis, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
-      })
-    });
+    // 🆕 Ahora aceptamos un "contextoSector" dinámico que enviará la interfaz del cliente
+    const { data, empresaId, contextoSector } = body; 
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || "Error al procesar los datos con la IA.");
+    if (!data || data.length === 0) {
+      return NextResponse.json({ analysis: "Muestras insuficientes para generar una proyección financiera." });
     }
 
-    const responseData = await response.json();
-    const text = responseData.candidates[0].content.parts[0].text;
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+    } catch {
+      model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    }
+
+    // 🆕 El prompt ahora es universal. Si el cliente no ha rellenado su perfil, usa un texto por defecto.
+    const prompt = `Actúa como un Director Financiero (CFO) de élite. Analiza con rigor el siguiente historial de flujos de caja (ingresos y gastos): ${JSON.stringify(data)}.
+    
+    CONTEXTO CORPORATIVO DEL CLIENTE:
+    - Nombre de la empresa: ${empresaId || "Empresa Cliente"}
+    - Sector / Objetivos: ${contextoSector || "Sector no especificado por el cliente. Realiza un análisis financiero corporativo estándar aplicable a cualquier PYME."}
+    
+    Instrucciones estrictas para el reporte:
+    1. Dirígete a la empresa por su nombre de forma rigurosa y ejecutiva.
+    2. Adapta tus recomendaciones de optimización de costes y evaluación de márgenes al sector específico mencionado arriba. Si no se especifica, usa principios contables universales.
+    3. Identifica patrones en el flujo de caja, tendencias de crecimiento o anomalías en los gastos.
+    4. Devuelve la respuesta exclusivamente en formato Markdown limpio, utilizando títulos, textos en negrita y listas estructuradas.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
 
     return NextResponse.json({ analysis: text });
     
   } catch (error: any) {
-    console.error("Fallo detectado:", error);
+    console.error("Error en la auditoría:", error);
     return NextResponse.json({ 
-      analysis: `**⚠️ Alerta del Servidor:** \n\nNo se pudo completar el análisis. Motivo técnico: *${error.message}*` 
+      analysis: `**⚠️ Alerta:** No se pudo procesar la auditoría automatizada: *${error.message}*` 
     });
   }
 }

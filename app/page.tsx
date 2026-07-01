@@ -10,7 +10,6 @@ export default function Home() {
   const [aiAnalysis, setAiAnalysis] = useState("Cargando auditoría de rendimiento...");
   const [data, setData] = useState<{id?: number, name: string, total: number}[]>([]);
  
-  // ESTADOS DE ESPACIO DE TRABAJO
   const [empresas, setEmpresas] = useState<string[]>(["Alperez", "PetClean", "Techmovile"]);
   const [empresaId, setEmpresaId] = useState("Alperez");
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
@@ -22,7 +21,6 @@ export default function Home() {
  
   const [filtro, setFiltro] = useState("all");
 
-  // LÓGICA DE EMPRESAS
   const agregarEmpresa = () => {
     if (nuevaEmpresa && !empresas.includes(nuevaEmpresa)) {
       const lista = [...empresas, nuevaEmpresa];
@@ -72,6 +70,17 @@ export default function Home() {
 
   const datosVisibles = filtrarDatos(data, filtro);
 
+  // Agrupar datos por fecha para sumar/restar en una misma columna de la gráfica
+  const datosGrafico = datosVisibles.reduce((acc, curr) => {
+    const existente = acc.find(item => item.name === curr.name);
+    if (existente) {
+      existente.total += curr.total; // Si la fecha ya existe, suma o resta el importe
+    } else {
+      acc.push({ name: curr.name, total: curr.total }); // Si es una fecha nueva, la añade
+    }
+    return acc;
+  }, [] as { name: string, total: number }[]);
+
   const ingresosTotales = datosVisibles.filter(d => d.total > 0).reduce((sum, item) => sum + item.total, 0);
   const gastosTotales = datosVisibles.filter(d => d.total < 0).reduce((sum, item) => sum + Math.abs(item.total), 0);
   const beneficioNeto = ingresosTotales - gastosTotales;
@@ -91,7 +100,7 @@ export default function Home() {
           setData(ordenados);
           pedirAnalisisGemini(ordenados);
         } else {
-          setData([]); 
+          setData([]);
           setAiAnalysis("Sistema listo. Ingrese registros para activar la auditoría automatizada.");
         }
       });
@@ -213,11 +222,11 @@ export default function Home() {
               </div>
              
               <nav className="space-y-1">
-                <Link href="/" className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm">
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm" href="/">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
                   Consola General
                 </Link>
-                <Link href="/analisis" className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                   Análisis Avanzado
                 </Link>
@@ -226,7 +235,7 @@ export default function Home() {
            
             <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
               <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
-              <UserButton />
+              <UserButton/>
             </div>
           </aside>
 
@@ -285,16 +294,16 @@ export default function Home() {
                  
                   <form onSubmit={guardarDato} className="space-y-4">
                     <div className="grid grid-cols-2 gap-3 mb-2">
-                      <button
-                        type="button"
-                        onClick={() => setTipoTransaccion('ingreso')}
+                      <button 
+                        type="button" 
+                        onClick={() => setTipoTransaccion('ingreso')} 
                         className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'ingreso' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
                       >
                         + Ingreso
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setTipoTransaccion('gasto')}
+                      <button 
+                        type="button" 
+                        onClick={() => setTipoTransaccion('gasto')} 
                         className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'gasto' ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
                       >
                         - Gasto
@@ -323,18 +332,19 @@ export default function Home() {
                 </div>
                 <div className="flex-1 min-h-[220px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={datosVisibles} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    {/* 🆕 LA MAGIA ESTÁ AQUÍ: Añadimos una 'key' atada a los datos para que el gráfico se regenere por completo sin romperse */}
+                    <BarChart key={JSON.stringify(datosGrafico)} data={datosGrafico} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                       <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
                       <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }} />
-                     
-                      <Bar dataKey="total" radius={[6, 6, 6, 6]} maxBarSize={45}>
-                        {datosVisibles.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.total >= 0 ? '#10b981' : '#f43f5e'} />
+                      
+                      <Bar dataKey="total" radius={[6, 6, 6, 6]} maxBarSize={45} isAnimationActive={false}>
+                        {datosGrafico.map((entry, index) => (
+                          <Cell key={`cell-grafico-${index}`} fill={entry.total >= 0 ? '#10b981' : '#f43f5e'} />
                         ))}
                       </Bar>
-                     
+                      
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -353,7 +363,7 @@ export default function Home() {
                     CSV
                   </button>
                 </div>
-               
+                
                 <div className="flex-1 max-h-[300px] overflow-y-auto">
                   <table className="min-w-full divide-y divide-slate-100 text-left">
                     <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0">
@@ -367,11 +377,11 @@ export default function Home() {
                       {datosVisibles.map((item, index) => (
                         <tr key={`row-${item.id || 'temp'}-${index}`} className="hover:bg-slate-50/80 transition">
                           <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
-                         
+                          
                           <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                             {item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString()} €
                           </td>
-                         
+                          
                           <td className="px-6 py-3.5 text-right">
                             <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition" title="Eliminar">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -397,10 +407,10 @@ export default function Home() {
                   </div>
                   <p className="text-xs text-slate-400 mb-6">Diagnóstico de márgenes y salud económica.</p>
                 </div>
-               
+                
                 <div className="flex-1 bg-slate-50/50 rounded-xl p-6 border border-slate-200/60 overflow-y-auto max-h-[300px]">
                   <div className="text-slate-600 text-sm font-medium leading-relaxed prose max-w-none
-                    [&>p]:mb-4
+                    [&>p]:mb-4 
                     [&>ul]:list-disc [&>ul]:ml-5 [&>ul]:mb-4
                     [&>ol]:list-decimal [&>ol]:ml-5 [&>ol]:mb-4
                     [&>strong]:text-slate-900 [&>strong]:font-bold">
