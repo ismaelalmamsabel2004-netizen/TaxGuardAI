@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1783001564090,
+    "name": "01/07/2026",
+    "total": 1000,
+    "empresaId": "Alperez",
+    "categoria": "Ventas"
+  },
+  {
+    "id": 1783001575481,
+    "name": "30/06/2026",
+    "total": 300,
+    "empresaId": "Alperez",
+    "categoria": "Inversión"
+  },
+  {
+    "id": 1783001587797,
+    "name": "01/07/2026",
+    "total": -400,
+    "empresaId": "Alperez",
+    "categoria": "Logística"
+  },
+  {
+    "id": 1783002025615,
+    "name": "29/06/2026",
+    "total": -1200,
+    "empresaId": "Alperez",
+    "categoria": "Nóminas"
+  },
+  {
+    "id": 1783002105785,
+    "name": "28/06/2026",
+    "total": 1500,
+    "empresaId": "Alperez",
+    "categoria": "Ventas"
+  },
+  {
+    "id": 1783004702546,
+    "name": "29/06/2026",
+    "total": 600,
+    "empresaId": "Alperez",
+    "categoria": "Ventas"
+  }
+]

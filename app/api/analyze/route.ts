@@ -1,52 +1,63 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    // Leemos la llave y le quitamos los espacios en blanco que pueda tener por error
+    const apiKey = process.env.GEMINI_API_KEY?.trim(); 
+    
     if (!apiKey) {
       return NextResponse.json({ analysis: "⚠️ API Key no configurada en el servidor." }, { status: 500 });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
     const body = await request.json();
-    
-    // 🆕 Ahora aceptamos un "contextoSector" dinámico que enviará la interfaz del cliente
     const { data, empresaId, contextoSector } = body; 
 
     if (!data || data.length === 0) {
       return NextResponse.json({ analysis: "Muestras insuficientes para generar una proyección financiera." });
     }
 
-    let model;
-    try {
-      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-    } catch {
-      model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const promptText = `Actúa como un Director Financiero (CFO) de élite. Analiza el siguiente historial de flujos de caja: ${JSON.stringify(data)}.
+    
+    CONTEXTO CORPORATIVO:
+    - Empresa: ${empresaId || "General"}
+    - Sector: ${contextoSector || "Estándar"}
+    
+    Instrucciones:
+    1. Dirígete a la empresa por su nombre.
+    2. Adapta tus recomendaciones de optimización al sector.
+    3. Identifica patrones o anomalías.
+    4. Devuelve la respuesta en formato Markdown limpio.`;
+
+    // 🆕 CONEXIÓN DIRECTA (Bypass de la librería)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptText }] }]
+      })
+    });
+
+    const dataJson = await response.json();
+
+    // Si Google rechaza la conexión, ahora nos dirá el motivo exacto en español (o inglés claro)
+    if (!response.ok) {
+      console.error("Rechazo de Google:", dataJson);
+      return NextResponse.json({ 
+        analysis: `**⚠️ Conexión rechazada por Google:** *${dataJson.error?.message || "La API Key no es válida o el servicio está bloqueado."}*` 
+      });
     }
 
-    // 🆕 El prompt ahora es universal. Si el cliente no ha rellenado su perfil, usa un texto por defecto.
-    const prompt = `Actúa como un Director Financiero (CFO) de élite. Analiza con rigor el siguiente historial de flujos de caja (ingresos y gastos): ${JSON.stringify(data)}.
-    
-    CONTEXTO CORPORATIVO DEL CLIENTE:
-    - Nombre de la empresa: ${empresaId || "Empresa Cliente"}
-    - Sector / Objetivos: ${contextoSector || "Sector no especificado por el cliente. Realiza un análisis financiero corporativo estándar aplicable a cualquier PYME."}
-    
-    Instrucciones estrictas para el reporte:
-    1. Dirígete a la empresa por su nombre de forma rigurosa y ejecutiva.
-    2. Adapta tus recomendaciones de optimización de costes y evaluación de márgenes al sector específico mencionado arriba. Si no se especifica, usa principios contables universales.
-    3. Identifica patrones en el flujo de caja, tendencias de crecimiento o anomalías en los gastos.
-    4. Devuelve la respuesta exclusivamente en formato Markdown limpio, utilizando títulos, textos en negrita y listas estructuradas.`;
+    // Si todo va bien, sacamos el texto de la IA
+    const analisisTexto = dataJson.candidates[0].content.parts[0].text;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-
-    return NextResponse.json({ analysis: text });
+    return NextResponse.json({ analysis: analisisTexto });
     
   } catch (error: any) {
-    console.error("Error en la auditoría:", error);
+    console.error("Error crítico en la IA:", error);
     return NextResponse.json({ 
-      analysis: `**⚠️ Alerta:** No se pudo procesar la auditoría automatizada: *${error.message}*` 
+      analysis: `**⚠️ Alerta de Sistema:** Fallo interno al intentar conectar. Detalle: ${error.message}` 
     });
   }
 }

@@ -3,12 +3,13 @@
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect } from "react";
 import { UserButton, Show, SignInButton } from "@clerk/nextjs";
-import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
 
 export default function Home() {
+  const [isMounted, setIsMounted] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Cargando auditoría de rendimiento...");
-  const [data, setData] = useState<{id?: number, name: string, total: number}[]>([]);
+  const [data, setData] = useState<{id?: number, name: string, total: number, categoria?: string}[]>([]);
  
   const [empresas, setEmpresas] = useState<string[]>(["Alperez", "PetClean", "Techmovile"]);
   const [empresaId, setEmpresaId] = useState("Alperez");
@@ -17,9 +18,30 @@ export default function Home() {
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
   const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto">("ingreso");
+  
+  const categoriasIngreso = ["Ventas", "Servicios", "Inversión", "Otros"];
+  const categoriasGasto = ["Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Otros"];
+  const [categoria, setCategoria] = useState(categoriasIngreso[0]);
+  
   const [isSaving, setIsSaving] = useState(false);
- 
   const [filtro, setFiltro] = useState("all");
+
+  const [metaMensual, setMetaMensual] = useState(5000);
+  const [editandoMeta, setEditandoMeta] = useState(false);
+  const [inputMeta, setInputMeta] = useState("5000");
+
+  // 🆕 EL BLINDAJE ANTI-CRASH PARA LOS GRÁFICOS
+  const [graficosKey, setGraficosKey] = useState(Date.now());
+
+  const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b'];
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
+  }, [tipoTransaccion]);
 
   const agregarEmpresa = () => {
     if (nuevaEmpresa && !empresas.includes(nuevaEmpresa)) {
@@ -41,6 +63,32 @@ export default function Home() {
     const guardadas = localStorage.getItem('taxguard_empresas');
     if (guardadas) setEmpresas(JSON.parse(guardadas));
   }, []);
+
+  useEffect(() => {
+    const metasGuardadas = localStorage.getItem('taxguard_metas');
+    if (metasGuardadas) {
+      const metas = JSON.parse(metasGuardadas);
+      if (metas[empresaId]) {
+        setMetaMensual(metas[empresaId]);
+        setInputMeta(metas[empresaId].toString());
+      } else {
+        setMetaMensual(5000);
+        setInputMeta("5000");
+      }
+    }
+  }, [empresaId]);
+
+  const guardarNuevaMeta = () => {
+    const nuevaMetaNum = Number(inputMeta);
+    if (nuevaMetaNum > 0) {
+      setMetaMensual(nuevaMetaNum);
+      const metasGuardadas = localStorage.getItem('taxguard_metas');
+      const metas = metasGuardadas ? JSON.parse(metasGuardadas) : {};
+      metas[empresaId] = nuevaMetaNum;
+      localStorage.setItem('taxguard_metas', JSON.stringify(metas));
+    }
+    setEditandoMeta(false);
+  };
 
   const ordenarPorFecha = (datos: any[]) => {
     return [...datos].sort((a, b) => {
@@ -70,7 +118,6 @@ export default function Home() {
 
   const datosVisibles = filtrarDatos(data, filtro);
 
-  // ✅ CORRECCIÓN TS: Añadido ': any' a acc, curr, e item
   const datosGrafico = datosVisibles.reduce((acc: {name: string, total: number}[], curr: any) => {
     const existente = acc.find((item: any) => item.name === curr.name);
     if (existente) {
@@ -81,9 +128,24 @@ export default function Home() {
     return acc;
   }, [] as { name: string, total: number }[]);
 
+  const gastosPorCategoria = datosVisibles
+    .filter(d => d.total < 0)
+    .reduce((acc: {name: string, value: number}[], curr: any) => {
+      const cat = curr.categoria || 'General';
+      const existente = acc.find((item: any) => item.name === cat);
+      if (existente) {
+        existente.value += Math.abs(curr.total);
+      } else {
+        acc.push({ name: cat, value: Math.abs(curr.total) });
+      }
+      return acc;
+    }, [])
+    .sort((a, b) => b.value - a.value);
+
   const ingresosTotales = datosVisibles.filter(d => d.total > 0).reduce((sum, item) => sum + item.total, 0);
   const gastosTotales = datosVisibles.filter(d => d.total < 0).reduce((sum, item) => sum + Math.abs(item.total), 0);
   const beneficioNeto = ingresosTotales - gastosTotales;
+  const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
   const cambiarFiltro = (nuevoFiltro: string) => {
     setFiltro(nuevoFiltro);
@@ -98,9 +160,11 @@ export default function Home() {
         if (d && d.length > 0) {
           const ordenados = ordenarPorFecha(d);
           setData(ordenados);
+          setGraficosKey(Date.now()); // Reseteo de gráficos al cargar la empresa
           pedirAnalisisGemini(ordenados);
         } else {
           setData([]);
+          setGraficosKey(Date.now()); // Reseteo de gráficos
           setAiAnalysis("Sistema listo. Ingrese registros para activar la auditoría automatizada.");
         }
       });
@@ -121,7 +185,7 @@ export default function Home() {
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ month: fecha, total: valorFinal, empresaId }) 
+        body: JSON.stringify({ month: fecha, total: valorFinal, empresaId, categoria }) 
       });
 
       if (res.ok) {
@@ -130,6 +194,7 @@ export default function Home() {
         
         const ordenados = ordenarPorFecha(actualizadosBD);
         setData(ordenados);
+        setGraficosKey(Date.now()); // 🆕 Reseteo FORZADO del lienzo al guardar un dato
         setIngreso('');
        
         const filtrados = filtrarDatos(ordenados, filtro);
@@ -149,6 +214,7 @@ export default function Home() {
     if (res.ok) {
       const restantes = data.filter(item => item.id !== id);
       setData(restantes);
+      setGraficosKey(Date.now()); // 🆕 Reseteo FORZADO al borrar un dato
      
       const filtrados = filtrarDatos(restantes, filtro);
       if (filtrados.length >= 2) {
@@ -180,10 +246,11 @@ export default function Home() {
       alert("No hay datos para exportar en este periodo.");
       return;
     }
-    let csvContent = "Fecha,Tipo,Importe (EUR)\n";
+    let csvContent = "Fecha,Categoría,Tipo,Importe (EUR)\n";
     datosVisibles.forEach(row => {
       const tipoTxt = row.total >= 0 ? "Ingreso" : "Gasto";
-      csvContent += `${row.name},${tipoTxt},${row.total}\n`;
+      const catTxt = row.categoria || "General";
+      csvContent += `${row.name},${catTxt},${tipoTxt},${row.total}\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -267,6 +334,44 @@ export default function Home() {
               </button>
             </div>
 
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8">
+              <div className="flex justify-between items-end mb-4">
+                <div>
+                  <h3 className="text-md font-bold text-slate-900">Objetivo de Ingresos ({filtro === 'all' ? 'Histórico' : filtro === 'month' ? 'Mensual' : filtro === 'quarter' ? 'Trimestral' : 'Anual'})</h3>
+                  <p className="text-xs text-slate-400">Rendimiento de facturación para el espacio actual.</p>
+                </div>
+                <div className="text-right">
+                  {editandoMeta ? (
+                    <div className="flex gap-2">
+                      <input 
+                        type="number" 
+                        value={inputMeta} 
+                        onChange={(e) => setInputMeta(e.target.value)} 
+                        className="w-24 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none" 
+                      />
+                      <button onClick={guardarNuevaMeta} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition">
+                        Guardar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-end cursor-pointer group" onClick={() => setEditandoMeta(true)}>
+                      <span className="text-2xl font-black text-slate-900">
+                        {ingresosTotales.toLocaleString()} € <span className="text-sm font-medium text-slate-400">/ {metaMensual.toLocaleString()} €</span>
+                      </span>
+                      <span className="text-[10px] font-bold text-blue-500 uppercase group-hover:underline mt-1">Editar Meta</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                <div 
+                  className={`h-3 rounded-full transition-all duration-1000 ${porcentajeMeta >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} 
+                  style={{ width: `${porcentajeMeta}%` }}
+                ></div>
+              </div>
+              <p className="text-right text-xs font-bold text-slate-500 mt-2">{porcentajeMeta}% Alcanzado</p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Ingresos Brutos</span>
@@ -314,6 +419,16 @@ export default function Home() {
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
                       <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer" />
                     </div>
+                    
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
+                      <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer">
+                        {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Importe Neto (€)</label>
                       <input type="number" placeholder="Ej: 500" value={ingreso} onChange={(e) => setIngreso(e.target.value)} required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none" />
@@ -328,75 +443,64 @@ export default function Home() {
               <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
                 <div>
                   <h3 className="text-md font-bold text-slate-900 mb-1">Balance Visual del Periodo</h3>
-                  <p className="text-xs text-slate-400 mb-6">Comparativa de márgenes y costes operativos.</p>
+                  <p className="text-xs text-slate-400 mb-6">Comparativa de márgenes operativos a lo largo del tiempo.</p>
                 </div>
-                <div className="flex-1 min-h-[220px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart key={JSON.stringify(datosGrafico)} data={datosGrafico} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                      <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
-                      <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }} />
-                      
-                      {/* ✅ CORRECCIÓN TS: Añadido ': any' y ': number' */}
-                      <Bar dataKey="total" radius={[6, 6, 6, 6]} maxBarSize={45} isAnimationActive={false}>
-                        {datosGrafico.map((entry: any, index: number) => (
-                          <Cell key={`cell-grafico-${index}`} fill={entry.total >= 0 ? '#10b981' : '#f43f5e'} />
-                        ))}
-                      </Bar>
-                      
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                {/* 🆕 KEY VINCULADA PARA FORZAR EL RENDERIZADO LIMPIO */}
+                {isMounted && (
+                  <div className="flex-1 min-h-[220px]" key={`bar-container-${empresaId}-${filtro}-${graficosKey}`}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={datosGrafico} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
+                        <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
+                        <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }} isAnimationActive={false} />
+                        
+                        <Bar dataKey="total" radius={[6, 6, 6, 6]} maxBarSize={45} isAnimationActive={false}>
+                          {datosGrafico.map((entry: any, index: number) => (
+                            <Cell key={`bar-cell-${entry.name}-${index}`} fill={entry.total >= 0 ? '#10b981' : '#f43f5e'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
-                  <div>
-                    <h3 className="text-md font-bold text-slate-900 mb-1">Libro Mayor</h3>
-                    <p className="text-xs text-slate-400">Registro contable del periodo.</p>
-                  </div>
-                  <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 transition border border-slate-200 shadow-sm">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    CSV
-                  </button>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[300px]">
+                <div>
+                  <h3 className="text-md font-bold text-slate-900 mb-1">Distribución de Gastos</h3>
+                  <p className="text-xs text-slate-400 mb-2">Desglose porcentual por categorías.</p>
                 </div>
-                
-                <div className="flex-1 max-h-[300px] overflow-y-auto">
-                  <table className="min-w-full divide-y divide-slate-100 text-left">
-                    <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0">
-                      <tr>
-                        <th className="px-6 py-3">Fecha</th>
-                        <th className="px-6 py-3">Monto</th>
-                        <th className="px-6 py-3 text-right">Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                      {/* ✅ CORRECCIÓN TS: Añadido ': any' y ': number' */}
-                      {datosVisibles.map((item: any, index: number) => (
-                        <tr key={`row-${item.id || 'temp'}-${index}`} className="hover:bg-slate-50/80 transition">
-                          <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
-                          
-                          <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                            {item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString()} €
-                          </td>
-                          
-                          <td className="px-6 py-3.5 text-right">
-                            <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition" title="Eliminar">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {datosVisibles.length === 0 && (
-                        <tr>
-                          <td colSpan={3} className="px-6 py-10 text-center text-xs text-slate-400">Sin movimientos en este periodo.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="flex-1 w-full h-[200px] flex items-center justify-center">
+                  {isMounted && gastosPorCategoria.length > 0 ? (
+                    <div className="w-full h-full" key={`pie-container-${empresaId}-${filtro}-${graficosKey}`}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={gastosPorCategoria}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={75}
+                            paddingAngle={3}
+                            dataKey="value"
+                            stroke="none"
+                            isAnimationActive={false}
+                          >
+                            {gastosPorCategoria.map((entry, index) => (
+                              <Cell key={`pie-cell-${entry.name}-${index}`} fill={COLORES_DONA[index % COLORES_DONA.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value) => `${value} €`} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} isAnimationActive={false} />
+                          <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 600, color: '#64748b', paddingTop: '10px' }}/>
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <span className="text-xs font-bold text-slate-300">No hay gastos en este periodo.</span>
+                  )}
                 </div>
               </div>
 
@@ -409,7 +513,7 @@ export default function Home() {
                   <p className="text-xs text-slate-400 mb-6">Diagnóstico de márgenes y salud económica.</p>
                 </div>
                 
-                <div className="flex-1 bg-slate-50/50 rounded-xl p-6 border border-slate-200/60 overflow-y-auto max-h-[300px]">
+                <div className="flex-1 bg-slate-50/50 rounded-xl p-6 border border-slate-200/60 overflow-y-auto max-h-[220px]">
                   <div className="text-slate-600 text-sm font-medium leading-relaxed prose max-w-none
                     [&>p]:mb-4 
                     [&>ul]:list-disc [&>ul]:ml-5 [&>ul]:mb-4
@@ -418,6 +522,60 @@ export default function Home() {
                     <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
+                <div>
+                  <h3 className="text-md font-bold text-slate-900 mb-1">Libro Mayor Integrado</h3>
+                  <p className="text-xs text-slate-400">Registro detallado de transacciones corporativas.</p>
+                </div>
+                <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 transition border border-slate-200 shadow-sm">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  CSV
+                </button>
+              </div>
+              
+              <div className="max-h-[400px] overflow-y-auto">
+                <table className="min-w-full divide-y divide-slate-100 text-left">
+                  <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0">
+                    <tr>
+                      <th className="px-6 py-3">Fecha</th>
+                      <th className="px-6 py-3">Categoría</th>
+                      <th className="px-6 py-3">Monto</th>
+                      <th className="px-6 py-3 text-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
+                    {datosVisibles.map((item: any, index: number) => (
+                      <tr key={`row-${item.id || 'temp'}-${index}`} className="hover:bg-slate-50/80 transition">
+                        <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
+                        
+                        <td className="px-6 py-3.5">
+                          <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                            {item.categoria || 'General'}
+                          </span>
+                        </td>
+
+                        <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString()} €
+                        </td>
+                        
+                        <td className="px-6 py-3.5 text-right">
+                          <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition" title="Eliminar">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {datosVisibles.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-10 text-center text-xs text-slate-400">Sin movimientos en este periodo.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
