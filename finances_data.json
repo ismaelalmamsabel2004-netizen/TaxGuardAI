@@ -40,5 +40,12 @@
     "total": 600,
     "empresaId": "Alperez",
     "categoria": "Ventas"
+  },
+  {
+    "id": 1783023280222,
+    "name": "28/06/2026",
+    "total": -500,
+    "empresaId": "Alperez",
+    "categoria": "Nóminas"
   }
 ]
