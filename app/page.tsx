@@ -70,13 +70,13 @@ export default function Home() {
 
   const datosVisibles = filtrarDatos(data, filtro);
 
-  // Agrupar datos por fecha para sumar/restar en una misma columna de la gráfica
-  const datosGrafico = datosVisibles.reduce((acc, curr) => {
-    const existente = acc.find(item => item.name === curr.name);
+  // ✅ CORRECCIÓN TS: Añadido ': any' a acc, curr, e item
+  const datosGrafico = datosVisibles.reduce((acc: {name: string, total: number}[], curr: any) => {
+    const existente = acc.find((item: any) => item.name === curr.name);
     if (existente) {
-      existente.total += curr.total; // Si la fecha ya existe, suma o resta el importe
+      existente.total += curr.total;
     } else {
-      acc.push({ name: curr.name, total: curr.total }); // Si es una fecha nueva, la añade
+      acc.push({ name: curr.name, total: curr.total });
     }
     return acc;
   }, [] as { name: string, total: number }[]);
@@ -286,12 +286,12 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-             
+              
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
                   <h3 className="text-md font-bold text-slate-900 mb-1">Asistente de Transacciones</h3>
                   <p className="text-xs text-slate-400 mb-6">Registre movimientos en el flujo de caja.</p>
-                 
+                  
                   <form onSubmit={guardarDato} className="space-y-4">
                     <div className="grid grid-cols-2 gap-3 mb-2">
                       <button 
@@ -332,15 +332,15 @@ export default function Home() {
                 </div>
                 <div className="flex-1 min-h-[220px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    {/* 🆕 LA MAGIA ESTÁ AQUÍ: Añadimos una 'key' atada a los datos para que el gráfico se regenere por completo sin romperse */}
                     <BarChart key={JSON.stringify(datosGrafico)} data={datosGrafico} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                       <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
                       <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }} />
                       
+                      {/* ✅ CORRECCIÓN TS: Añadido ': any' y ': number' */}
                       <Bar dataKey="total" radius={[6, 6, 6, 6]} maxBarSize={45} isAnimationActive={false}>
-                        {datosGrafico.map((entry, index) => (
+                        {datosGrafico.map((entry: any, index: number) => (
                           <Cell key={`cell-grafico-${index}`} fill={entry.total >= 0 ? '#10b981' : '#f43f5e'} />
                         ))}
                       </Bar>
@@ -374,7 +374,8 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                      {datosVisibles.map((item, index) => (
+                      {/* ✅ CORRECCIÓN TS: Añadido ': any' y ': number' */}
+                      {datosVisibles.map((item: any, index: number) => (
                         <tr key={`row-${item.id || 'temp'}-${index}`} className="hover:bg-slate-50/80 transition">
                           <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
                           
