@@ -29,8 +29,8 @@ function guardarDatos(datos: any[]) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    // 🆕 Asegurarnos de leer la 'categoria' enviada
-    const { month, total, empresaId, categoria } = body;
+    // 🚀 AÑADIDO: Leemos si es recurrente y con qué frecuencia
+    const { month, total, empresaId, categoria, isRecurrent, frecuencia } = body;
 
     const db = leerDatos();
 
@@ -39,7 +39,9 @@ export async function POST(request: Request) {
       name: month,
       total: total,
       empresaId: empresaId,
-      categoria: categoria || "General" // 🆕 Guardamos la categoría (o "General" si viene vacía)
+      categoria: categoria || "General",
+      isRecurrent: isRecurrent || false,
+      frecuencia: frecuencia || null
     };
 
     db.push(nuevaTransaccion);

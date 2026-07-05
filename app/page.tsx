@@ -10,10 +10,11 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [data, setData] = useState<{id?: number, name: string, total: number, categoria?: string}[]>([]);
+  const [data, setData] = useState<{id?: number, name: string, total: number, categoria?: string, isRecurrent?: boolean, frecuencia?: string}[]>([]);
  
-  const [empresas, setEmpresas] = useState<string[]>(["Alperez", "PetClean", "Techmovile"]);
-  const [empresaId, setEmpresaId] = useState("Alperez");
+  // 🚀 SOLUCIÓN AL BUG: Arrancamos vacío para que no se quede "Alperez" atascado en memoria
+  const [empresas, setEmpresas] = useState<string[]>([]);
+  const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
 
   const [mes, setMes] = useState("");
@@ -24,6 +25,9 @@ export default function Home() {
   const categoriasGasto = ["Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Otros"];
   const [categoria, setCategoria] = useState(categoriasIngreso[0]);
   
+  const [isRecurrent, setIsRecurrent] = useState(false);
+  const [frecuencia, setFrecuencia] = useState("Mensual");
+
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
 
@@ -31,9 +35,31 @@ export default function Home() {
   const [editandoMeta, setEditandoMeta] = useState(false);
   const [inputMeta, setInputMeta] = useState("5000");
 
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const [showConfig, setShowConfig] = useState(false);
+  const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
+  const [sectorInput, setSectorInput] = useState("");
+  const [objetivoInput, setObjetivoInput] = useState("");
+
   const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b'];
 
-  useEffect(() => { setIsMounted(true); }, []);
+  useEffect(() => { 
+    setIsMounted(true); 
+    
+    // 🚀 INICIALIZACIÓN INTELIGENTE: Leemos la memoria del navegador al arrancar
+    const guardadas = localStorage.getItem('taxguard_empresas');
+    const lista = guardadas ? JSON.parse(guardadas) : ["Alperez", "PetClean", "Techmovile"];
+    setEmpresas(lista);
+
+    const activa = localStorage.getItem('taxguard_empresaActiva');
+    if (activa && lista.includes(activa)) {
+      setEmpresaId(activa);
+    } else {
+      setEmpresaId(lista[0] || "");
+      if (lista[0]) localStorage.setItem('taxguard_empresaActiva', lista[0]);
+    }
+  }, []);
 
   useEffect(() => {
     setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
@@ -44,6 +70,9 @@ export default function Home() {
       const lista = [...empresas, nuevaEmpresa];
       setEmpresas(lista);
       localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
+      // 🚀 Al crear una empresa, saltamos a ella directamente
+      setEmpresaId(nuevaEmpresa);
+      localStorage.setItem('taxguard_empresaActiva', nuevaEmpresa);
       setNuevaEmpresa("");
     }
   };
@@ -52,15 +81,16 @@ export default function Home() {
     const lista = empresas.filter(e => e !== nombre);
     setEmpresas(lista);
     localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
-    if (empresaId === nombre) setEmpresaId(lista[0] || "");
+    if (empresaId === nombre) {
+      const nuevaActiva = lista[0] || "";
+      setEmpresaId(nuevaActiva);
+      localStorage.setItem('taxguard_empresaActiva', nuevaActiva);
+    }
   };
 
   useEffect(() => {
-    const guardadas = localStorage.getItem('taxguard_empresas');
-    if (guardadas) setEmpresas(JSON.parse(guardadas));
-  }, []);
+    if (!empresaId) return; // Esperamos a que la empresa cargue
 
-  useEffect(() => {
     const metasGuardadas = localStorage.getItem('taxguard_metas');
     if (metasGuardadas) {
       const metas = JSON.parse(metasGuardadas);
@@ -71,6 +101,27 @@ export default function Home() {
         setMetaMensual(5000);
         setInputMeta("5000");
       }
+    } else {
+      setMetaMensual(5000);
+      setInputMeta("5000");
+    }
+
+    const perfilesGuardados = localStorage.getItem('taxguard_perfiles');
+    if (perfilesGuardados) {
+      const perfiles = JSON.parse(perfilesGuardados);
+      if (perfiles[empresaId]) {
+        setPerfilEmpresa(perfiles[empresaId]);
+        setSectorInput(perfiles[empresaId].sector);
+        setObjetivoInput(perfiles[empresaId].objetivo);
+      } else {
+        setPerfilEmpresa({ sector: "", objetivo: "" });
+        setSectorInput("");
+        setObjetivoInput("");
+      }
+    } else {
+      setPerfilEmpresa({ sector: "", objetivo: "" });
+      setSectorInput("");
+      setObjetivoInput("");
     }
   }, [empresaId]);
 
@@ -84,6 +135,18 @@ export default function Home() {
       localStorage.setItem('taxguard_metas', JSON.stringify(metas));
     }
     setEditandoMeta(false);
+  };
+
+  const guardarPerfil = () => {
+    const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
+    setPerfilEmpresa(nuevoPerfil);
+    
+    const perfilesGuardados = localStorage.getItem('taxguard_perfiles');
+    const perfiles = perfilesGuardados ? JSON.parse(perfilesGuardados) : {};
+    perfiles[empresaId] = nuevoPerfil;
+    localStorage.setItem('taxguard_perfiles', JSON.stringify(perfiles));
+    
+    setShowConfig(false);
   };
 
   const filtrarDatos = (datosBase: any[], tipoFiltro: string) => {
@@ -108,12 +171,11 @@ export default function Home() {
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
-  // 🚀 AGRUPACIÓN DINÁMICA: Si es año o trimestre, agrupa por mes. Si es mes o todo, agrupa por día.
   const datosGrafico = datosCronologicos.reduce((acc: {name: string, total: number}[], curr: any) => {
     let clave = curr.name;
     if (filtro === 'year' || filtro === 'quarter') {
-      const partes = curr.name.split('/'); // DD/MM/YYYY
-      clave = `${partes[1]}/${partes[2]}`; // MM/YYYY
+      const partes = curr.name.split('/'); 
+      clave = `${partes[1]}/${partes[2]}`; 
     }
     
     const existente = acc.find((item: any) => item.name === clave);
@@ -144,7 +206,37 @@ export default function Home() {
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
+  const generarAlertas = () => {
+    const alertas: { tipo: string, titulo: string, texto: string }[] = [];
+    if (datosVisibles.length === 0) return alertas;
+
+    if (beneficioNeto < 0) {
+      alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString()} €. Riesgo de liquidez.` });
+    } 
+    else if (ingresosTotales > 0 && gastosTotales > (ingresosTotales * 0.75)) {
+      alertas.push({ tipo: 'advertencia', titulo: '⚠️ Alerta de Márgenes', texto: `El margen es estrecho. Los costes consumen más del 75% de lo facturado.` });
+    }
+
+    if (gastosPorCategoria.length > 0 && gastosTotales > 0) {
+      const gastoPrincipal = gastosPorCategoria[0];
+      const porcentaje = Math.round((gastoPrincipal.value / gastosTotales) * 100);
+      if (porcentaje >= 50) {
+        alertas.push({ tipo: 'info', titulo: '📊 Desviación de Costes', texto: `La categoría '${gastoPrincipal.name}' representa un ${porcentaje}% de los gastos.` });
+      }
+    }
+
+    if (porcentajeMeta >= 100) {
+      alertas.push({ tipo: 'exito', titulo: '🏆 Objetivo Superado', texto: `¡Enhorabuena! Has superado los ${metaMensual.toLocaleString()} € de ingresos.` });
+    }
+
+    return alertas;
+  };
+
+  const alertasDinamicas = generarAlertas();
+
   useEffect(() => {
+    if (!empresaId) return; // Bloqueo de seguridad
+
     setData([]);
     setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
     
@@ -169,7 +261,7 @@ export default function Home() {
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ month: fecha, total: valorFinal, empresaId, categoria }) 
+        body: JSON.stringify({ month: fecha, total: valorFinal, empresaId, categoria, isRecurrent, frecuencia: isRecurrent ? frecuencia : null }) 
       });
 
       if (res.ok) {
@@ -177,6 +269,8 @@ export default function Home() {
         const actualizadosBD = await resRefresh.json();
         setData(actualizadosBD);
         setIngreso('');
+        setIsRecurrent(false);
+        setFrecuencia('Mensual');
       }
     } catch (error) {
       console.error(error);
@@ -193,19 +287,27 @@ export default function Home() {
     }
   };
 
-  // 🚀 AHORA LA IA ES MANUAL: Solo se ejecuta al pulsar el botón
   const pedirAnalisisGemini = (datosParaAnalizar: any[]) => {
     if (datosParaAnalizar.length < 2) {
       setAiAnalysis("Muestras insuficientes en este periodo para generar una proyección.");
       return;
     }
     setIsAnalyzing(true);
-    setAiAnalysis("Procesando balance de ingresos y gastos operativos...");
+    setAiAnalysis("Procesando balance de ingresos y gastos operativos con perfil corporativo...");
     
+    const datosLimpios = datosParaAnalizar.map(d => ({
+      fecha: d.name,
+      categoria: d.categoria || 'General',
+      importe: d.total,
+      tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
+    }));
+
+    const contextoEmpresarial = `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo Principal: ${perfilEmpresa.objetivo || 'Estabilidad financiera'}.`;
+
     fetch('/api/analyze', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ data: datosParaAnalizar, empresaId }), 
+      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: contextoEmpresarial }), 
     })
       .then(r => r.json())
       .then(r => setAiAnalysis(r.analysis || "Error al estructurar el reporte."))
@@ -215,10 +317,11 @@ export default function Home() {
 
   const exportarAExcel = () => {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
-    let csvContent = "Fecha,Categoría,Tipo,Importe (EUR)\n";
+    let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Importe (EUR)\n";
     datosVisibles.forEach(row => {
       const tipoTxt = row.total >= 0 ? "Ingreso" : "Gasto";
-      csvContent += `${row.name},${row.categoria || "General"},${tipoTxt},${row.total}\n`;
+      const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
+      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${row.total}\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -242,14 +345,25 @@ export default function Home() {
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1">
-                    <select value={empresaId} onChange={(e) => setEmpresaId(e.target.value)} className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none">
+                    {/* 🚀 AL CAMBIAR DE EMPRESA, LO GUARDAMOS EN MEMORIA */}
+                    <select 
+                      value={empresaId} 
+                      onChange={(e) => {
+                        setEmpresaId(e.target.value);
+                        localStorage.setItem('taxguard_empresaActiva', e.target.value);
+                      }} 
+                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none"
+                    >
                         {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
-                    <button onClick={() => eliminarEmpresa(empresaId)} className="p-2.5 bg-rose-900/30 text-rose-500 rounded-xl hover:bg-rose-900">×</button>
+                    <button onClick={() => setShowConfig(true)} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil Corporativo">
+                      ⚙️
+                    </button>
+                    <button onClick={() => eliminarEmpresa(empresaId)} className="p-2.5 bg-rose-900/30 text-rose-500 rounded-xl hover:bg-rose-900 transition">×</button>
                 </div>
                 <div className="flex gap-2 mt-2">
-                  <input value={nuevaEmpresa} onChange={(e) => setNuevaEmpresa(e.target.value)} placeholder="Añadir..." className="w-full bg-slate-800 p-2 text-xs text-white rounded-lg border border-slate-700 outline-none" />
-                  <button onClick={agregarEmpresa} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold">+</button>
+                  <input value={nuevaEmpresa} onChange={(e) => setNuevaEmpresa(e.target.value)} placeholder="Nueva empresa..." className="w-full bg-slate-800 p-2 text-xs text-white rounded-lg border border-slate-700 outline-none" />
+                  <button onClick={agregarEmpresa} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-500 transition">+</button>
                 </div>
               </div>
              
@@ -273,14 +387,48 @@ export default function Home() {
 
           <main className="flex-1 p-10 overflow-y-auto">
            
-            <header className="flex justify-between items-center mb-6 border-b border-slate-200 pb-6">
+            <header className="flex justify-between items-center mb-6 border-b border-slate-200 pb-6 relative">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Panel de Control Ejecutivo</h1>
                 <p className="text-sm font-medium text-slate-500 mt-1">Supervisión integrada de flujos de caja corporativos.</p>
               </div>
-              <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                Servidores Cloud Conectados
+              
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50 transition hover:shadow-md">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                    {alertasDinamicas.length > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
+                  </button>
+
+                  {showNotifications && (
+                    <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all">
+                      <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
+                        <h4 className="text-sm font-bold text-slate-900">Centro de Riesgos</h4>
+                        <span className="bg-slate-800 text-white text-[10px] font-black px-2.5 py-1 rounded-full">{alertasDinamicas.length}</span>
+                      </div>
+                      <div className="max-h-[350px] overflow-y-auto p-3 bg-white">
+                        {alertasDinamicas.length === 0 ? (
+                           <div className="py-8 text-center text-xs text-slate-400 font-medium flex flex-col items-center gap-2">
+                             <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                             Salud financiera estable. No hay alertas.
+                           </div>
+                        ) : (
+                           alertasDinamicas.map((alerta, idx) => (
+                             <div key={idx} className={`p-4 mb-3 rounded-xl border ${alerta.tipo === 'critico' ? 'bg-rose-50/50 border-rose-200' : alerta.tipo === 'advertencia' ? 'bg-amber-50/50 border-amber-200' : alerta.tipo === 'exito' ? 'bg-emerald-50/50 border-emerald-200' : 'bg-blue-50/50 border-blue-200'} shadow-sm`}>
+                               <h5 className={`text-xs font-black mb-1.5 uppercase tracking-wide ${alerta.tipo === 'critico' ? 'text-rose-700' : alerta.tipo === 'advertencia' ? 'text-amber-700' : alerta.tipo === 'exito' ? 'text-emerald-700' : 'text-blue-700'}`}>{alerta.titulo}</h5>
+                               <p className={`text-[11px] font-medium leading-relaxed ${alerta.tipo === 'critico' ? 'text-rose-600' : alerta.tipo === 'advertencia' ? 'text-amber-700' : alerta.tipo === 'exito' ? 'text-emerald-600' : 'text-blue-600'}`}>{alerta.texto}</p>
+                             </div>
+                           ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                  Servidores Cloud Conectados
+                </div>
               </div>
             </header>
 
@@ -341,7 +489,6 @@ export default function Home() {
                       <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'ingreso' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>+ Ingreso</button>
                       <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'gasto' ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>- Gasto</button>
                     </div>
-                    {/* 🚀 FORMULARIOS CON ALTO CONTRASTE (Letras negras, fondo blanco) */}
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
                       <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
@@ -356,6 +503,21 @@ export default function Home() {
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Importe Neto (€)</label>
                       <input type="number" placeholder="Ej: 500" value={ingreso} onChange={(e) => setIngreso(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
+                    
+                    <div className="flex items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2">
+                      <label className="text-xs font-bold text-slate-600 flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" checked={isRecurrent} onChange={(e) => setIsRecurrent(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
+                        Hacer recurrente
+                      </label>
+                      {isRecurrent && (
+                        <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="p-1.5 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none">
+                          <option value="Mensual">Mensual</option>
+                          <option value="Trimestral">Trimestral</option>
+                          <option value="Anual">Anual</option>
+                        </select>
+                      )}
+                    </div>
+
                     <button type="submit" disabled={isSaving} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl disabled:opacity-50 mt-2">{isSaving ? "Procesando..." : "Asignar Movimiento"}</button>
                   </form>
                 </div>
@@ -410,7 +572,6 @@ export default function Home() {
               </div>
 
               <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                {/* 🚀 EL BOTÓN MANUAL SÚPER PROFESIONAL DE IA */}
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -423,7 +584,7 @@ export default function Home() {
                   </button>
                 </div>
                 
-                <div className="flex-1 bg-slate-50/50 rounded-xl p-6 border border-slate-200/60 overflow-y-auto max-h-[220px] mt-4">
+                <div className="flex-1 bg-slate-50/50 rounded-xl p-6 border border-slate-200/60 overflow-y-auto max-h-[220px] mt-4" key={`ai-box-${aiAnalysis.substring(0, 15)}`}>
                   <div className="text-slate-600 text-sm font-medium leading-relaxed prose max-w-none">
                     <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
                   </div>
@@ -451,7 +612,14 @@ export default function Home() {
                     {datosTabla.map((item: any, index: number) => (
                       <tr key={`row-${item.id || index}`} className="hover:bg-slate-50/80 transition">
                         <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
-                        <td className="px-6 py-3.5"><span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{item.categoria || 'General'}</span></td>
+                        <td className="px-6 py-3.5 flex items-center">
+                          <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{item.categoria || 'General'}</span>
+                          {item.isRecurrent && (
+                            <span className="ml-2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1" title={`Gasto fijo: ${item.frecuencia}`}>
+                              🔄 {item.frecuencia}
+                            </span>
+                          )}
+                        </td>
                         <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString()} €</td>
                         <td className="px-6 py-3.5 text-right">
                           <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg">
@@ -470,13 +638,55 @@ export default function Home() {
 
           </main>
         </div>
+
+        {showConfig && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <h3 className="text-lg font-black text-slate-900">Ajustes: {empresaId}</h3>
+                  <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-rose-500 transition">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="p-6 space-y-5">
+                  <p className="text-xs text-slate-500 font-medium">Configura estos datos para que la Inteligencia Artificial analice tus finanzas con el enfoque correcto de tu negocio.</p>
+                  
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Sector de la Empresa</label>
+                    <input 
+                      type="text" 
+                      value={sectorInput} 
+                      onChange={(e) => setSectorInput(e.target.value)} 
+                      placeholder="Ej: Alquiler de material para eventos y logística" 
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Objetivo Principal</label>
+                    <input 
+                      type="text" 
+                      value={objetivoInput} 
+                      onChange={(e) => setObjetivoInput(e.target.value)} 
+                      placeholder="Ej: Optimizar costes de transporte y maximizar el margen" 
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition" 
+                    />
+                  </div>
+                </div>
+                <div className="p-6 bg-slate-50/50 border-t border-slate-100">
+                  <button onClick={guardarPerfil} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl shadow-md shadow-blue-600/20 transition">
+                    Guardar Perfil Corporativo
+                  </button>
+                </div>
+             </div>
+          </div>
+        )}
       </Show>
 
       <Show when="signed-out">
         <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
           <div className="bg-white p-10 rounded-3xl shadow-xl max-w-md w-full border border-slate-100 text-center">
             <h2 className="text-3xl font-black text-slate-900 tracking-tight">TaxGuard<span className="text-blue-600">AI</span></h2>
-            <SignInButton mode="modal"><button className="w-full bg-slate-950 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-slate-800 text-sm mt-8">Autenticar Acceso</button></SignInButton>
+            <SignInButton mode="modal"><button className="w-full bg-slate-950 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-slate-800 text-sm mt-8 shadow-xl shadow-slate-900/20">Autenticar Acceso</button></SignInButton>
           </div>
         </div>
       </Show>

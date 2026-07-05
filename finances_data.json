@@ -47,5 +47,102 @@
     "total": -500,
     "empresaId": "Alperez",
     "categoria": "Nóminas"
+  },
+  {
+    "id": 1783284372271,
+    "name": "05/11/2025",
+    "total": 700,
+    "empresaId": "Alperez",
+    "categoria": "Ventas"
+  },
+  {
+    "id": 1783285456399,
+    "name": "04/07/2026",
+    "total": -350,
+    "empresaId": "Alperez",
+    "categoria": "Software/Suscripciones",
+    "isRecurrent": true,
+    "frecuencia": "Mensual"
+  },
+  {
+    "id": 1783287785144,
+    "name": "01/07/2026",
+    "total": -1200,
+    "empresaId": "Techmovile",
+    "categoria": "Nóminas",
+    "isRecurrent": true,
+    "frecuencia": "Mensual"
+  },
+  {
+    "id": 1783287801838,
+    "name": "01/07/2026",
+    "total": -350,
+    "empresaId": "Techmovile",
+    "categoria": "Software/Suscripciones",
+    "isRecurrent": true,
+    "frecuencia": "Mensual"
+  },
+  {
+    "id": 1783287832553,
+    "name": "01/07/2026",
+    "total": -1000,
+    "empresaId": "Techmovile",
+    "categoria": "Logística",
+    "isRecurrent": true,
+    "frecuencia": "Mensual"
+  },
+  {
+    "id": 1783287849989,
+    "name": "01/07/2026",
+    "total": 2000,
+    "empresaId": "Techmovile",
+    "categoria": "Servicios",
+    "isRecurrent": true,
+    "frecuencia": "Mensual"
+  },
+  {
+    "id": 1783287863752,
+    "name": "01/07/2026",
+    "total": 750,
+    "empresaId": "Techmovile",
+    "categoria": "Inversión",
+    "isRecurrent": true,
+    "frecuencia": "Mensual"
+  },
+  {
+    "id": 1783287883488,
+    "name": "04/07/2026",
+    "total": 350,
+    "empresaId": "Techmovile",
+    "categoria": "Ventas",
+    "isRecurrent": false,
+    "frecuencia": null
+  },
+  {
+    "id": 1783287895312,
+    "name": "04/10/2025",
+    "total": 500,
+    "empresaId": "Techmovile",
+    "categoria": "Ventas",
+    "isRecurrent": false,
+    "frecuencia": null
+  },
+  {
+    "id": 1783287915263,
+    "name": "04/06/2026",
+    "total": 700,
+    "empresaId": "Techmovile",
+    "categoria": "Ventas",
+    "isRecurrent": false,
+    "frecuencia": null
+  },
+  {
+    "id": 1783287933226,
+    "name": "21/05/2026",
+    "total": -800,
+    "empresaId": "Techmovile",
+    "categoria": "Inventario/Materiales",
+    "isRecurrent": false,
+    "frecuencia": null
   }
 ]
