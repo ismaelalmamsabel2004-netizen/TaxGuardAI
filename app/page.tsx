@@ -10,9 +10,10 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [data, setData] = useState<{id?: number, name: string, total: number, categoria?: string, isRecurrent?: boolean, frecuencia?: string}[]>([]);
+  
+  // 🚀 AÑADIDO: La propiedad IVA en los datos
+  const [data, setData] = useState<{id?: number, name: string, total: number, categoria?: string, isRecurrent?: boolean, frecuencia?: string, iva?: number}[]>([]);
  
-  // 🚀 SOLUCIÓN AL BUG: Arrancamos vacío para que no se quede "Alperez" atascado en memoria
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
@@ -27,6 +28,9 @@ export default function Home() {
   
   const [isRecurrent, setIsRecurrent] = useState(false);
   const [frecuencia, setFrecuencia] = useState("Mensual");
+  
+  // 🚀 AÑADIDO: Selector de IVA (por defecto 21%)
+  const [ivaSeleccionado, setIvaSeleccionado] = useState("21");
 
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
@@ -36,7 +40,6 @@ export default function Home() {
   const [inputMeta, setInputMeta] = useState("5000");
 
   const [showNotifications, setShowNotifications] = useState(false);
-
   const [showConfig, setShowConfig] = useState(false);
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   const [sectorInput, setSectorInput] = useState("");
@@ -46,8 +49,6 @@ export default function Home() {
 
   useEffect(() => { 
     setIsMounted(true); 
-    
-    // 🚀 INICIALIZACIÓN INTELIGENTE: Leemos la memoria del navegador al arrancar
     const guardadas = localStorage.getItem('taxguard_empresas');
     const lista = guardadas ? JSON.parse(guardadas) : ["Alperez", "PetClean", "Techmovile"];
     setEmpresas(lista);
@@ -70,7 +71,6 @@ export default function Home() {
       const lista = [...empresas, nuevaEmpresa];
       setEmpresas(lista);
       localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
-      // 🚀 Al crear una empresa, saltamos a ella directamente
       setEmpresaId(nuevaEmpresa);
       localStorage.setItem('taxguard_empresaActiva', nuevaEmpresa);
       setNuevaEmpresa("");
@@ -89,7 +89,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!empresaId) return; // Esperamos a que la empresa cargue
+    if (!empresaId) return; 
 
     const metasGuardadas = localStorage.getItem('taxguard_metas');
     if (metasGuardadas) {
@@ -177,7 +177,6 @@ export default function Home() {
       const partes = curr.name.split('/'); 
       clave = `${partes[1]}/${partes[2]}`; 
     }
-    
     const existente = acc.find((item: any) => item.name === clave);
     if (existente) existente.total += curr.total;
     else acc.push({ name: clave, total: curr.total });
@@ -206,6 +205,11 @@ export default function Home() {
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
+  // 🚀 MÓDULO ESCUDO FISCAL: Cálculos automáticos de IVA
+  const ivaRepercutido = datosVisibles.filter(d => d.total > 0).reduce((sum, item) => sum + (item.total * ((item.iva || 0) / 100)), 0);
+  const ivaSoportado = datosVisibles.filter(d => d.total < 0).reduce((sum, item) => sum + (Math.abs(item.total) * ((item.iva || 0) / 100)), 0);
+  const liquidacionIva = ivaRepercutido - ivaSoportado;
+
   const generarAlertas = () => {
     const alertas: { tipo: string, titulo: string, texto: string }[] = [];
     if (datosVisibles.length === 0) return alertas;
@@ -228,6 +232,11 @@ export default function Home() {
     if (porcentajeMeta >= 100) {
       alertas.push({ tipo: 'exito', titulo: '🏆 Objetivo Superado', texto: `¡Enhorabuena! Has superado los ${metaMensual.toLocaleString()} € de ingresos.` });
     }
+    
+    // Alerta de Hacienda si la deuda es alta
+    if (liquidacionIva > 3000) {
+      alertas.push({ tipo: 'advertencia', titulo: '🏛️ Provisión de Impuestos', texto: `Recuerda apartar liquidez. Tienes una estimación de ${liquidacionIva.toLocaleString()} € a devolver a Hacienda por IVA.` });
+    }
 
     return alertas;
   };
@@ -235,7 +244,7 @@ export default function Home() {
   const alertasDinamicas = generarAlertas();
 
   useEffect(() => {
-    if (!empresaId) return; // Bloqueo de seguridad
+    if (!empresaId) return; 
 
     setData([]);
     setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
@@ -261,7 +270,8 @@ export default function Home() {
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ month: fecha, total: valorFinal, empresaId, categoria, isRecurrent, frecuencia: isRecurrent ? frecuencia : null }) 
+        // 🚀 AÑADIDO: Enviamos el IVA a Supabase
+        body: JSON.stringify({ month: fecha, total: valorFinal, empresaId, categoria, isRecurrent, frecuencia: isRecurrent ? frecuencia : null, iva: ivaSeleccionado }) 
       });
 
       if (res.ok) {
@@ -271,6 +281,7 @@ export default function Home() {
         setIngreso('');
         setIsRecurrent(false);
         setFrecuencia('Mensual');
+        setIvaSeleccionado("21"); // Reseteamos al general
       }
     } catch (error) {
       console.error(error);
@@ -299,6 +310,7 @@ export default function Home() {
       fecha: d.name,
       categoria: d.categoria || 'General',
       importe: d.total,
+      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento',
       tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
     }));
 
@@ -317,11 +329,11 @@ export default function Home() {
 
   const exportarAExcel = () => {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
-    let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Importe (EUR)\n";
+    let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Base Imponible (EUR),IVA (%)\n";
     datosVisibles.forEach(row => {
       const tipoTxt = row.total >= 0 ? "Ingreso" : "Gasto";
       const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
-      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${row.total}\n`;
+      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${row.total},${row.iva || 0}%\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -345,7 +357,6 @@ export default function Home() {
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1">
-                    {/* 🚀 AL CAMBIAR DE EMPRESA, LO GUARDAMOS EN MEMORIA */}
                     <select 
                       value={empresaId} 
                       onChange={(e) => {
@@ -439,6 +450,35 @@ export default function Home() {
               <button onClick={() => setFiltro('year')} className={`px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Último Año</button>
             </div>
 
+            {/* 🚀 FASE 4: PANEL DEL ESCUDO FISCAL */}
+            <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col md:flex-row justify-between items-center relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 opacity-5 rounded-full blur-3xl"></div>
+               <div className="relative z-10 w-full md:w-auto">
+                  <div className="flex items-center gap-2 mb-1">
+                     <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+                     <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Escudo Fiscal Integrado</h3>
+                  </div>
+                  <p className="text-xs text-slate-400 font-medium">Liquidación estimada de IVA para el periodo actual ({filtro}).</p>
+               </div>
+               
+               <div className="flex items-center gap-6 mt-6 md:mt-0 relative z-10 w-full md:w-auto justify-between md:justify-end">
+                  <div className="text-right">
+                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Cobrado</p>
+                     <p className="text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString(undefined, {minimumFractionDigits: 2})} €</p>
+                  </div>
+                  <div className="text-right">
+                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Pagado</p>
+                     <p className="text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString(undefined, {minimumFractionDigits: 2})} €</p>
+                  </div>
+                  <div className="text-right pl-6 border-l border-slate-700">
+                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Liquidación</p>
+                     <p className={`text-2xl font-black tracking-tight ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
+                        {liquidacionIva > 0 ? 'Pagar: ' : 'A favor: '} {Math.abs(liquidacionIva).toLocaleString(undefined, {minimumFractionDigits: 2})} €
+                     </p>
+                  </div>
+               </div>
+            </div>
+
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8">
               <div className="flex justify-between items-end mb-4">
                 <div>
@@ -466,16 +506,16 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Ingresos Brutos</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Bases Imponibles (Ingresos)</span>
                 <span className="text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString()} €</span>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Gastos Operativos</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Bases Imponibles (Gastos)</span>
                 <span className="text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString()} €</span>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
                 <div className={`absolute top-0 left-0 w-1 h-full ${beneficioNeto >= 0 ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Beneficio Neto</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Beneficio Neto (Antes de Impuestos)</span>
                 <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString()} €</span>
               </div>
             </div>
@@ -489,18 +529,33 @@ export default function Home() {
                       <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'ingreso' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>+ Ingreso</button>
                       <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'gasto' ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>- Gasto</button>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
-                      <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
+                        <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        </div>
+                        {/* 🚀 SELECTOR DE IVA */}
+                        <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
+                        <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                            <option value="21">21% (General)</option>
+                            <option value="10">10% (Reducido)</option>
+                            <option value="4">4% (Superreducido)</option>
+                            <option value="0">0% (Exento)</option>
+                        </select>
+                        </div>
                     </div>
+
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
                       <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
                         {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
+
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Importe Neto (€)</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€) (Sin IVA)</label>
                       <input type="number" placeholder="Ej: 500" value={ingreso} onChange={(e) => setIngreso(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     
@@ -604,7 +659,8 @@ export default function Home() {
                     <tr>
                       <th className="px-6 py-3">Fecha</th>
                       <th className="px-6 py-3">Categoría</th>
-                      <th className="px-6 py-3">Monto</th>
+                      <th className="px-6 py-3">Base Imponible</th>
+                      <th className="px-6 py-3">Impuestos</th>
                       <th className="px-6 py-3 text-right">Acción</th>
                     </tr>
                   </thead>
@@ -621,6 +677,14 @@ export default function Home() {
                           )}
                         </td>
                         <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString()} €</td>
+                        
+                        {/* 🚀 AÑADIDO: Muestra la cuota de IVA en la tabla */}
+                        <td className="px-6 py-3.5">
+                           <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
+                              {item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}
+                           </span>
+                        </td>
+
                         <td className="px-6 py-3.5 text-right">
                           <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -629,7 +693,7 @@ export default function Home() {
                       </tr>
                     ))}
                     {datosTabla.length === 0 && (
-                      <tr><td colSpan={4} className="px-6 py-10 text-center text-xs text-slate-400">Sin movimientos en este periodo.</td></tr>
+                      <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">Sin movimientos en este periodo.</td></tr>
                     )}
                   </tbody>
                 </table>
