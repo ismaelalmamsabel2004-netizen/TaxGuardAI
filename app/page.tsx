@@ -1,7 +1,7 @@
 "use client";
 
 import ReactMarkdown from 'react-markdown';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
@@ -11,7 +11,6 @@ export default function Home() {
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  // 🚀 AÑADIDO: La propiedad IVA en los datos
   const [data, setData] = useState<{id?: number, name: string, total: number, categoria?: string, isRecurrent?: boolean, frecuencia?: string, iva?: number}[]>([]);
  
   const [empresas, setEmpresas] = useState<string[]>([]);
@@ -22,18 +21,27 @@ export default function Home() {
   const [ingreso, setIngreso] = useState("");
   const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto">("ingreso");
   
-  const categoriasIngreso = ["Ventas", "Servicios", "Inversión", "Otros"];
-  const categoriasGasto = ["Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Otros"];
+  // 🚀 LISTAS AMPLIADAS Y DINÁMICAS
+  const defaultIngresos = ["Ventas", "Servicios", "Inversión", "Subvenciones", "Préstamos", "Otros"];
+  const defaultGastos = ["Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Impuestos", "Dietas", "Mantenimiento", "Seguros", "Otros"];
+
+  const [categoriasIngreso, setCategoriasIngreso] = useState(defaultIngresos);
+  const [categoriasGasto, setCategoriasGasto] = useState(defaultGastos);
   const [categoria, setCategoria] = useState(categoriasIngreso[0]);
   
   const [isRecurrent, setIsRecurrent] = useState(false);
   const [frecuencia, setFrecuencia] = useState("Mensual");
-  
-  // 🚀 AÑADIDO: Selector de IVA (por defecto 21%)
   const [ivaSeleccionado, setIvaSeleccionado] = useState("21");
 
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
+
+  const etiquetasFiltro: Record<string, string> = {
+    all: "Histórico Completo",
+    month: "Último Mes",
+    quarter: "Último Trimestre",
+    year: "Último Año"
+  };
 
   const [metaMensual, setMetaMensual] = useState(5000);
   const [editandoMeta, setEditandoMeta] = useState(false);
@@ -45,7 +53,14 @@ export default function Home() {
   const [sectorInput, setSectorInput] = useState("");
   const [objetivoInput, setObjetivoInput] = useState("");
 
-  const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b'];
+  // 🚀 ESTADOS PARA GESTIONAR LAS CATEGORÍAS PERSONALIZADAS EN EL MODAL
+  const [catsIngresoInput, setCatsIngresoInput] = useState(defaultIngresos.join(", "));
+  const [catsGastoInput, setCatsGastoInput] = useState(defaultGastos.join(", "));
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isScanning, setIsScanning] = useState(false);
+
+  const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#0ea5e9', '#d946ef', '#14b8a6'];
 
   useEffect(() => { 
     setIsMounted(true); 
@@ -64,7 +79,7 @@ export default function Home() {
 
   useEffect(() => {
     setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
-  }, [tipoTransaccion]);
+  }, [tipoTransaccion, categoriasIngreso, categoriasGasto]);
 
   const agregarEmpresa = () => {
     if (nuevaEmpresa && !empresas.includes(nuevaEmpresa)) {
@@ -88,24 +103,22 @@ export default function Home() {
     }
   };
 
+  // 🚀 CARGAMOS LAS CATEGORÍAS AL CAMBIAR DE EMPRESA
   useEffect(() => {
     if (!empresaId) return; 
 
+    // Cargar Metas
     const metasGuardadas = localStorage.getItem('taxguard_metas');
     if (metasGuardadas) {
       const metas = JSON.parse(metasGuardadas);
-      if (metas[empresaId]) {
-        setMetaMensual(metas[empresaId]);
-        setInputMeta(metas[empresaId].toString());
-      } else {
-        setMetaMensual(5000);
-        setInputMeta("5000");
-      }
+      setMetaMensual(metas[empresaId] ? metas[empresaId] : 5000);
+      setInputMeta(metas[empresaId] ? metas[empresaId].toString() : "5000");
     } else {
       setMetaMensual(5000);
       setInputMeta("5000");
     }
 
+    // Cargar Perfil
     const perfilesGuardados = localStorage.getItem('taxguard_perfiles');
     if (perfilesGuardados) {
       const perfiles = JSON.parse(perfilesGuardados);
@@ -123,6 +136,28 @@ export default function Home() {
       setSectorInput("");
       setObjetivoInput("");
     }
+
+    // Cargar Categorías
+    const catGuardadas = localStorage.getItem('taxguard_categorias');
+    if (catGuardadas) {
+      const cat = JSON.parse(catGuardadas);
+      if (cat[empresaId]) {
+        setCategoriasIngreso(cat[empresaId].ingreso);
+        setCategoriasGasto(cat[empresaId].gasto);
+        setCatsIngresoInput(cat[empresaId].ingreso.join(", "));
+        setCatsGastoInput(cat[empresaId].gasto.join(", "));
+      } else {
+        setCategoriasIngreso(defaultIngresos);
+        setCategoriasGasto(defaultGastos);
+        setCatsIngresoInput(defaultIngresos.join(", "));
+        setCatsGastoInput(defaultGastos.join(", "));
+      }
+    } else {
+      setCategoriasIngreso(defaultIngresos);
+      setCategoriasGasto(defaultGastos);
+      setCatsIngresoInput(defaultIngresos.join(", "));
+      setCatsGastoInput(defaultGastos.join(", "));
+    }
   }, [empresaId]);
 
   const guardarNuevaMeta = () => {
@@ -138,6 +173,7 @@ export default function Home() {
   };
 
   const guardarPerfil = () => {
+    // 1. Guardamos el perfil
     const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
     setPerfilEmpresa(nuevoPerfil);
     
@@ -145,6 +181,23 @@ export default function Home() {
     const perfiles = perfilesGuardados ? JSON.parse(perfilesGuardados) : {};
     perfiles[empresaId] = nuevoPerfil;
     localStorage.setItem('taxguard_perfiles', JSON.stringify(perfiles));
+
+    // 2. Guardamos las categorías personalizadas
+    const nuevasIngreso = catsIngresoInput.split(',').map(c => c.trim()).filter(c => c);
+    const nuevasGasto = catsGastoInput.split(',').map(c => c.trim()).filter(c => c);
+    
+    const catA_Guardar = {
+       ingreso: nuevasIngreso.length > 0 ? nuevasIngreso : defaultIngresos,
+       gasto: nuevasGasto.length > 0 ? nuevasGasto : defaultGastos
+    };
+    
+    setCategoriasIngreso(catA_Guardar.ingreso);
+    setCategoriasGasto(catA_Guardar.gasto);
+    
+    const catGuardadas = localStorage.getItem('taxguard_categorias');
+    const catMemoria = catGuardadas ? JSON.parse(catGuardadas) : {};
+    catMemoria[empresaId] = catA_Guardar;
+    localStorage.setItem('taxguard_categorias', JSON.stringify(catMemoria));
     
     setShowConfig(false);
   };
@@ -205,7 +258,6 @@ export default function Home() {
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
-  // 🚀 MÓDULO ESCUDO FISCAL: Cálculos automáticos de IVA
   const ivaRepercutido = datosVisibles.filter(d => d.total > 0).reduce((sum, item) => sum + (item.total * ((item.iva || 0) / 100)), 0);
   const ivaSoportado = datosVisibles.filter(d => d.total < 0).reduce((sum, item) => sum + (Math.abs(item.total) * ((item.iva || 0) / 100)), 0);
   const liquidacionIva = ivaRepercutido - ivaSoportado;
@@ -215,7 +267,7 @@ export default function Home() {
     if (datosVisibles.length === 0) return alertas;
 
     if (beneficioNeto < 0) {
-      alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString()} €. Riesgo de liquidez.` });
+      alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €. Riesgo de liquidez.` });
     } 
     else if (ingresosTotales > 0 && gastosTotales > (ingresosTotales * 0.75)) {
       alertas.push({ tipo: 'advertencia', titulo: '⚠️ Alerta de Márgenes', texto: `El margen es estrecho. Los costes consumen más del 75% de lo facturado.` });
@@ -233,9 +285,8 @@ export default function Home() {
       alertas.push({ tipo: 'exito', titulo: '🏆 Objetivo Superado', texto: `¡Enhorabuena! Has superado los ${metaMensual.toLocaleString()} € de ingresos.` });
     }
     
-    // Alerta de Hacienda si la deuda es alta
     if (liquidacionIva > 3000) {
-      alertas.push({ tipo: 'advertencia', titulo: '🏛️ Provisión de Impuestos', texto: `Recuerda apartar liquidez. Tienes una estimación de ${liquidacionIva.toLocaleString()} € a devolver a Hacienda por IVA.` });
+      alertas.push({ tipo: 'advertencia', titulo: '🏛️ Provisión de Impuestos', texto: `Recuerda apartar liquidez. Tienes una estimación de ${liquidacionIva.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € a devolver a Hacienda por IVA.` });
     }
 
     return alertas;
@@ -257,6 +308,49 @@ export default function Home() {
       });
   }, [empresaId]);
 
+  const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      try {
+        const base64 = reader.result as string;
+        const res = await fetch('/api/ocr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: base64, categorias: categoriasGasto }) // 🚀 ENVIAMOS LAS CATEGORÍAS ACTUALES A LA IA
+        });
+
+        if (res.ok) {
+          const extraido = await res.json();
+          setTipoTransaccion('gasto'); 
+          if (extraido.fecha) setMes(extraido.fecha);
+          if (extraido.base_imponible) setIngreso(extraido.base_imponible.toString());
+          if (extraido.iva !== undefined) setIvaSeleccionado(extraido.iva.toString());
+          
+          // Verificamos que la categoría que devolvió la IA existe en nuestra lista actual, si no, ponemos la primera
+          if (extraido.categoria && categoriasGasto.includes(extraido.categoria)) {
+             setCategoria(extraido.categoria);
+          } else {
+             setCategoria(categoriasGasto[0]);
+          }
+        } else {
+          alert("La IA no pudo leer la factura con claridad. Asegúrate de que la foto tenga buena luz.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Error de conexión al escanear.");
+      } finally {
+        setIsScanning(false);
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
+      }
+    };
+  };
+
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mes || !ingreso) return;
@@ -270,7 +364,6 @@ export default function Home() {
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        // 🚀 AÑADIDO: Enviamos el IVA a Supabase
         body: JSON.stringify({ month: fecha, total: valorFinal, empresaId, categoria, isRecurrent, frecuencia: isRecurrent ? frecuencia : null, iva: ivaSeleccionado }) 
       });
 
@@ -281,7 +374,7 @@ export default function Home() {
         setIngreso('');
         setIsRecurrent(false);
         setFrecuencia('Mensual');
-        setIvaSeleccionado("21"); // Reseteamos al general
+        setIvaSeleccionado("21"); 
       }
     } catch (error) {
       console.error(error);
@@ -367,7 +460,7 @@ export default function Home() {
                     >
                         {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
-                    <button onClick={() => setShowConfig(true)} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil Corporativo">
+                    <button onClick={() => setShowConfig(true)} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil y Categorías">
                       ⚙️
                     </button>
                     <button onClick={() => eliminarEmpresa(empresaId)} className="p-2.5 bg-rose-900/30 text-rose-500 rounded-xl hover:bg-rose-900 transition">×</button>
@@ -450,7 +543,6 @@ export default function Home() {
               <button onClick={() => setFiltro('year')} className={`px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Último Año</button>
             </div>
 
-            {/* 🚀 FASE 4: PANEL DEL ESCUDO FISCAL */}
             <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col md:flex-row justify-between items-center relative overflow-hidden">
                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 opacity-5 rounded-full blur-3xl"></div>
                <div className="relative z-10 w-full md:w-auto">
@@ -458,22 +550,22 @@ export default function Home() {
                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
                      <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Escudo Fiscal Integrado</h3>
                   </div>
-                  <p className="text-xs text-slate-400 font-medium">Liquidación estimada de IVA para el periodo actual ({filtro}).</p>
+                  <p className="text-xs text-slate-400 font-medium">Liquidación estimada de IVA para el periodo actual ({etiquetasFiltro[filtro]}).</p>
                </div>
                
                <div className="flex items-center gap-6 mt-6 md:mt-0 relative z-10 w-full md:w-auto justify-between md:justify-end">
                   <div className="text-right">
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Cobrado</p>
-                     <p className="text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString(undefined, {minimumFractionDigits: 2})} €</p>
+                     <p className="text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
                   </div>
                   <div className="text-right">
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Pagado</p>
-                     <p className="text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString(undefined, {minimumFractionDigits: 2})} €</p>
+                     <p className="text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
                   </div>
                   <div className="text-right pl-6 border-l border-slate-700">
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Liquidación</p>
-                     <p className={`text-2xl font-black tracking-tight ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
-                        {liquidacionIva > 0 ? 'Pagar: ' : 'A favor: '} {Math.abs(liquidacionIva).toLocaleString(undefined, {minimumFractionDigits: 2})} €
+                     <p className={`text-2xl font-black tracking-tight whitespace-nowrap ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
+                        {liquidacionIva > 0 ? 'Pagar: ' : 'A favor: '} {Math.abs(liquidacionIva).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                      </p>
                   </div>
                </div>
@@ -492,7 +584,7 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="flex flex-col items-end cursor-pointer group" onClick={() => setEditandoMeta(true)}>
-                      <span className="text-2xl font-black text-slate-900">{ingresosTotales.toLocaleString()} € <span className="text-sm font-medium text-slate-400">/ {metaMensual.toLocaleString()} €</span></span>
+                      <span className="text-2xl font-black text-slate-900">{ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € <span className="text-sm font-medium text-slate-400">/ {metaMensual.toLocaleString('es-ES')} €</span></span>
                       <span className="text-[10px] font-bold text-blue-500 uppercase group-hover:underline mt-1">Editar Meta</span>
                     </div>
                   )}
@@ -507,24 +599,32 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Bases Imponibles (Ingresos)</span>
-                <span className="text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString()} €</span>
+                <span className="text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Bases Imponibles (Gastos)</span>
-                <span className="text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString()} €</span>
+                <span className="text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
                 <div className={`absolute top-0 left-0 w-1 h-full ${beneficioNeto >= 0 ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Beneficio Neto (Antes de Impuestos)</span>
-                <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString()} €</span>
+                <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
-                  <h3 className="text-md font-bold text-slate-900 mb-1">Asistente de Transacciones</h3>
-                  <form onSubmit={guardarDato} className="space-y-4 mt-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-md font-bold text-slate-900">Asistente de Transacciones</h3>
+                    
+                    <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2.5 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                      {isScanning ? "⏳ Escaneando..." : "📸 Escanear Factura"}
+                    </button>
+                  </div>
+
+                  <form onSubmit={guardarDato} className="space-y-4">
                     <div className="grid grid-cols-2 gap-3 mb-2">
                       <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'ingreso' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>+ Ingreso</button>
                       <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'gasto' ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>- Gasto</button>
@@ -535,7 +635,6 @@ export default function Home() {
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
                         <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                         </div>
-                        {/* 🚀 SELECTOR DE IVA */}
                         <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
                         <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
@@ -556,7 +655,7 @@ export default function Home() {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€) (Sin IVA)</label>
-                      <input type="number" placeholder="Ej: 500" value={ingreso} onChange={(e) => setIngreso(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                      <input type="number" step="any" placeholder="Ej: 500" value={ingreso} onChange={(e) => setIngreso(e.target.value)} required className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     
                     <div className="flex items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2">
@@ -676,9 +775,8 @@ export default function Home() {
                             </span>
                           )}
                         </td>
-                        <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString()} €</td>
+                        <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
                         
-                        {/* 🚀 AÑADIDO: Muestra la cuota de IVA en la tabla */}
                         <td className="px-6 py-3.5">
                            <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
                               {item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}
@@ -703,42 +801,52 @@ export default function Home() {
           </main>
         </div>
 
+        {/* 🚀 MODAL DE AJUSTES CON LAS CATEGORÍAS PERSONALIZABLES */}
         {showConfig && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                   <h3 className="text-lg font-black text-slate-900">Ajustes: {empresaId}</h3>
                   <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-rose-500 transition">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
-                <div className="p-6 space-y-5">
-                  <p className="text-xs text-slate-500 font-medium">Configura estos datos para que la Inteligencia Artificial analice tus finanzas con el enfoque correcto de tu negocio.</p>
-                  
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Sector de la Empresa</label>
-                    <input 
-                      type="text" 
-                      value={sectorInput} 
-                      onChange={(e) => setSectorInput(e.target.value)} 
-                      placeholder="Ej: Alquiler de material para eventos y logística" 
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition" 
-                    />
+                
+                <div className="p-6 space-y-6 overflow-y-auto">
+                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                      <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
+                      <p className="text-xs text-blue-600 font-medium mb-3">Estos datos enseñan a Gemini a entender tu modelo de negocio.</p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Sector de la Empresa</label>
+                          <input type="text" value={sectorInput} onChange={(e) => setSectorInput(e.target.value)} placeholder="Ej: Clínica Dental" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Objetivo Principal</label>
+                          <input type="text" value={objetivoInput} onChange={(e) => setObjetivoInput(e.target.value)} placeholder="Ej: Reducir costes médicos" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        </div>
+                      </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Objetivo Principal</label>
-                    <input 
-                      type="text" 
-                      value={objetivoInput} 
-                      onChange={(e) => setObjetivoInput(e.target.value)} 
-                      placeholder="Ej: Optimizar costes de transporte y maximizar el margen" 
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition" 
-                    />
+
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                      <h4 className="text-sm font-bold text-slate-800 mb-1">Categorías Personalizadas</h4>
+                      <p className="text-xs text-slate-500 font-medium mb-3">Escribe tus propias categorías separadas por comas. El Escáner OCR aprenderá a usarlas automáticamente.</p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Ingreso</label>
+                          <input type="text" value={catsIngresoInput} onChange={(e) => setCatsIngresoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Gasto</label>
+                          <input type="text" value={catsGastoInput} onChange={(e) => setCatsGastoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-rose-700 outline-none focus:ring-2 focus:ring-rose-500/20" />
+                        </div>
+                      </div>
                   </div>
                 </div>
-                <div className="p-6 bg-slate-50/50 border-t border-slate-100">
-                  <button onClick={guardarPerfil} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl shadow-md shadow-blue-600/20 transition">
-                    Guardar Perfil Corporativo
+
+                <div className="p-6 bg-white border-t border-slate-100 shrink-0">
+                  <button onClick={guardarPerfil} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl shadow-md transition">
+                    Guardar Configuración
                   </button>
                 </div>
              </div>
