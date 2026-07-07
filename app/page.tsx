@@ -21,7 +21,6 @@ export default function Home() {
   const [ingreso, setIngreso] = useState("");
   const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto">("ingreso");
   
-  // 🚀 LISTAS AMPLIADAS Y DINÁMICAS
   const defaultIngresos = ["Ventas", "Servicios", "Inversión", "Subvenciones", "Préstamos", "Otros"];
   const defaultGastos = ["Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Impuestos", "Dietas", "Mantenimiento", "Seguros", "Otros"];
 
@@ -53,12 +52,24 @@ export default function Home() {
   const [sectorInput, setSectorInput] = useState("");
   const [objetivoInput, setObjetivoInput] = useState("");
 
-  // 🚀 ESTADOS PARA GESTIONAR LAS CATEGORÍAS PERSONALIZADAS EN EL MODAL
   const [catsIngresoInput, setCatsIngresoInput] = useState(defaultIngresos.join(", "));
   const [catsGastoInput, setCatsGastoInput] = useState(defaultGastos.join(", "));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isScanning, setIsScanning] = useState(false);
+
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{role: string, content: string}[]>([]);
+  const [currentMessage, setCurrentMessage] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editFormData, setEditFormData] = useState<any>({});
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#0ea5e9', '#d946ef', '#14b8a6'];
 
@@ -103,11 +114,9 @@ export default function Home() {
     }
   };
 
-  // 🚀 CARGAMOS LAS CATEGORÍAS AL CAMBIAR DE EMPRESA
   useEffect(() => {
     if (!empresaId) return; 
 
-    // Cargar Metas
     const metasGuardadas = localStorage.getItem('taxguard_metas');
     if (metasGuardadas) {
       const metas = JSON.parse(metasGuardadas);
@@ -118,7 +127,6 @@ export default function Home() {
       setInputMeta("5000");
     }
 
-    // Cargar Perfil
     const perfilesGuardados = localStorage.getItem('taxguard_perfiles');
     if (perfilesGuardados) {
       const perfiles = JSON.parse(perfilesGuardados);
@@ -137,7 +145,6 @@ export default function Home() {
       setObjetivoInput("");
     }
 
-    // Cargar Categorías
     const catGuardadas = localStorage.getItem('taxguard_categorias');
     if (catGuardadas) {
       const cat = JSON.parse(catGuardadas);
@@ -158,6 +165,8 @@ export default function Home() {
       setCatsIngresoInput(defaultIngresos.join(", "));
       setCatsGastoInput(defaultGastos.join(", "));
     }
+
+    setChatMessages([]);
   }, [empresaId]);
 
   const guardarNuevaMeta = () => {
@@ -173,7 +182,6 @@ export default function Home() {
   };
 
   const guardarPerfil = () => {
-    // 1. Guardamos el perfil
     const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
     setPerfilEmpresa(nuevoPerfil);
     
@@ -182,7 +190,6 @@ export default function Home() {
     perfiles[empresaId] = nuevoPerfil;
     localStorage.setItem('taxguard_perfiles', JSON.stringify(perfiles));
 
-    // 2. Guardamos las categorías personalizadas
     const nuevasIngreso = catsIngresoInput.split(',').map(c => c.trim()).filter(c => c);
     const nuevasGasto = catsGastoInput.split(',').map(c => c.trim()).filter(c => c);
     
@@ -322,7 +329,7 @@ export default function Home() {
         const res = await fetch('/api/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: base64, categorias: categoriasGasto }) // 🚀 ENVIAMOS LAS CATEGORÍAS ACTUALES A LA IA
+          body: JSON.stringify({ imageBase64: base64, categorias: categoriasGasto })
         });
 
         if (res.ok) {
@@ -332,7 +339,6 @@ export default function Home() {
           if (extraido.base_imponible) setIngreso(extraido.base_imponible.toString());
           if (extraido.iva !== undefined) setIvaSeleccionado(extraido.iva.toString());
           
-          // Verificamos que la categoría que devolvió la IA existe en nuestra lista actual, si no, ponemos la primera
           if (extraido.categoria && categoriasGasto.includes(extraido.categoria)) {
              setCategoria(extraido.categoria);
           } else {
@@ -391,6 +397,47 @@ export default function Home() {
     }
   };
 
+  const iniciarEdicion = (item: any) => {
+    setEditingId(item.id);
+    const [d, m, y] = item.name.split('/');
+    setEditFormData({
+      tipo: item.total >= 0 ? 'ingreso' : 'gasto',
+      mes: `${y}-${m}-${d}`,
+      ingreso: Math.abs(item.total).toString(),
+      categoria: item.categoria || 'General',
+      ivaSeleccionado: item.iva?.toString() || '0'
+    });
+  };
+
+  const guardarEdicion = async (id: number) => {
+    try {
+      const [y, m, d] = editFormData.mes.split('-');
+      const fecha = `${d}/${m}/${y}`;
+      const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(Number(editFormData.ingreso)) : Math.abs(Number(editFormData.ingreso));
+
+      const res = await fetch('/api/finances', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ 
+          id: id, 
+          month: fecha, 
+          total: valorFinal, 
+          categoria: editFormData.categoria, 
+          iva: editFormData.ivaSeleccionado 
+        }) 
+      });
+
+      if (res.ok) {
+        const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
+        const actualizadosBD = await resRefresh.json();
+        setData(actualizadosBD);
+        setEditingId(null);
+      }
+    } catch (error) {
+      alert("Error al actualizar el dato");
+    }
+  };
+
   const pedirAnalisisGemini = (datosParaAnalizar: any[]) => {
     if (datosParaAnalizar.length < 2) {
       setAiAnalysis("Muestras insuficientes en este periodo para generar una proyección.");
@@ -420,6 +467,44 @@ export default function Home() {
       .finally(() => setIsAnalyzing(false));
   };
 
+  const enviarMensajeChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentMessage.trim()) return;
+
+    const nuevoMensaje = { role: 'user', content: currentMessage };
+    const historial = [...chatMessages, nuevoMensaje];
+    
+    setChatMessages(historial);
+    setCurrentMessage("");
+    setIsChatLoading(true);
+
+    const datosContexto = datosVisibles.map(d => ({ fecha: d.name, categoria: d.categoria, importe: d.total }));
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: historial,
+          contextoFinanciero: datosContexto,
+          empresaId: empresaId,
+          perfil: perfilEmpresa
+        })
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        setChatMessages([...historial, { role: 'ai', content: resData.reply }]);
+      } else {
+        setChatMessages([...historial, { role: 'ai', content: "⚠️ No pude conectar con el servidor." }]);
+      }
+    } catch (error) {
+      setChatMessages([...historial, { role: 'ai', content: "⚠️ Error de red." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
   const exportarAExcel = () => {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
     let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Base Imponible (EUR),IVA (%)\n";
@@ -438,9 +523,10 @@ export default function Home() {
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-slate-50 font-sans">
+        {/* 🚀 ESCUDO ANTI-TRADUCTOR: translate="no" */}
+        <div className="flex min-h-screen bg-slate-50 font-sans relative" translate="no">
          
-          <aside className="w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800">
+          <aside className="w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 shrink-0">
             <div>
               <div className="flex items-center gap-3 mb-10 px-2">
                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">T</div>
@@ -489,11 +575,11 @@ export default function Home() {
             </div>
           </aside>
 
-          <main className="flex-1 p-10 overflow-y-auto">
+          <main className="flex-1 p-10 overflow-y-auto w-full">
            
             <header className="flex justify-between items-center mb-6 border-b border-slate-200 pb-6 relative">
               <div>
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Panel de Control Ejecutivo</h1>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Panel de Control Ejecutivo - <span className="text-blue-600">{empresaId}</span></h1>
                 <p className="text-sm font-medium text-slate-500 mt-1">Supervisión integrada de flujos de caja corporativos.</p>
               </div>
               
@@ -562,10 +648,11 @@ export default function Home() {
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Pagado</p>
                      <p className="text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
                   </div>
-                  <div className="text-right pl-6 border-l border-slate-700">
+                  <div className="text-right pl-4 md:pl-6 border-l border-slate-700">
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Liquidación</p>
-                     <p className={`text-2xl font-black tracking-tight whitespace-nowrap ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
-                        {liquidacionIva > 0 ? 'Pagar: ' : 'A favor: '} {Math.abs(liquidacionIva).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                     <p className={`text-xl md:text-2xl font-black tracking-tight flex flex-col sm:flex-row sm:gap-2 ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
+                        <span>{liquidacionIva > 0 ? 'Pagar:' : 'A favor:'}</span>
+                        <span>{Math.abs(liquidacionIva).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                      </p>
                   </div>
                </div>
@@ -730,7 +817,7 @@ export default function Home() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <h3 className="text-md font-bold text-slate-900">Auditoría Financiera Gemini</h3>
+                      <h3 className="text-md font-bold text-slate-900">Motor de Inteligencia TaxGuard AI</h3>
                     </div>
                   </div>
                   <button onClick={() => pedirAnalisisGemini(datosVisibles)} disabled={isAnalyzing} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition disabled:opacity-50">
@@ -746,6 +833,7 @@ export default function Home() {
               </div>
             </div>
 
+            {/* 🚀 TABLA DE LIBRO MAYOR TOTALMENTE SEGURA PARA REACT */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
                 <h3 className="text-md font-bold text-slate-900 mb-1">Libro Mayor Integrado</h3>
@@ -760,38 +848,75 @@ export default function Home() {
                       <th className="px-6 py-3">Categoría</th>
                       <th className="px-6 py-3">Base Imponible</th>
                       <th className="px-6 py-3">Impuestos</th>
-                      <th className="px-6 py-3 text-right">Acción</th>
+                      <th className="px-6 py-3 text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                    {datosTabla.map((item: any, index: number) => (
-                      <tr key={`row-${item.id || index}`} className="hover:bg-slate-50/80 transition">
-                        <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
-                        <td className="px-6 py-3.5 flex items-center">
-                          <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{item.categoria || 'General'}</span>
-                          {item.isRecurrent && (
-                            <span className="ml-2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1" title={`Gasto fijo: ${item.frecuencia}`}>
-                              🔄 {item.frecuencia}
-                            </span>
-                          )}
-                        </td>
-                        <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
-                        
-                        <td className="px-6 py-3.5">
-                           <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
-                              {item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}
-                           </span>
-                        </td>
+                    {datosTabla.map((item: any, index: number) => {
+                      // MODO EDICIÓN
+                      if (editingId === item.id) {
+                        return (
+                          <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
+                            <td className="px-4 py-2">
+                               <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none" />
+                            </td>
+                            <td className="px-4 py-2">
+                               <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
+                                 {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
+                               </select>
+                            </td>
+                            <td className="px-4 py-2">
+                               <input type="number" step="any" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none" />
+                            </td>
+                            <td className="px-4 py-2">
+                               <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
+                                  <option value="21">21%</option>
+                                  <option value="10">10%</option>
+                                  <option value="4">4%</option>
+                                  <option value="0">0%</option>
+                               </select>
+                            </td>
+                            <td className="px-4 py-2 text-right space-x-2">
+                               <button onClick={() => guardarEdicion(item.id)} className="text-emerald-600 font-bold text-xs hover:underline">Guardar</button>
+                               <button onClick={() => setEditingId(null)} className="text-slate-500 font-bold text-xs hover:underline">Cancelar</button>
+                            </td>
+                          </tr>
+                        );
+                      }
 
-                        <td className="px-6 py-3.5 text-right">
-                          <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                      // MODO VISTA NORMAL
+                      return (
+                        <tr key={`view-${item.id || index}`} className="hover:bg-slate-50/80 transition">
+                          <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
+                          <td className="px-6 py-3.5 flex items-center">
+                            <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{item.categoria || 'General'}</span>
+                            {item.isRecurrent && (
+                              <span className="ml-2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1" title={`Gasto fijo: ${item.frecuencia}`}>
+                                🔄 {item.frecuencia}
+                              </span>
+                            )}
+                          </td>
+                          <td className={`px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                          
+                          <td className="px-6 py-3.5">
+                             <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
+                                {item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}
+                             </span>
+                          </td>
+
+                          <td className="px-6 py-3.5 text-right space-x-2">
+                            <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar">
+                              <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            </button>
+                            <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar">
+                              <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {datosTabla.length === 0 && (
-                      <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">Sin movimientos en este periodo.</td></tr>
+                      <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">El Libro Mayor está vacío. Añade transacciones para comenzar.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -801,10 +926,70 @@ export default function Home() {
           </main>
         </div>
 
-        {/* 🚀 MODAL DE AJUSTES CON LAS CATEGORÍAS PERSONALIZABLES */}
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end" translate="no">
+          {isChatOpen && (
+            <div className="mb-4 w-96 h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in-up">
+              <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                  <h4 className="text-sm font-bold">CFO Virtual - {empresaId}</h4>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} className="text-slate-400 hover:text-white transition">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              
+              <div className="flex-1 p-4 overflow-y-auto bg-slate-50 space-y-4">
+                {chatMessages.length === 0 ? (
+                  <p className="text-xs text-center text-slate-400 mt-10">Hola. Soy tu asistente financiero. Puedes preguntarme sobre tus gastos, ingresos, o pedirme consejos sobre rentabilidad.</p>
+                ) : (
+                  chatMessages.map((msg, i) => (
+                    <div key={`${i}-${msg.content.length}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] p-3 text-sm rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'}`}>
+                        {msg.role === 'user' ? (
+                          <span className="whitespace-pre-wrap">{msg.content}</span>
+                        ) : (
+                          <div className="prose prose-sm prose-slate max-w-none" key={`md-${msg.content.length}`}>
+                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+                {isChatLoading && (
+                   <div className="flex justify-start">
+                     <div className="bg-white border border-slate-200 text-slate-400 p-3 rounded-2xl rounded-tl-none shadow-sm text-xs flex gap-1">
+                       <span className="animate-bounce">●</span><span className="animate-bounce delay-100">●</span><span className="animate-bounce delay-200">●</span>
+                     </div>
+                   </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              <form onSubmit={enviarMensajeChat} className="p-3 bg-white border-t border-slate-100 flex gap-2">
+                <input 
+                  type="text" 
+                  value={currentMessage} 
+                  onChange={(e) => setCurrentMessage(e.target.value)} 
+                  placeholder="Pregunta a tu CFO..." 
+                  className="flex-1 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <button type="submit" disabled={isChatLoading || !currentMessage.trim()} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 transition">
+                  <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19V6m0 0l-4 4m4-4l4 4" /></svg>
+                </button>
+              </form>
+            </div>
+          )}
+
+          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-transform">
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+          </button>
+        </div>
+
         {showConfig && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                   <h3 className="text-lg font-black text-slate-900">Ajustes: {empresaId}</h3>
                   <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-rose-500 transition">
@@ -815,7 +1000,7 @@ export default function Home() {
                 <div className="p-6 space-y-6 overflow-y-auto">
                   <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
                       <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
-                      <p className="text-xs text-blue-600 font-medium mb-3">Estos datos enseñan a Gemini a entender tu modelo de negocio.</p>
+                      <p className="text-xs text-blue-600 font-medium mb-3">Estos datos enseñan a TaxGuard AI a entender tu modelo de negocio.</p>
                       <div className="space-y-3">
                         <div>
                           <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Sector de la Empresa</label>
