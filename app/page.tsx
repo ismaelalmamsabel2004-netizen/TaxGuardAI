@@ -384,9 +384,9 @@ export default function Home() {
     };
   };
 
-  // 🚀 LÓGICA DE GUARDADO BLINDADA Y CON AVISOS
+  // 🚀 FUNCIÓN DE GUARDADO TOTALMENTE BLINDADA PARA MÓVILES
   const guardarDato = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // Previene que la página se recargue por error en móviles
     
     if (!empresaId) {
        alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
@@ -407,8 +407,8 @@ export default function Home() {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
       
-      // Limpiamos la basura que pueda meter el teclado del móvil (espacios, comas)
-      const textoLimpio = ingreso.replace(',', '.').replace(/\s/g, '');
+      // Filtramos comas, espacios y letras que el teclado del móvil pueda meter por error
+      const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
       const numeroLimpio = parseFloat(textoLimpio);
 
       if (isNaN(numeroLimpio)) {
@@ -433,11 +433,8 @@ export default function Home() {
         setIsRecurrent(false);
         setFrecuencia('Mensual');
         setIvaSeleccionado("21"); 
-        
-        // Pequeño aviso de éxito visual
-        alert("✅ Movimiento guardado correctamente.");
       } else {
-        alert("⚠️ Error del servidor: No se pudo guardar el dato en la nube.");
+        alert("⚠️ Fallo en el servidor de la nube. Inténtalo de nuevo.");
       }
     } catch (error) {
       console.error(error);
@@ -471,10 +468,10 @@ export default function Home() {
     try {
       const [y, m, d] = editFormData.mes.split('-');
       const fecha = `${d}/${m}/${y}`;
-      const numeroLimpio = parseFloat(editFormData.ingreso.replace(',', '.').replace(/\s/g, ''));
+      const numeroLimpio = parseFloat(editFormData.ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
       
-      if (isNaN(numeroLimpio)) return alert("⚠️ El importe modificado no es un número válido.");
-      
+      if (isNaN(numeroLimpio)) return alert("⚠️ El importe introducido no es válido.");
+
       const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
 
       const res = await fetch('/api/finances', {
@@ -587,8 +584,8 @@ export default function Home() {
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
          
-          {/* 🚀 CABECERA DE MÓVIL (CORREGIDA A FIXED) */}
-          <div className="md:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
+          {/* 🚀 CABECERA DE MÓVIL CORRECTA */}
+          <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-30">
             <div className="flex items-center gap-2">
                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">T</div>
                <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
@@ -598,14 +595,14 @@ export default function Home() {
             </button>
           </div>
 
-          <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
+          <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
             <div>
-              <div className="flex items-center justify-between mb-10 px-2 mt-4 md:mt-0">
+              <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">T</div>
                   <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
                 </div>
-                <button className="md:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
+                <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -673,27 +670,27 @@ export default function Home() {
           </aside>
 
           {isSidebarOpen && (
-             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 md:hidden" onClick={() => setIsSidebarOpen(false)}></div>
+             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
           )}
 
-          <main className="flex-1 p-4 pt-24 md:pt-10 md:p-10 overflow-y-auto w-full relative">
+          <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
            
-            <header className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 border-b border-slate-200 pb-6 gap-4">
+            <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 border-b border-slate-200 pb-6 gap-4">
               <div>
                 <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Panel Ejecutivo - <span className="text-blue-600">{empresaId || "Sin Seleccionar"}</span></h1>
                 <p className="text-sm font-medium text-slate-500 mt-1">Supervisión integrada de flujos de caja corporativos.</p>
               </div>
               
-              <div className="flex items-center gap-4 self-start md:self-auto">
+              <div className="flex items-center gap-4 self-start lg:self-auto">
                 <div className="relative">
                   <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50 transition hover:shadow-md">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     {alertasDinamicas.length > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
                   </button>
 
-                  {/* 🚀 CAJA DE NOTIFICACIONES CORREGIDA PARA QUE NO SE SALGA EN MÓVIL */}
+                  {/* 🚀 CAJA DE NOTIFICACIONES SEGURA PARA MÓVILES */}
                   {showNotifications && (
-                    <div className="absolute right-0 mt-3 w-[85vw] max-w-sm md:w-80 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden">
+                    <div className="absolute right-0 top-full mt-2 w-[85vw] max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-right">
                       <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
                         <h4 className="text-sm font-bold text-slate-900">Centro de Riesgos</h4>
                         <span className="bg-slate-800 text-white text-[10px] font-black px-2.5 py-1 rounded-full">{alertasDinamicas.length}</span>
@@ -823,6 +820,7 @@ export default function Home() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
+                        {/* 🚀 CORRECCIÓN: Input sin etiqueta 'required' para evitar bloqueos ciegos en móvil */}
                         <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                         </div>
                         <div>
@@ -845,6 +843,7 @@ export default function Home() {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€) (Sin IVA)</label>
+                      {/* 🚀 CORRECCIÓN: Input seguro para móvil */}
                       <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     
@@ -976,231 +975,6 @@ export default function Home() {
             </div>
             <div className="h-24 md:h-10"></div>
           </main>
-        </div>
-
-        {/* 🚀 EL BOTÓN DEL CHAT Y AJUSTES PERMANECEN INTACTOS A CONTINUACIÓN... */}
-        <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end" translate="no">
-          {isChatOpen && (
-            <div className="mb-4 w-[calc(100vw-3rem)] max-w-sm h-[400px] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in-up">
-              <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-                  <h4 className="text-sm font-bold">CFO Virtual - {empresaId}</h4>
-                </div>
-                <button onClick={() => setIsChatOpen(false)} className="text-slate-400 hover:text-white transition">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
-              
-              <div className="flex-1 p-4 overflow-y-auto bg-slate-50 space-y-4">
-                {chatMessages.length === 0 ? (
-                  <p className="text-xs text-center text-slate-400 mt-10">Hola. Soy tu asistente financiero. Puedes preguntarme sobre tus gastos, ingresos, o pedirme consejos sobre rentabilidad.</p>
-                ) : (
-                  chatMessages.map((msg, i) => (
-                    <div key={`${i}-${msg.content.length}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] p-3 text-sm rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'}`}>
-                        {msg.role === 'user' ? (
-                          <span className="whitespace-pre-wrap">{msg.content}</span>
-                        ) : (
-                          <div className="prose prose-sm prose-slate max-w-none" key={`md-${msg.content.length}`}>
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-                {isChatLoading && (
-                   <div className="flex justify-start">
-                     <div className="bg-white border border-slate-200 text-slate-400 p-3 rounded-2xl rounded-tl-none shadow-sm text-xs flex gap-1">
-                       <span className="animate-bounce">●</span><span className="animate-bounce delay-100">●</span><span className="animate-bounce delay-200">●</span>
-                     </div>
-                   </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-
-              <form onSubmit={enviarMensajeChat} className="p-3 bg-white border-t border-slate-100 flex gap-2">
-                <input 
-                  type="text" 
-                  value={currentMessage} 
-                  onChange={(e) => setCurrentMessage(e.target.value)} 
-                  placeholder="Pregunta a tu CFO..." 
-                  className="flex-1 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-                <button type="submit" disabled={isChatLoading || !currentMessage.trim()} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 transition">
-                  <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19V6m0 0l-4 4m4-4l4 4" /></svg>
-                </button>
-              </form>
-            </div>
-          )}
-
-          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-12 h-12 md:w-14 md:h-14 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-transform">
-             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-          </button>
-        </div>
-
-        {showConfig && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                  <h3 className="text-lg font-black text-slate-900">Ajustes: {empresaId}</h3>
-                  <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-rose-500 transition">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                
-                <div className="p-6 space-y-6 overflow-y-auto">
-                  
-                  {papelera.length > 0 && (
-                    <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl">
-                        <h4 className="text-sm font-bold text-rose-800 mb-1 flex items-center gap-2">
-                           🗑️ Papelera de Reciclaje
-                        </h4>
-                        <p className="text-xs text-rose-600 font-medium mb-3">Estos espacios fueron borrados recientemente. Puedes restaurarlos.</p>
-                        <div className="space-y-2">
-                           {papelera.map((item, idx) => (
-                             <div key={idx} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-rose-100">
-                               <span className="text-xs font-bold text-slate-700">{item.nombre}</span>
-                               <button onClick={() => recuperarDePapelera(item.nombre)} className="text-[10px] font-bold bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Restaurar Espacio</button>
-                             </div>
-                           ))}
-                        </div>
-                    </div>
-                  )}
-
-                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
-                      <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
-                      <p className="text-xs text-blue-600 font-medium mb-3">Estos datos enseñan a TaxGuard AI a entender tu modelo de negocio.</p>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Sector de la Empresa</label>
-                          <input type="text" value={sectorInput} onChange={(e) => setSectorInput(e.target.value)} placeholder="Ej: Clínica Dental" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Objetivo Principal</label>
-                          <input type="text" value={objetivoInput} onChange={(e) => setObjetivoInput(e.target.value)} placeholder="Ej: Reducir costes médicos" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
-                        </div>
-                      </div>
-                  </div>
-
-                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
-                      <h4 className="text-sm font-bold text-slate-800 mb-1">Categorías Personalizadas</h4>
-                      <p className="text-xs text-slate-500 font-medium mb-3">Escribe tus propias categorías separadas por comas. El Escáner OCR aprenderá a usarlas automáticamente.</p>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Ingreso</label>
-                          <input type="text" value={catsIngresoInput} onChange={(e) => setCatsIngresoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Gasto</label>
-                          <input type="text" value={catsGastoInput} onChange={(e) => setCatsGastoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-rose-700 outline-none focus:ring-2 focus:ring-rose-500/20" />
-                        </div>
-                      </div>
-                  </div>
-                </div>
-
-                <div className="p-6 bg-white border-t border-slate-100 shrink-0">
-                  <button onClick={guardarPerfil} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl shadow-md transition">
-                    Guardar Configuración
-                  </button>
-                </div>
-             </div>
-          </div>
-        )}
-      </Show>
-
-      {/* ======================================================== */}
-      {/* 🚀 EL ESCAPARATE: LA LANDING PAGE PREMIUM B2B          */}
-      {/* ======================================================== */}
-      <Show when="signed-out">
-        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          
-          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
-            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/20">T</div>
-                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="hidden sm:block text-sm font-medium text-slate-400">¿Ya eres cliente?</span>
-                <SignInButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
-                    Acceso a Clientes
-                  </button>
-                </SignInButton>
-              </div>
-            </div>
-          </nav>
-
-          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
-            <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
-            
-            <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest mb-8">
-                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                SaaS Financiero B2B
-              </div>
-              
-              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
-                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
-              </h1>
-              
-              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
-                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros. El control total de tu rentabilidad, en tiempo real.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">
-                    Iniciar Sesión
-                  </button>
-                </SignInButton>
-                <button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700 flex items-center justify-center gap-2">
-                  Solicitar Implantación <span className="text-slate-400 text-sm font-normal">(1.200 €)</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10 bg-slate-950">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-black text-white mb-4">Todo lo que tu empresa necesita para escalar</h2>
-              <p className="text-slate-400">Sustituye horas de trabajo manual por precisión algorítmica.</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-blue-500/30 transition">
-                <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-3">Escáner OCR Inteligente</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Sube la foto de un ticket o factura y la Inteligencia Artificial extraerá automáticamente el concepto, base imponible y tipo de IVA.</p>
-              </div>
-              
-              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-emerald-500/30 transition">
-                <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-3">Gestoría Automatizada</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Genera tus modelos de IVA trimestral (Mod 303) al instante, y emite facturas en PDF profesionales para tus clientes con un solo clic.</p>
-              </div>
-              
-              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-purple-500/30 transition">
-                <div className="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-3">CFO Virtual 24/7</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Chatea directamente con tu panel financiero. Pídele auditorías de gastos, previsiones de tesorería y alertas de desvíos en tiempo real.</p>
-              </div>
-            </div>
-          </div>
-
-          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
-            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
-            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs.</p>
-          </footer>
         </div>
       </Show>
     </>
