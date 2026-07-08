@@ -5,6 +5,70 @@ import { UserButton, Show } from "@clerk/nextjs";
 import Link from 'next/link';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { pdf, Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+
+// Registramos la fuente profesional
+Font.register({
+  family: 'Roboto',
+  fonts: [
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf', fontWeight: 300 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf', fontWeight: 700 },
+  ]
+});
+
+// Estilos para el PDF del Gestor
+const styles = StyleSheet.create({
+  page: { padding: 40, fontFamily: 'Roboto', backgroundColor: '#ffffff' },
+  header: { borderBottomWidth: 2, borderBottomColor: '#10b981', paddingBottom: 20, marginBottom: 30 },
+  title: { fontSize: 24, fontWeight: 700, color: '#0f172a' },
+  subtitle: { fontSize: 12, color: '#64748b', marginTop: 5 },
+  section: { marginBottom: 20, padding: 15, backgroundColor: '#f8fafc', borderRadius: 8 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  label: { fontSize: 11, color: '#475569', fontWeight: 700 },
+  value: { fontSize: 11, color: '#0f172a' },
+  totalBox: { marginTop: 20, padding: 20, backgroundColor: '#eff6ff', borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabel: { fontSize: 14, fontWeight: 700, color: '#1e3a8a' },
+  totalValue: { fontSize: 20, fontWeight: 700, color: '#2563eb' },
+  footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10 },
+  footerText: { fontSize: 9, color: '#94a3b8', textAlign: 'center' }
+});
+
+// Plantilla del PDF de Resumen
+const ResumenPDF = ({ empresaId, trimestre, totalDevengado, totalDeducible, resultado, fecha }: any) => (
+  <Document>
+    <Page size="A4" style={styles.page}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Auditoría Fiscal Trimestral</Text>
+        <Text style={styles.subtitle}>Empresa: {empresaId} | Periodo: {trimestre} | Fecha: {fecha}</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 15 }}>Desglose de Operaciones</Text>
+        <View style={styles.row}>
+          <Text style={styles.label}>I. Total IVA Devengado (Ingresos):</Text>
+          <Text style={styles.value}>+{totalDevengado.toFixed(2)} €</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>II. Total IVA Deducible (Gastos):</Text>
+          <Text style={{...styles.value, color: '#e11d48'}}>-{totalDeducible.toFixed(2)} €</Text>
+        </View>
+      </View>
+
+      <View style={{...styles.totalBox, backgroundColor: resultado > 0 ? '#fffbeb' : '#eff6ff'}}>
+        <Text style={{...styles.totalLabel, color: resultado > 0 ? '#b45309' : '#1e3a8a'}}>
+          RESULTADO LIQUIDACIÓN (A {resultado > 0 ? 'PAGAR' : 'FAVOR'}):
+        </Text>
+        <Text style={{...styles.totalValue, color: resultado > 0 ? '#d97706' : '#2563eb'}}>
+          {Math.abs(resultado).toFixed(2)} €
+        </Text>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Documento generado automáticamente por el motor de inteligencia de TaxGuard AI.</Text>
+      </View>
+    </Page>
+  </Document>
+);
 
 export default function Impuestos() {
   const [isMounted, setIsMounted] = useState(false);
@@ -12,6 +76,7 @@ export default function Impuestos() {
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [trimestre, setTrimestre] = useState("1T"); 
   const [data, setData] = useState<any[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -45,7 +110,6 @@ export default function Impuestos() {
 
   const datosTrimestre = filtrarPorTrimestre(data);
 
-  // Cálculos para el borrador
   let base21 = 0, cuota21 = 0, base10 = 0, cuota10 = 0, base4 = 0, cuota4 = 0;
   datosTrimestre.filter(d => d.total > 0).forEach(item => {
     const total = item.total;
@@ -65,32 +129,44 @@ export default function Impuestos() {
   });
   const resultado = totalCuotaDevengado - cuotaGastos;
 
-  // 🚀 FUNCIÓN MÁGICA: GENERAR ZIP PARA GESTORÍA
+  // 🚀 FUNCIÓN MÁGICA: GENERAR ZIP NIVEL PREMIUM
   const descargarCierreTrimestral = async () => {
-    const zip = new JSZip();
+    if (datosTrimestre.length === 0) return alert("No hay datos en este trimestre para exportar.");
+    setIsExporting(true);
     
-    // 1. Crear el CSV para el gestor
-    let csvContent = "Fecha;Categoria;Base Imponible;IVA;Cuota IVA;Total\n";
-    datosTrimestre.forEach(item => {
-        const cuota = Math.abs(item.total) * (item.iva / 100);
-        csvContent += `${item.name};${item.categoria};${Math.abs(item.total)};${item.iva}%;${cuota.toFixed(2)};${item.total}\n`;
-    });
-    zip.file("Libro_Mayor_" + trimestre + ".csv", csvContent);
+    try {
+        const zip = new JSZip();
+        
+        // 1. Crear el CSV REPARADO (con firma UTF-8 BOM para Excel)
+        let csvContent = "\uFEFFFecha;Categoria;Tipo;Base Imponible;IVA (%);Cuota IVA;Total Movimiento\n";
+        datosTrimestre.forEach(item => {
+            const tipo = item.total >= 0 ? "INGRESO" : "GASTO";
+            const cuota = Math.abs(item.total) * (item.iva / 100);
+            csvContent += `${item.name};${item.categoria || 'General'};${tipo};${Math.abs(item.total).toFixed(2)};${item.iva || 0}%;${cuota.toFixed(2)};${Math.abs(item.total + (item.total >= 0 ? cuota : -cuota)).toFixed(2)}\n`;
+        });
+        zip.file(`1_Libro_Mayor_${empresaId}_${trimestre}.csv`, csvContent);
 
-    // 2. Crear resumen para el gestor
-    const resumen = `RESUMEN TRIMESTRAL - ${empresaId}
-    ---------------------------------
-    Trimestre: ${trimestre}
-    Total IVA Devengado: ${totalCuotaDevengado.toFixed(2)} €
-    Total IVA Deducible: ${cuotaGastos.toFixed(2)} €
-    Resultado Liquidación: ${resultado.toFixed(2)} €
-    
-    Este documento ha sido generado por TaxGuard AI.`;
-    zip.file("Resumen_Auditoria.txt", resumen);
+        // 2. Crear resumen en PDF Oficial de forma invisible
+        const pdfData = { 
+            empresaId, 
+            trimestre, 
+            totalDevengado: totalCuotaDevengado, 
+            totalDeducible: cuotaGastos, 
+            resultado, 
+            fecha: new Date().toLocaleDateString() 
+        };
+        const blobPDF = await pdf(<ResumenPDF {...pdfData} />).toBlob();
+        zip.file(`2_Auditoria_Fiscal_${empresaId}_${trimestre}.pdf`, blobPDF);
 
-    // Generar y descargar
-    const content = await zip.generateAsync({type:"blob"});
-    saveAs(content, `Cierre_Fiscal_${empresaId}_${trimestre}.zip`);
+        // 3. Generar y descargar el paquete final
+        const content = await zip.generateAsync({type:"blob"});
+        saveAs(content, `Cierre_Fiscal_${empresaId}_${trimestre}.zip`);
+    } catch (error) {
+        console.error("Error generando el archivo:", error);
+        alert("Ocurrió un error al empaquetar los archivos.");
+    } finally {
+        setIsExporting(false);
+    }
   };
 
   return (
@@ -117,10 +193,22 @@ export default function Impuestos() {
               </select>
             </div>
             <nav className="space-y-1">
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/">Consola General</Link>
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis">Análisis Avanzado</Link>
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium shadow-sm" href="/impuestos">Modelos Tributarios</Link>
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/facturas">Facturación PDF</Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
+                  Consola General
+              </Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                  Análisis Avanzado
+              </Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium shadow-sm" href="/impuestos">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Modelos Tributarios
+              </Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/facturas">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Facturación PDF
+              </Link>
             </nav>
           </div>
           <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
@@ -140,9 +228,10 @@ export default function Impuestos() {
               {/* BOTÓN MÁGICO PARA EL GESTOR */}
               <button 
                 onClick={descargarCierreTrimestral}
-                className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-md shadow-emerald-500/20"
+                disabled={isExporting}
+                className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-md shadow-emerald-500/20 disabled:opacity-50"
               >
-                📥 Descargar Cierre Trimestral (ZIP)
+                {isExporting ? "⏳ Empaquetando Documentos..." : "📥 Descargar Cierre Trimestral (ZIP)"}
               </button>
 
               <div className="flex bg-white border border-slate-200 p-1 rounded-xl shadow-sm gap-1">

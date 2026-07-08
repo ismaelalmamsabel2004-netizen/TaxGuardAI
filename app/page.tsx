@@ -16,6 +16,7 @@ export default function Home() {
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
+  const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
 
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
@@ -79,6 +80,9 @@ export default function Home() {
     const lista = guardadas ? JSON.parse(guardadas) : ["Alperez", "PetClean", "Techmovile"];
     setEmpresas(lista);
 
+    const papeleraGuardada = localStorage.getItem('taxguard_papelera');
+    if (papeleraGuardada) setPapelera(JSON.parse(papeleraGuardada));
+
     const activa = localStorage.getItem('taxguard_empresaActiva');
     if (activa && lista.includes(activa)) {
       setEmpresaId(activa);
@@ -103,15 +107,45 @@ export default function Home() {
     }
   };
 
+  // 🚀 NUEVA FUNCIÓN DE BORRADO SEGURO
   const eliminarEmpresa = (nombre: string) => {
+    const confirmacion = window.confirm(`⚠️ ATENCIÓN: ¿Estás seguro de que deseas borrar el espacio de trabajo "${nombre}"?\n\nLos datos se guardarán en la papelera de reciclaje durante 7 días antes de su eliminación definitiva.`);
+    
+    if (!confirmacion) return; // Si cancela, no hace nada
+
+    // 1. Guardamos en la papelera
+    const nuevaPapelera = [...papelera, { nombre, fecha: Date.now() }];
+    setPapelera(nuevaPapelera);
+    localStorage.setItem('taxguard_papelera', JSON.stringify(nuevaPapelera));
+
+    // 2. Lo quitamos de la lista activa
     const lista = empresas.filter(e => e !== nombre);
     setEmpresas(lista);
     localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
+    
     if (empresaId === nombre) {
       const nuevaActiva = lista[0] || "";
       setEmpresaId(nuevaActiva);
       localStorage.setItem('taxguard_empresaActiva', nuevaActiva);
     }
+  };
+
+  // 🚀 NUEVA FUNCIÓN DE RECUPERACIÓN
+  const recuperarDePapelera = (nombre: string) => {
+    // 1. Lo devolvemos a las empresas activas
+    const lista = [...empresas, nombre];
+    setEmpresas(lista);
+    localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
+
+    // 2. Lo quitamos de la papelera
+    const nuevaPapelera = papelera.filter(item => item.nombre !== nombre);
+    setPapelera(nuevaPapelera);
+    localStorage.setItem('taxguard_papelera', JSON.stringify(nuevaPapelera));
+
+    // 3. Lo activamos
+    setEmpresaId(nombre);
+    localStorage.setItem('taxguard_empresaActiva', nombre);
+    alert(`✅ El espacio "${nombre}" ha sido restaurado con éxito.`);
   };
 
   useEffect(() => {
@@ -548,7 +582,9 @@ export default function Home() {
                     <button onClick={() => setShowConfig(true)} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil y Categorías">
                       ⚙️
                     </button>
-                    <button onClick={() => eliminarEmpresa(empresaId)} className="p-2.5 bg-rose-900/30 text-rose-500 rounded-xl hover:bg-rose-900 transition">×</button>
+                    <button onClick={() => eliminarEmpresa(empresaId)} className="p-2.5 bg-rose-900/30 text-rose-500 rounded-xl hover:bg-rose-900 transition" title="Eliminar Espacio">
+                      ×
+                    </button>
                 </div>
                 <div className="flex gap-2 mt-2">
                   <input value={nuevaEmpresa} onChange={(e) => setNuevaEmpresa(e.target.value)} placeholder="Nueva empresa..." className="w-full bg-slate-800 p-2 text-xs text-white rounded-lg border border-slate-700 outline-none" />
@@ -576,9 +612,21 @@ export default function Home() {
               </nav>
             </div>
            
-            <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
-              <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
-              <UserButton/>
+            <div className="mt-auto">
+              {/* 🚀 NUEVO BOTÓN DE SUSCRIPCIÓN (Placeholder para Stripe) */}
+              <button onClick={() => alert("El Portal de Pagos de Stripe se conectará aquí próximamente.")} className="w-full flex items-center justify-between bg-blue-900/20 p-3 rounded-2xl border border-blue-900/50 mb-3 hover:bg-blue-900/40 transition cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                  <span className="text-xs font-bold text-blue-400">Plan Pro Activo</span>
+                </div>
+                <span className="text-[10px] font-bold text-blue-300 bg-blue-900/50 px-2 py-1 rounded-md">Gestionar</span>
+              </button>
+              
+              <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
+                <span className="text-xs font-semibold text-slate-400">Perfil y Sesión</span>
+                {/* ESTE ES EL BOTÓN DE CLERK PARA CERRAR SESIÓN */}
+                <UserButton/>
+              </div>
             </div>
           </aside>
 
@@ -1002,6 +1050,25 @@ export default function Home() {
                 </div>
                 
                 <div className="p-6 space-y-6 overflow-y-auto">
+                  
+                  {/* 🚀 NUEVA SECCIÓN DE PAPELERA EN AJUSTES */}
+                  {papelera.length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl">
+                        <h4 className="text-sm font-bold text-rose-800 mb-1 flex items-center gap-2">
+                           🗑️ Papelera de Reciclaje
+                        </h4>
+                        <p className="text-xs text-rose-600 font-medium mb-3">Estos espacios fueron borrados recientemente. Puedes restaurarlos.</p>
+                        <div className="space-y-2">
+                           {papelera.map((item, idx) => (
+                             <div key={idx} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-rose-100">
+                               <span className="text-xs font-bold text-slate-700">{item.nombre}</span>
+                               <button onClick={() => recuperarDePapelera(item.nombre)} className="text-[10px] font-bold bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Restaurar Espacio</button>
+                             </div>
+                           ))}
+                        </div>
+                    </div>
+                  )}
+
                   <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
                       <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
                       <p className="text-xs text-blue-600 font-medium mb-3">Estos datos enseñan a TaxGuard AI a entender tu modelo de negocio.</p>
@@ -1043,12 +1110,97 @@ export default function Home() {
         )}
       </Show>
 
+      {/* ======================================================== */}
+      {/* 🚀 EL ESCAPARATE: LA LANDING PAGE PREMIUM B2B          */}
+      {/* ======================================================== */}
       <Show when="signed-out">
-        <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
-          <div className="bg-white p-10 rounded-3xl shadow-xl max-w-md w-full border border-slate-100 text-center">
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight">TaxGuard<span className="text-blue-600">AI</span></h2>
-            <SignInButton mode="modal"><button className="w-full bg-slate-950 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-slate-800 text-sm mt-8 shadow-xl shadow-slate-900/20">Autenticar Acceso</button></SignInButton>
+        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
+          
+          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
+            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/20">T</div>
+                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="hidden sm:block text-sm font-medium text-slate-400">¿Ya eres cliente?</span>
+                <SignInButton mode="modal">
+                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
+                    Acceso a Clientes
+                  </button>
+                </SignInButton>
+              </div>
+            </div>
+          </nav>
+
+          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
+            <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
+            
+            <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest mb-8">
+                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                SaaS Financiero B2B
+              </div>
+              
+              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
+                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
+              </h1>
+              
+              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
+                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros. El control total de tu rentabilidad, en tiempo real.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <SignInButton mode="modal">
+                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">
+                    Iniciar Sesión
+                  </button>
+                </SignInButton>
+                <button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700 flex items-center justify-center gap-2">
+                  Solicitar Implantación <span className="text-slate-400 text-sm font-normal">(1.200 €)</span>
+                </button>
+              </div>
+            </div>
           </div>
+
+          <div className="max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10 bg-slate-950">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl font-black text-white mb-4">Todo lo que tu empresa necesita para escalar</h2>
+              <p className="text-slate-400">Sustituye horas de trabajo manual por precisión algorítmica.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-blue-500/30 transition">
+                <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Escáner OCR Inteligente</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Sube la foto de un ticket o factura y la Inteligencia Artificial extraerá automáticamente el concepto, base imponible y tipo de IVA.</p>
+              </div>
+              
+              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-emerald-500/30 transition">
+                <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Gestoría Automatizada</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Genera tus modelos de IVA trimestral (Mod 303) al instante, y emite facturas en PDF profesionales para tus clientes con un solo clic.</p>
+              </div>
+              
+              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-purple-500/30 transition">
+                <div className="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">CFO Virtual 24/7</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Chatea directamente con tu panel financiero. Pídele auditorías de gastos, previsiones de tesorería y alertas de desvíos en tiempo real.</p>
+              </div>
+            </div>
+          </div>
+
+          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
+            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
+            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs.</p>
+          </footer>
         </div>
       </Show>
     </>
