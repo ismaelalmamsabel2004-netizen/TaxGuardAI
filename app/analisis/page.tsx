@@ -31,6 +31,8 @@ export default function Analisis() {
       const perfiles = JSON.parse(perfilesGuardados);
       if (perfiles[empresaId]) {
         setPerfilEmpresa(perfiles[empresaId]);
+      } else {
+        setPerfilEmpresa({ sector: "No configurado", objetivo: "No configurado" });
       }
     }
     fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
@@ -39,15 +41,36 @@ export default function Analisis() {
   }, [empresaId]);
 
   const pedirAnalisisGemini = () => {
-    if (datosVisibles.length < 2) return setAiAnalysis("❌ No hay suficientes transacciones.");
+    if (datosVisibles.length < 2) {
+      setAiAnalysis("❌ **Error:** No hay suficientes transacciones en el Libro Mayor de esta empresa para generar un informe profesional.");
+      return;
+    }
     setIsAnalyzing(true);
-    setAiAnalysis("⏳ Analizando datos...");
-    const datosLimpios = datosVisibles.map(d => ({ fecha: d.name, categoria: d.categoria, importe: d.total, iva: d.iva }));
+    setAiAnalysis("⏳ Analizando miles de puntos de datos y calculando proyecciones financieras...");
+    
+    const datosLimpios = datosVisibles.map(d => ({
+      fecha: d.name,
+      categoria: d.categoria || 'General',
+      importe: d.total,
+      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento',
+      tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
+    }));
+
+    const contextoEmpresarial = `Sector: ${perfilEmpresa.sector}. Objetivo Principal: ${perfilEmpresa.objetivo}.`;
+
     fetch('/api/analyze', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: `Sector: ${perfilEmpresa.sector}` }), 
-    }).then(r => r.json()).then(r => setAiAnalysis(r.analysis)).finally(() => setIsAnalyzing(false));
+      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: contextoEmpresarial }), 
+    })
+      .then(r => r.json())
+      .then(r => setAiAnalysis(r.analysis || "Error al estructurar el reporte."))
+      .catch(() => setAiAnalysis("Error en el servidor de inteligencia artificial."))
+      .finally(() => setIsAnalyzing(false));
+  };
+
+  const imprimirPDF = () => {
+    window.print();
   };
 
   if (!isMounted) return null;
@@ -56,6 +79,7 @@ export default function Analisis() {
     <Show when="signed-in">
       <div className="flex min-h-screen bg-slate-50 font-sans relative print:bg-white" translate="no">
         
+        {/* 🚀 CABECERA DE MÓVIL CORRECTA */}
         <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40 print:hidden">
           <div className="flex items-center gap-2">
              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">T</div>
@@ -66,11 +90,12 @@ export default function Analisis() {
           </button>
         </div>
 
+        {/* 🚀 BARRA LATERAL (Responsiva) */}
         <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out print:hidden`}>
           <div>
             <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg">T</div>
+                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">T</div>
                 <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
               </div>
               <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
@@ -86,10 +111,22 @@ export default function Analisis() {
             </div>
            
             <nav className="space-y-1">
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/">Consola General</Link>
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium shadow-sm" href="/analisis">Análisis Avanzado</Link>
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/impuestos">Modelos Tributarios</Link>
-              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/facturas">Facturación PDF</Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/" onClick={() => setIsSidebarOpen(false)}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
+                Consola General
+              </Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm" href="/analisis" onClick={() => setIsSidebarOpen(false)}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                Análisis Avanzado
+              </Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/impuestos" onClick={() => setIsSidebarOpen(false)}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Modelos Tributarios
+              </Link>
+              <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/facturas" onClick={() => setIsSidebarOpen(false)}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Facturación PDF
+              </Link>
             </nav>
           </div>
           <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
@@ -98,32 +135,56 @@ export default function Analisis() {
           </div>
         </aside>
 
-        {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
+        {/* Sombra de fondo menú móvil */}
+        {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
-        <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full print:p-0 relative">
-          <header className="flex flex-col md:flex-row md:justify-between md:items-center mb-8 border-b border-slate-200 pb-6 print:border-b-2 print:border-slate-900 gap-4">
+        <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative print:p-0">
+          <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-8 border-b border-slate-200 pb-6 print:border-b-2 print:border-slate-900 gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Centro de Inteligencia</h1>
-              <p className="text-sm font-medium text-slate-500 mt-1">Evaluación personalizada para <span className="font-bold text-blue-600">{empresaId}</span>.</p>
+              <p className="text-sm font-medium text-slate-500 mt-1 print:text-slate-800">Evaluación completa y personalizada para <span className="font-bold text-blue-600">{empresaId}</span>.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-3 self-start md:self-auto print:hidden">
-              <button onClick={() => window.print()} className="bg-white border border-slate-200 text-rose-600 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-rose-50 shadow-sm">📄 Descargar PDF</button>
-              <button onClick={pedirAnalisisGemini} disabled={isAnalyzing} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 shadow-md disabled:opacity-50">{isAnalyzing ? "Generando..." : "Generar Nueva Auditoría"}</button>
+            
+            <div className="flex flex-wrap items-center gap-3 self-start lg:self-auto print:hidden">
+              <button onClick={imprimirPDF} className="bg-white border border-slate-200 text-rose-600 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-rose-50 hover:border-rose-200 transition shadow-sm">
+                📄 Descargar PDF
+              </button>
+              <button onClick={pedirAnalisisGemini} disabled={isAnalyzing} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-50">
+                {isAnalyzing ? "Generando..." : "Generar Nueva Auditoría"}
+              </button>
             </div>
           </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-             <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm print:p-0 print:border-none print:shadow-none">
+             <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm print:shadow-none print:border-none print:p-0">
                 <h3 className="text-lg font-black text-slate-900 mb-1">Perfil Corporativo</h3>
-                <div className="space-y-5 mt-4">
+                <p className="text-xs text-slate-500 font-medium mb-6">Contexto utilizado para el análisis.</p>
+                
+                <div className="space-y-5">
                    <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Sector Industrial</label>
-                      <div className="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 text-sm font-semibold text-slate-800">{perfilEmpresa.sector || "No especificado"}</div>
+                      <div className="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 text-slate-800 font-semibold text-sm">
+                         {perfilEmpresa.sector || "No especificado"}
+                      </div>
+                   </div>
+                   <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Situación Actual / Objetivos</label>
+                      <div className="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 text-slate-800 font-semibold text-sm min-h-[100px]">
+                         {perfilEmpresa.objetivo || "No especificado"}
+                      </div>
                    </div>
                 </div>
              </div>
-             <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-xl print:p-0 print:border-none print:shadow-none">
-                <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed font-medium"><ReactMarkdown>{aiAnalysis}</ReactMarkdown></div>
+
+             <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-xl print:shadow-none print:border-none print:p-0">
+                <div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4">
+                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Documento Ejecutivo Confidencial</h3>
+                   <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-3 py-1 rounded-full">Motor de IA de TaxGuard</span>
+                </div>
+                
+                <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed font-medium">
+                   <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
+                </div>
              </div>
           </div>
         </main>
