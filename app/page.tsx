@@ -523,7 +523,6 @@ export default function Home() {
   return (
     <>
       <Show when="signed-in">
-        {/* 🚀 ESCUDO ANTI-TRADUCTOR: translate="no" */}
         <div className="flex min-h-screen bg-slate-50 font-sans relative" translate="no">
          
           <aside className="w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 shrink-0">
@@ -565,6 +564,14 @@ export default function Home() {
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                   Análisis Avanzado
+                </Link>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/impuestos">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Modelos Tributarios
+                </Link>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/facturas">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Facturación PDF
                 </Link>
               </nav>
             </div>
@@ -833,7 +840,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 🚀 TABLA DE LIBRO MAYOR TOTALMENTE SEGURA PARA REACT */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
                 <h3 className="text-md font-bold text-slate-900 mb-1">Libro Mayor Integrado</h3>
@@ -853,7 +859,6 @@ export default function Home() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
                     {datosTabla.map((item: any, index: number) => {
-                      // MODO EDICIÓN
                       if (editingId === item.id) {
                         return (
                           <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
@@ -884,7 +889,6 @@ export default function Home() {
                         );
                       }
 
-                      // MODO VISTA NORMAL
                       return (
                         <tr key={`view-${item.id || index}`} className="hover:bg-slate-50/80 transition">
                           <td className="px-6 py-3.5 text-slate-600">{item.name}</td>
