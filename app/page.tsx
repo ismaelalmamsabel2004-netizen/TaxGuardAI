@@ -384,9 +384,8 @@ export default function Home() {
     };
   };
 
-  // 🚀 FUNCIÓN DE GUARDADO TOTALMENTE BLINDADA PARA MÓVILES
   const guardarDato = async (e: React.FormEvent) => {
-    e.preventDefault(); // Previene que la página se recargue por error en móviles
+    e.preventDefault(); 
     
     if (!empresaId) {
        alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
@@ -407,13 +406,12 @@ export default function Home() {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
       
-      // Filtramos comas, espacios y letras que el teclado del móvil pueda meter por error
       const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
       const numeroLimpio = parseFloat(textoLimpio);
 
       if (isNaN(numeroLimpio)) {
          setIsSaving(false);
-         alert("⚠️ El importe introducido no es válido. Usa solo números.");
+         alert("⚠️ El importe introducido no es válido. Usa solo números y comas/puntos.");
          return;
       }
 
@@ -584,8 +582,7 @@ export default function Home() {
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
          
-          {/* 🚀 CABECERA DE MÓVIL CORRECTA */}
-          <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-30">
+          <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">T</div>
                <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
@@ -670,7 +667,7 @@ export default function Home() {
           </aside>
 
           {isSidebarOpen && (
-             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
+             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
           )}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
@@ -688,9 +685,8 @@ export default function Home() {
                     {alertasDinamicas.length > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
                   </button>
 
-                  {/* 🚀 CAJA DE NOTIFICACIONES SEGURA PARA MÓVILES */}
                   {showNotifications && (
-                    <div className="absolute right-0 top-full mt-2 w-[85vw] max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-right">
+                    <div className="absolute right-[-1rem] lg:right-0 mt-3 w-[90vw] lg:w-80 max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-right">
                       <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
                         <h4 className="text-sm font-bold text-slate-900">Centro de Riesgos</h4>
                         <span className="bg-slate-800 text-white text-[10px] font-black px-2.5 py-1 rounded-full">{alertasDinamicas.length}</span>
@@ -722,16 +718,16 @@ export default function Home() {
               </div>
             </header>
 
-            <div className="flex gap-2 md:gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex gap-2 lg:gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
               <button onClick={() => setFiltro('all')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Histórico</button>
               <button onClick={() => setFiltro('month')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'month' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Mes</button>
               <button onClick={() => setFiltro('quarter')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'quarter' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Trimestre</button>
               <button onClick={() => setFiltro('year')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Año</button>
             </div>
 
-            <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col lg:flex-row justify-between lg:items-center relative overflow-hidden gap-6">
+            <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col xl:flex-row justify-between xl:items-center relative overflow-hidden gap-6">
                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 opacity-5 rounded-full blur-3xl"></div>
-               <div className="relative z-10 w-full lg:w-auto">
+               <div className="relative z-10 w-full xl:w-auto">
                   <div className="flex items-center gap-2 mb-1">
                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
                      <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Escudo Fiscal Integrado</h3>
@@ -739,16 +735,16 @@ export default function Home() {
                   <p className="text-xs text-slate-400 font-medium">Liquidación estimada de IVA para el periodo actual.</p>
                </div>
                
-               <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 lg:gap-6 relative z-10 w-full lg:w-auto justify-between lg:justify-end">
-                  <div className="text-left lg:text-right w-[45%] lg:w-auto">
+               <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 lg:gap-6 relative z-10 w-full xl:w-auto justify-between xl:justify-end">
+                  <div className="text-left xl:text-right w-[45%] lg:w-auto">
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Cobrado</p>
                      <p className="text-base md:text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
                   </div>
-                  <div className="text-left lg:text-right w-[45%] lg:w-auto">
+                  <div className="text-left xl:text-right w-[45%] lg:w-auto">
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Pagado</p>
                      <p className="text-base md:text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
                   </div>
-                  <div className="text-left lg:text-right w-full lg:w-auto lg:pl-6 lg:border-l lg:border-slate-700 pt-4 lg:pt-0 border-t border-slate-700 lg:border-t-0">
+                  <div className="text-left xl:text-right w-full lg:w-auto xl:pl-6 xl:border-l xl:border-slate-700 pt-4 xl:pt-0 border-t border-slate-700 xl:border-t-0">
                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Liquidación</p>
                      <p className={`text-xl md:text-2xl font-black tracking-tight flex items-center gap-2 ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
                         <span>{liquidacionIva > 0 ? 'Pagar:' : 'A favor:'}</span>
@@ -759,18 +755,18 @@ export default function Home() {
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8">
-              <div className="flex flex-col md:flex-row justify-between md:items-end mb-4 gap-4">
+              <div className="flex flex-col lg:flex-row justify-between lg:items-end mb-4 gap-4">
                 <div>
                   <h3 className="text-md font-bold text-slate-900">Objetivo de Ingresos ({etiquetasFiltro[filtro]})</h3>
                 </div>
-                <div className="text-left md:text-right">
+                <div className="text-left lg:text-right">
                   {editandoMeta ? (
                     <div className="flex gap-2">
                       <input type="number" value={inputMeta} onChange={(e) => setInputMeta(e.target.value)} className="w-24 p-2 bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-lg text-sm outline-none" />
                       <button onClick={guardarNuevaMeta} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition">Guardar</button>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-start md:items-end cursor-pointer group" onClick={() => setEditandoMeta(true)}>
+                    <div className="flex flex-col items-start lg:items-end cursor-pointer group" onClick={() => setEditandoMeta(true)}>
                       <span className="text-2xl font-black text-slate-900">{ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € <span className="text-sm font-medium text-slate-400">/ {metaMensual.toLocaleString('es-ES')} €</span></span>
                       <span className="text-[10px] font-bold text-blue-500 uppercase group-hover:underline mt-1">Editar Meta</span>
                     </div>
@@ -799,14 +795,14 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
               <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3">
+                  <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 gap-3">
                     <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
                     
                     <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
-                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="w-full sm:w-auto justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="w-full lg:w-auto justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
                       {isScanning ? "⏳ Escaneando..." : "📸 Escanear Factura"}
                     </button>
                   </div>
@@ -817,10 +813,9 @@ export default function Home() {
                       <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'gasto' ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>- Gasto</button>
                     </div>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                         <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
-                        {/* 🚀 CORRECCIÓN: Input sin etiqueta 'required' para evitar bloqueos ciegos en móvil */}
                         <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                         </div>
                         <div>
@@ -843,17 +838,16 @@ export default function Home() {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€) (Sin IVA)</label>
-                      {/* 🚀 CORRECCIÓN: Input seguro para móvil */}
                       <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2 gap-3">
+                    <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2 gap-3">
                       <label className="text-xs font-bold text-slate-600 flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" checked={isRecurrent} onChange={(e) => setIsRecurrent(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
                         Hacer recurrente
                       </label>
                       {isRecurrent && (
-                        <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="w-full sm:w-auto p-1.5 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none">
+                        <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="w-full lg:w-auto p-1.5 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none">
                           <option value="Mensual">Mensual</option>
                           <option value="Trimestral">Trimestral</option>
                           <option value="Anual">Anual</option>
@@ -866,7 +860,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
+              <div className="xl:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
                 <div>
                   <h3 className="text-md font-bold text-slate-900 mb-1">Balance Visual del Periodo</h3>
                 </div>
@@ -923,7 +917,7 @@ export default function Home() {
                                </select>
                             </td>
                             <td className="px-4 py-2">
-                               <input type="number" step="any" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className="w-full w-24 p-1.5 border border-blue-300 rounded text-xs outline-none" />
+                               <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className="w-full w-24 p-1.5 border border-blue-300 rounded text-xs outline-none" />
                             </td>
                             <td className="px-4 py-2">
                                <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
@@ -948,16 +942,18 @@ export default function Home() {
                             <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{item.categoria || 'General'}</span>
                             {item.isRecurrent && (
                               <span className="ml-2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1" title={`Gasto fijo: ${item.frecuencia}`}>
-                                🔄 <span className="hidden sm:inline">{item.frecuencia}</span>
+                                🔄 <span className="hidden lg:inline">{item.frecuencia}</span>
                               </span>
                             )}
                           </td>
                           <td className={`px-4 md:px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                          
                           <td className="px-4 md:px-6 py-3.5">
                              <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
                                 {item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}
                              </span>
                           </td>
+
                           <td className="px-4 md:px-6 py-3.5 text-right space-x-2">
                             <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar">
                               <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
@@ -969,12 +965,240 @@ export default function Home() {
                         </tr>
                       );
                     })}
+                    {datosTabla.length === 0 && (
+                      <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">El Libro Mayor está vacío. Añade transacciones para comenzar.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
+
             <div className="h-24 md:h-10"></div>
           </main>
+        </div>
+
+        <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end" translate="no">
+          {isChatOpen && (
+            <div className="mb-4 w-[calc(100vw-3rem)] max-w-sm h-[400px] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in-up">
+              <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                  <h4 className="text-sm font-bold">CFO Virtual - {empresaId}</h4>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} className="text-slate-400 hover:text-white transition">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              
+              <div className="flex-1 p-4 overflow-y-auto bg-slate-50 space-y-4">
+                {chatMessages.length === 0 ? (
+                  <p className="text-xs text-center text-slate-400 mt-10">Hola. Soy tu asistente financiero. Puedes preguntarme sobre tus gastos, ingresos, o pedirme consejos sobre rentabilidad.</p>
+                ) : (
+                  chatMessages.map((msg, i) => (
+                    <div key={`${i}-${msg.content.length}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] p-3 text-sm rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'}`}>
+                        {msg.role === 'user' ? (
+                          <span className="whitespace-pre-wrap">{msg.content}</span>
+                        ) : (
+                          <div className="prose prose-sm prose-slate max-w-none" key={`md-${msg.content.length}`}>
+                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+                {isChatLoading && (
+                   <div className="flex justify-start">
+                     <div className="bg-white border border-slate-200 text-slate-400 p-3 rounded-2xl rounded-tl-none shadow-sm text-xs flex gap-1">
+                       <span className="animate-bounce">●</span><span className="animate-bounce delay-100">●</span><span className="animate-bounce delay-200">●</span>
+                     </div>
+                   </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              <form onSubmit={enviarMensajeChat} className="p-3 bg-white border-t border-slate-100 flex gap-2">
+                <input 
+                  type="text" 
+                  value={currentMessage} 
+                  onChange={(e) => setCurrentMessage(e.target.value)} 
+                  placeholder="Pregunta a tu CFO..." 
+                  className="flex-1 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <button type="submit" disabled={isChatLoading || !currentMessage.trim()} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 transition">
+                  <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19V6m0 0l-4 4m4-4l4 4" /></svg>
+                </button>
+              </form>
+            </div>
+          )}
+
+          <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-12 h-12 md:w-14 md:h-14 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-transform">
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+          </button>
+        </div>
+
+        {showConfig && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <h3 className="text-lg font-black text-slate-900">Ajustes: {empresaId}</h3>
+                  <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-rose-500 transition">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                
+                <div className="p-6 space-y-6 overflow-y-auto">
+                  
+                  {papelera.length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl">
+                        <h4 className="text-sm font-bold text-rose-800 mb-1 flex items-center gap-2">
+                           🗑️ Papelera de Reciclaje
+                        </h4>
+                        <p className="text-xs text-rose-600 font-medium mb-3">Estos espacios fueron borrados recientemente. Puedes restaurarlos.</p>
+                        <div className="space-y-2">
+                           {papelera.map((item, idx) => (
+                             <div key={idx} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-rose-100">
+                               <span className="text-xs font-bold text-slate-700">{item.nombre}</span>
+                               <button onClick={() => recuperarDePapelera(item.nombre)} className="text-[10px] font-bold bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Restaurar Espacio</button>
+                             </div>
+                           ))}
+                        </div>
+                    </div>
+                  )}
+
+                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                      <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
+                      <p className="text-xs text-blue-600 font-medium mb-3">Estos datos enseñan a TaxGuard AI a entender tu modelo de negocio.</p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Sector de la Empresa</label>
+                          <input type="text" value={sectorInput} onChange={(e) => setSectorInput(e.target.value)} placeholder="Ej: Clínica Dental" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Objetivo Principal</label>
+                          <input type="text" value={objetivoInput} onChange={(e) => setObjetivoInput(e.target.value)} placeholder="Ej: Reducir costes médicos" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        </div>
+                      </div>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                      <h4 className="text-sm font-bold text-slate-800 mb-1">Categorías Personalizadas</h4>
+                      <p className="text-xs text-slate-500 font-medium mb-3">Escribe tus propias categorías separadas por comas. El Escáner OCR aprenderá a usarlas automáticamente.</p>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Ingreso</label>
+                          <input type="text" value={catsIngresoInput} onChange={(e) => setCatsIngresoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Gasto</label>
+                          <input type="text" value={catsGastoInput} onChange={(e) => setCatsGastoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-rose-700 outline-none focus:ring-2 focus:ring-rose-500/20" />
+                        </div>
+                      </div>
+                  </div>
+                </div>
+
+                <div className="p-6 bg-white border-t border-slate-100 shrink-0">
+                  <button onClick={guardarPerfil} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl shadow-md transition">
+                    Guardar Configuración
+                  </button>
+                </div>
+             </div>
+          </div>
+        )}
+      </Show>
+
+      {/* ======================================================== */}
+      {/* 🚀 EL ESCAPARATE: LA LANDING PAGE PREMIUM B2B          */}
+      {/* ======================================================== */}
+      <Show when="signed-out">
+        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
+          
+          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
+            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/20">T</div>
+                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="hidden sm:block text-sm font-medium text-slate-400">¿Ya eres cliente?</span>
+                <SignInButton mode="modal">
+                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
+                    Acceso a Clientes
+                  </button>
+                </SignInButton>
+              </div>
+            </div>
+          </nav>
+
+          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
+            <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
+            
+            <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest mb-8">
+                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                SaaS Financiero B2B
+              </div>
+              
+              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
+                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
+              </h1>
+              
+              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
+                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros. El control total de tu rentabilidad, en tiempo real.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <SignInButton mode="modal">
+                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">
+                    Iniciar Sesión
+                  </button>
+                </SignInButton>
+                <button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700 flex items-center justify-center gap-2">
+                  Solicitar Implantación <span className="text-slate-400 text-sm font-normal">(1.200 €)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10 bg-slate-950">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl font-black text-white mb-4">Todo lo que tu empresa necesita para escalar</h2>
+              <p className="text-slate-400">Sustituye horas de trabajo manual por precisión algorítmica.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-blue-500/30 transition">
+                <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Escáner OCR Inteligente</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Sube la foto de un ticket o factura y la Inteligencia Artificial extraerá automáticamente el concepto, base imponible y tipo de IVA.</p>
+              </div>
+              
+              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-emerald-500/30 transition">
+                <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Gestoría Automatizada</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Genera tus modelos de IVA trimestral (Mod 303) al instante, y emite facturas en PDF profesionales para tus clientes con un solo clic.</p>
+              </div>
+              
+              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-purple-500/30 transition">
+                <div className="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-xl flex items-center justify-center mb-6">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">CFO Virtual 24/7</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Chatea directamente con tu panel financiero. Pídele auditorías de gastos, previsiones de tesorería y alertas de desvíos en tiempo real.</p>
+              </div>
+            </div>
+          </div>
+
+          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
+            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
+            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs.</p>
+          </footer>
         </div>
       </Show>
     </>
