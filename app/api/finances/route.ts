@@ -2,16 +2,16 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 
-// 🚀 CORRECCIÓN: Usamos exactamente las llaves que metiste en Vercel
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+// 🚀 TRAMPA PARA VERCEL: Si en la inspección no ve la llave, le damos una de mentira para que no cancele el despliegue
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(request: Request) {
   try {
-    if (!supabaseUrl || !supabaseKey) {
-       console.error("❌ ERROR: Faltan las llaves de Supabase en Vercel.");
+    if (supabaseUrl === "https://placeholder.supabase.co") {
+       console.error("❌ ERROR: Faltan las llaves reales de Supabase en Vercel.");
        return NextResponse.json({ error: "Faltan claves" }, { status: 500 });
     }
     const { userId } = await auth();
@@ -83,7 +83,7 @@ export async function PUT(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    if (!supabaseUrl) return NextResponse.json([]);
+    if (supabaseUrl === "https://placeholder.supabase.co") return NextResponse.json([]);
     const { userId } = await auth();
     if (!userId) return NextResponse.json([], { status: 401 });
 
@@ -111,7 +111,7 @@ export async function GET(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    if (!supabaseUrl || !supabaseKey) return NextResponse.json({ error: "Faltan claves" }, { status: 500 });
+    if (supabaseUrl === "https://placeholder.supabase.co") return NextResponse.json({ error: "Faltan claves" }, { status: 500 });
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Acceso denegado" }, { status: 401 });
 
