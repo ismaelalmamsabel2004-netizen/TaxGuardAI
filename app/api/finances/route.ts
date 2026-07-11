@@ -2,10 +2,8 @@ import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { auth } from '@clerk/nextjs/server';
 
-// 🚀 ORDEN ESTRICTA: Le dice a Vercel que no bloquee la subida al compilar
 export const dynamic = 'force-dynamic';
 
-// 🚀 ROBOT CONSTRUCTOR: Crea tu tabla automáticamente si no existe en Neon
 async function ensureTableExists() {
   await sql`
     CREATE TABLE IF NOT EXISTS finanzas (
@@ -24,7 +22,7 @@ async function ensureTableExists() {
 
 export async function POST(request: Request) {
   try {
-    await ensureTableExists(); // Asegura que la tabla está viva antes de guardar
+    await ensureTableExists(); 
     
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Acceso denegado" }, { status: 401 });
@@ -34,16 +32,17 @@ export async function POST(request: Request) {
 
     const result = await sql`
       INSERT INTO finanzas (user_id, empresa_id, fecha, total, categoria, is_recurrent, frecuencia, iva)
-      VALUES (${userId}, ${empresaId}, ${month}, ${total}, ${categoria || 'General'}, ${isRecurrent || false}, ${frecuencia || null}, ${Number(iva) || 0})
+      VALUES (${userId}, ${empresaId}, ${month}, ${Number(total)}, ${categoria || 'General'}, ${isRecurrent || false}, ${frecuencia || null}, ${Number(iva) || 0})
       RETURNING *;
     `;
 
     const data = result.rows[0];
     if (!data) throw new Error("No se pudo guardar el dato");
 
+    // 🚀 CORRECCIÓN VITAL: Convertimos a número puro (Number) antes de enviarlo
     return NextResponse.json({
-        id: data.id, name: data.fecha, total: data.total, empresaId: data.empresa_id,
-        categoria: data.categoria, isRecurrent: data.is_recurrent, frecuencia: data.frecuencia, iva: data.iva
+        id: data.id, name: data.fecha, total: Number(data.total), empresaId: data.empresa_id,
+        categoria: data.categoria, isRecurrent: data.is_recurrent, frecuencia: data.frecuencia, iva: Number(data.iva)
     });
   } catch (error) {
     console.error("❌ ERROR POST VERCEL POSTGRES:", error);
@@ -62,7 +61,7 @@ export async function PUT(request: Request) {
   
       await sql`
         UPDATE finanzas
-        SET fecha = ${month}, total = ${total}, categoria = ${categoria}, is_recurrent = ${isRecurrent}, frecuencia = ${frecuencia || null}, iva = ${Number(iva) || 0}
+        SET fecha = ${month}, total = ${Number(total)}, categoria = ${categoria}, is_recurrent = ${isRecurrent}, frecuencia = ${frecuencia || null}, iva = ${Number(iva) || 0}
         WHERE id = ${id} AND user_id = ${userId}
       `;
   
@@ -84,14 +83,21 @@ export async function GET(request: Request) {
 
     let result;
     if (empresaId) {
-        result = await sql`SELECT * FROM finanzas WHERE user_id = ${userId} AND empresa_id = ${empresaId}`;
+        result = await sql`SELECT * FROM finanzas WHERE user_id = ${userId} AND empresa_id = ${empresaId} ORDER BY id ASC`;
     } else {
-        result = await sql`SELECT * FROM finanzas WHERE user_id = ${userId}`;
+        result = await sql`SELECT * FROM finanzas WHERE user_id = ${userId} ORDER BY id ASC`;
     }
 
+    // 🚀 CORRECCIÓN VITAL: Extraemos los datos como números matemáticos estrictos
     return NextResponse.json(result.rows.map(item => ({
-      id: item.id, name: item.fecha, total: item.total, empresaId: item.empresa_id,
-      categoria: item.categoria, isRecurrent: item.is_recurrent, frecuencia: item.frecuencia, iva: item.iva || 0
+      id: item.id, 
+      name: item.fecha, 
+      total: Number(item.total), 
+      empresaId: item.empresa_id,
+      categoria: item.categoria, 
+      isRecurrent: item.is_recurrent, 
+      frecuencia: item.frecuencia, 
+      iva: Number(item.iva) || 0
     })));
   } catch (error) {
     console.error("❌ ERROR GET VERCEL POSTGRES:", error);
