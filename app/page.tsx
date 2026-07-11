@@ -73,24 +73,33 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#0ea5e9', '#d946ef', '#14b8a6'];
-
   useEffect(() => { 
     setIsMounted(true); 
-    const guardadas = localStorage.getItem('taxguard_empresas');
-    const lista = guardadas ? JSON.parse(guardadas) : ["Alperez", "PetClean", "Techmovile"];
-    setEmpresas(lista);
+    fetch(`/api/finances?t=${Date.now()}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(d => {
+         const cloudEmpresas = Array.from(new Set(d.map((x:any) => x.empresaId).filter(Boolean))) as string[];
+         const guardadas = localStorage.getItem('taxguard_empresas');
+         let lista = guardadas ? JSON.parse(guardadas) : ["Alperez", "PetClean", "Techmovile"];
+         
+         if (cloudEmpresas.length > 0) {
+            lista = Array.from(new Set([...lista, ...cloudEmpresas]));
+         }
+         
+         setEmpresas(lista);
+         localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
 
-    const papeleraGuardada = localStorage.getItem('taxguard_papelera');
-    if (papeleraGuardada) setPapelera(JSON.parse(papeleraGuardada));
+         const papeleraGuardada = localStorage.getItem('taxguard_papelera');
+         if (papeleraGuardada) setPapelera(JSON.parse(papeleraGuardada));
 
-    const activa = localStorage.getItem('taxguard_empresaActiva');
-    if (activa && lista.includes(activa)) {
-      setEmpresaId(activa);
-    } else {
-      setEmpresaId(lista[0] || "");
-      if (lista[0]) localStorage.setItem('taxguard_empresaActiva', lista[0]);
-    }
+         const activa = localStorage.getItem('taxguard_empresaActiva');
+         if (activa && lista.includes(activa)) {
+           setEmpresaId(activa);
+         } else {
+           setEmpresaId(lista[0] || "");
+           if (lista[0]) localStorage.setItem('taxguard_empresaActiva', lista[0]);
+         }
+      });
   }, []);
 
   useEffect(() => {
@@ -258,17 +267,28 @@ export default function Home() {
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
-  const datosGrafico = datosCronologicos.reduce((acc: {name: string, total: number}[], curr: any) => {
+  // 🚀 AQUÍ ESTÁ CHARTDATA CORREGIDO PARA LA GRÁFICA DOBLE
+  const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
     let clave = curr.name;
     if (filtro === 'year' || filtro === 'quarter') {
       const partes = curr.name.split('/'); 
       clave = `${partes[1]}/${partes[2]}`; 
     }
     const existente = acc.find((item: any) => item.name === clave);
-    if (existente) existente.total += curr.total;
-    else acc.push({ name: clave, total: curr.total });
+    const valorNum = Number(curr.total); 
+    
+    if (existente) {
+      if (valorNum > 0) existente.Ingresos += valorNum;
+      else existente.Gastos += Math.abs(valorNum);
+    } else {
+      acc.push({ 
+        name: clave, 
+        Ingresos: valorNum > 0 ? valorNum : 0, 
+        Gastos: valorNum < 0 ? Math.abs(valorNum) : 0 
+      });
+    }
     return acc;
-  }, [] as { name: string, total: number }[]);
+  }, []);
 
   const datosTabla = [...datosVisibles].sort((a, b) => {
     const pA = a.name.split('/');
@@ -277,23 +297,23 @@ export default function Home() {
   });
 
   const gastosPorCategoria = datosVisibles
-    .filter(d => d.total < 0)
+    .filter(d => Number(d.total) < 0)
     .reduce((acc: {name: string, value: number}[], curr: any) => {
       const cat = curr.categoria || 'General';
       const existente = acc.find((item: any) => item.name === cat);
-      if (existente) existente.value += Math.abs(curr.total);
-      else acc.push({ name: cat, value: Math.abs(curr.total) });
+      if (existente) existente.value += Math.abs(Number(curr.total));
+      else acc.push({ name: cat, value: Math.abs(Number(curr.total)) });
       return acc;
     }, [])
     .sort((a, b) => b.value - a.value);
 
-  const ingresosTotales = datosVisibles.filter(d => d.total > 0).reduce((sum, item) => sum + item.total, 0);
-  const gastosTotales = datosVisibles.filter(d => d.total < 0).reduce((sum, item) => sum + Math.abs(item.total), 0);
+  const ingresosTotales = datosVisibles.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + Number(item.total), 0);
+  const gastosTotales = datosVisibles.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + Math.abs(Number(item.total)), 0);
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
-  const ivaRepercutido = datosVisibles.filter(d => d.total > 0).reduce((sum, item) => sum + (item.total * ((item.iva || 0) / 100)), 0);
-  const ivaSoportado = datosVisibles.filter(d => d.total < 0).reduce((sum, item) => sum + (Math.abs(item.total) * ((item.iva || 0) / 100)), 0);
+  const ivaRepercutido = datosVisibles.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Number(item.total) * ((Number(item.iva) || 0) / 100)), 0);
+  const ivaSoportado = datosVisibles.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const liquidacionIva = ivaRepercutido - ivaSoportado;
 
   const generarAlertas = () => {
@@ -454,9 +474,9 @@ export default function Home() {
     setEditingId(item.id);
     const [d, m, y] = item.name.split('/');
     setEditFormData({
-      tipo: item.total >= 0 ? 'ingreso' : 'gasto',
+      tipo: Number(item.total) >= 0 ? 'ingreso' : 'gasto',
       mes: `${y}-${m}-${d}`,
-      ingreso: Math.abs(item.total).toString(),
+      ingreso: Math.abs(Number(item.total)).toString(),
       categoria: item.categoria || 'General',
       ivaSeleccionado: item.iva?.toString() || '0'
     });
@@ -566,9 +586,10 @@ export default function Home() {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
     let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Base Imponible (EUR),IVA (%)\n";
     datosVisibles.forEach(row => {
-      const tipoTxt = row.total >= 0 ? "Ingreso" : "Gasto";
+      const valorStr = Number(row.total);
+      const tipoTxt = valorStr >= 0 ? "Ingreso" : "Gasto";
       const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
-      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${row.total},${row.iva || 0}%\n`;
+      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${valorStr},${row.iva || 0}%\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -576,7 +597,6 @@ export default function Home() {
     link.download = `Balance_TaxGuardAI_${filtro}.csv`;
     link.click();
   };
-
   return (
     <>
       <Show when="signed-in">
@@ -865,18 +885,16 @@ export default function Home() {
                   <h3 className="text-md font-bold text-slate-900 mb-1">Balance Visual del Periodo</h3>
                 </div>
                 <div className="flex-1 min-h-[220px]">
-                  {isMounted && datosGrafico.length > 0 ? (
+                  {isMounted && chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={datosGrafico} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                         <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={40} />
                         <Tooltip cursor={{fill: '#f8fafc'}} isAnimationActive={false} />
-                        <Bar dataKey="total" radius={[6, 6, 6, 6]} maxBarSize={45} isAnimationActive={false}>
-                          {datosGrafico.map((entry: any, index: number) => (
-                            <Cell key={`bar-${index}`} fill={entry.total >= 0 ? '#10b981' : '#f43f5e'} />
-                          ))}
-                        </Bar>
+                        <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600 }} />
+                        <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} />
+                        <Bar dataKey="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
@@ -946,7 +964,7 @@ export default function Home() {
                               </span>
                             )}
                           </td>
-                          <td className={`px-4 md:px-6 py-3.5 font-bold ${item.total >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.total >= 0 ? '+' : '-'} {Math.abs(item.total).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                          <td className={`px-4 md:px-6 py-3.5 font-bold ${Number(item.total) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{Number(item.total) >= 0 ? '+' : '-'} {Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
                           
                           <td className="px-4 md:px-6 py-3.5">
                              <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
