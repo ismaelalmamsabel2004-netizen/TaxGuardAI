@@ -16,10 +16,17 @@ export async function POST(request: Request) {
     const apiKey = process.env.GEMINI_API_KEY;
     const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
-    const promptText = `Actúa como un contable experto. Devuelve SOLO un JSON puro: {"fecha": "YYYY-MM-DD", "base_imponible": 0.00, "iva": 21, "categoria": "${categorias[0] || 'General'}"}. Extrae los datos reales de esta factura/ticket.`;
+    const promptText = `Actúa como un contable experto. Analiza la factura/ticket y devuelve SOLO un objeto JSON puro (sin comillas invertidas ni markdown) con esta estructura exacta:
+    {
+      "fecha": "YYYY-MM-DD",
+      "base_imponible": 0.00,
+      "iva": 21,
+      "categoria": "${categorias && categorias.length > 0 ? categorias[0] : 'General'}"
+    }`;
 
-    // INTENTO 1: Motor principal (Gemini 1.5 Flash)
-    let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    // 🚀 VOLVEMOS AL MOTOR ORIGINAL QUE TE FUNCIONABA (gemini-pro-vision)
+    // Sin configuraciones extrañas que lo bloqueen
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -28,45 +35,31 @@ export async function POST(request: Request) {
             { text: promptText },
             { inline_data: { mime_type: "image/jpeg", data: base64Data } }
           ]
-        }],
-        generationConfig: { response_mime_type: "application/json" }
-      })
+        }]
+      }) // <-- Fíjate que aquí ya NO hay generationConfig
     });
 
-    let result = await response.json();
-    
-    // INTENTO 2 (SALVAVIDAS DE GOOGLE): Si el moderno da error, usamos el nombre clásico EXACTO que Google pide ahora
+    const result = await response.json();
+
+    // Capturamos cualquier error de Google
     if (result.error) {
-       console.log("Usando motor de rescate: gemini-1.0-pro-vision-latest");
-       response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro-vision-latest:generateContent?key=${apiKey}`, {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-           contents: [{
-             parts: [
-               { text: promptText + " IMPORTANTE: No uses formato markdown, devuelve solo el JSON tal cual." },
-               { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-             ]
-           }]
-         }) // OJO: Le quitamos el generationConfig porque los motores antiguos explotan con él
-       });
-       result = await response.json();
+       console.error("Error de Google:", result.error);
+       return NextResponse.json({ error: result.error.message }, { status: 500 });
     }
 
-    // Si ambos fallan, devolvemos el error exacto a la pantalla
-    if (result.error) {
-       return NextResponse.json({ error: result.error.message }, { status: 500 });
+    if (!result.candidates || result.candidates.length === 0) {
+       return NextResponse.json({ error: "La IA no pudo leer la imagen." }, { status: 500 });
     }
 
     const text = result.candidates[0].content.parts[0].text;
     
-    // Limpiamos el texto por si la IA añade basurilla alrededor del JSON
+    // Limpiamos el texto a mano por si la IA es testaruda y le pone comillas
     const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
     
     return NextResponse.json(JSON.parse(cleanJson));
 
   } catch (error: any) {
     console.error("Error OCR:", error);
-    return NextResponse.json({ error: "Error de servidor al procesar la imagen." }, { status: 500 });
+    return NextResponse.json({ error: "Error interno al procesar el ticket." }, { status: 500 });
   }
 }
