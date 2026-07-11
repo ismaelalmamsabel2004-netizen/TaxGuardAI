@@ -14,6 +14,8 @@ export async function POST(request: Request) {
     if (!imageBase64) return NextResponse.json({ error: "No hay imagen" }, { status: 400 });
 
     const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return NextResponse.json({ error: "Falta la API Key en Vercel" }, { status: 500 });
+
     const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
     const catsTexto = categorias && categorias.length > 0 
@@ -31,7 +33,8 @@ export async function POST(request: Request) {
     Adivina la categoría por el contexto (ejemplo: si es gasolina o un coche, es Logística o Vehículos. Si son ordenadores, Materiales).
     Si no encuentras la fecha clara, usa la fecha de hoy.`;
 
-    const URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // 🚀 MOTOR ORIGINAL ESTABLE (gemini-pro-vision)
+    const URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${apiKey}`;
 
     const response = await fetch(URL, {
       method: 'POST',
@@ -49,15 +52,14 @@ export async function POST(request: Request) {
               }
             ]
           }
-        ],
-        generationConfig: {
-            response_mime_type: "application/json",
-        }
+        ]
+        // 🚀 Eliminado el generationConfig para que este motor no explote
       })
     });
 
     const dataJson = await response.json();
     
+    // Control de errores directo de Google
     if (dataJson.error) {
        console.error("Error API Gemini:", dataJson.error);
        return NextResponse.json({ error: dataJson.error.message }, { status: 500 });
@@ -69,7 +71,7 @@ export async function POST(request: Request) {
 
     const aiResponse = dataJson.candidates[0].content.parts[0].text;
     
-    // Limpieza por si la IA introduce formato markdown
+    // Limpieza agresiva por si la IA introduce formato markdown (```json ... ```)
     const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsedData = JSON.parse(cleanJson);
 
@@ -77,6 +79,6 @@ export async function POST(request: Request) {
     
   } catch (error: any) {
     console.error("OCR de error:", error);
-    return NextResponse.json({ error: "Error analizando la factura" }, { status: 500 });
+    return NextResponse.json({ error: "Error interno al analizar la factura." }, { status: 500 });
   }
 }
