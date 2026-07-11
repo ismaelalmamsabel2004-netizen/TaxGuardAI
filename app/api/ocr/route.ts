@@ -16,50 +16,67 @@ export async function POST(request: Request) {
     const apiKey = process.env.GEMINI_API_KEY;
     const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
 
-    const promptText = `Actúa como un contable experto. Analiza la factura/ticket y devuelve SOLO un objeto JSON puro (sin comillas invertidas ni markdown) con esta estructura exacta:
-    {
-      "fecha": "YYYY-MM-DD",
-      "base_imponible": 0.00,
-      "iva": 21,
-      "categoria": "${categorias && categorias.length > 0 ? categorias[0] : 'General'}"
-    }`;
+    const catsTexto = categorias && categorias.length > 0 
+        ? categorias.join('", "') 
+        : 'Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Otros';
 
-    // 🚀 VOLVEMOS AL MOTOR ORIGINAL QUE TE FUNCIONABA (gemini-pro-vision)
-    // Sin configuraciones extrañas que lo bloqueen
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${apiKey}`, {
+    const promptText = `Actúa como un experto contable. Analiza esta imagen de una factura o ticket y extrae la información.
+    DEBES responder EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, con esta estructura exacta:
+    {
+      "fecha": "YYYY-MM-DD", 
+      "base_imponible": numero (solo la base sin IVA, usa punto para decimales. Si solo hay total, calcúlalo restando el IVA),
+      "iva": 21,
+      "categoria": "Elige estrictamente UNA de estas opciones: ${catsTexto}"
+    }
+    Adivina la categoría por el contexto (ejemplo: si es gasolina o un coche, es Logística o Vehículos. Si son ordenadores, Materiales).
+    Si no encuentras la fecha clara, usa la fecha de hoy.`;
+
+    const URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+    const response = await fetch(URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: promptText },
-            { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-          ]
-        }]
-      }) // <-- Fíjate que aquí ya NO hay generationConfig
+        contents: [
+          {
+            parts: [
+              { text: promptText },
+              {
+                inline_data: {
+                  mime_type: "image/jpeg",
+                  data: base64Data
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+            response_mime_type: "application/json",
+        }
+      })
     });
 
-    const result = await response.json();
-
-    // Capturamos cualquier error de Google
-    if (result.error) {
-       console.error("Error de Google:", result.error);
-       return NextResponse.json({ error: result.error.message }, { status: 500 });
+    const dataJson = await response.json();
+    
+    if (dataJson.error) {
+       console.error("Error API Gemini:", dataJson.error);
+       return NextResponse.json({ error: dataJson.error.message }, { status: 500 });
     }
 
-    if (!result.candidates || result.candidates.length === 0) {
-       return NextResponse.json({ error: "La IA no pudo leer la imagen." }, { status: 500 });
+    if (!dataJson.candidates || dataJson.candidates.length === 0) {
+       throw new Error("Error procesando imagen en Google.");
     }
 
-    const text = result.candidates[0].content.parts[0].text;
+    const aiResponse = dataJson.candidates[0].content.parts[0].text;
     
-    // Limpiamos el texto a mano por si la IA es testaruda y le pone comillas
-    const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    return NextResponse.json(JSON.parse(cleanJson));
+    // Limpieza por si la IA introduce formato markdown
+    const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsedData = JSON.parse(cleanJson);
 
+    return NextResponse.json(parsedData);
+    
   } catch (error: any) {
-    console.error("Error OCR:", error);
-    return NextResponse.json({ error: "Error interno al procesar el ticket." }, { status: 500 });
+    console.error("OCR de error:", error);
+    return NextResponse.json({ error: "Error analizando la factura" }, { status: 500 });
   }
 }
