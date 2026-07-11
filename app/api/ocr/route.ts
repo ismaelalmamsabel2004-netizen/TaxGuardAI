@@ -13,10 +13,12 @@ export async function POST(request: Request) {
 
     if (!imageBase64) return NextResponse.json({ error: "No hay imagen" }, { status: 400 });
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) return NextResponse.json({ error: "Falta la API Key en Vercel" }, { status: 500 });
 
+    // Extraemos la imagen pura y su formato
     const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+    const mimeType = imageBase64.includes(';') ? imageBase64.split(';')[0].split(':')[1] : "image/jpeg";
 
     const catsTexto = categorias && categorias.length > 0 
         ? categorias.join('", "') 
@@ -26,15 +28,14 @@ export async function POST(request: Request) {
     DEBES responder EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, con esta estructura exacta:
     {
       "fecha": "YYYY-MM-DD", 
-      "base_imponible": numero (solo la base sin IVA, usa punto para decimales. Si solo hay total, calcúlalo restando el IVA),
+      "base_imponible": 0.00,
       "iva": 21,
       "categoria": "Elige estrictamente UNA de estas opciones: ${catsTexto}"
     }
-    Adivina la categoría por el contexto (ejemplo: si es gasolina o un coche, es Logística o Vehículos. Si son ordenadores, Materiales).
-    Si no encuentras la fecha clara, usa la fecha de hoy.`;
+    Adivina la categoría por el contexto. Si no encuentras la fecha clara, usa la fecha de hoy. Usa el punto para los decimales de la base imponible.`;
 
-    // 🚀 MOTOR ORIGINAL ESTABLE (gemini-pro-vision)
-    const URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${apiKey}`;
+    // 🚀 EL MOTOR CORRECTO DE TU CUENTA: gemini-2.5-flash
+    const URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const response = await fetch(URL, {
       method: 'POST',
@@ -46,32 +47,34 @@ export async function POST(request: Request) {
               { text: promptText },
               {
                 inline_data: {
-                  mime_type: "image/jpeg",
+                  mime_type: mimeType,
                   data: base64Data
                 }
               }
             ]
           }
-        ]
-        // 🚀 Eliminado el generationConfig para que este motor no explote
+        ],
+        generationConfig: {
+            response_mime_type: "application/json"
+        }
       })
     });
 
     const dataJson = await response.json();
     
-    // Control de errores directo de Google
+    // Capturamos cualquier rechazo de Google
     if (dataJson.error) {
        console.error("Error API Gemini:", dataJson.error);
        return NextResponse.json({ error: dataJson.error.message }, { status: 500 });
     }
 
     if (!dataJson.candidates || dataJson.candidates.length === 0) {
-       throw new Error("Error procesando imagen en Google.");
+       throw new Error("La IA no pudo extraer los datos de la imagen.");
     }
 
     const aiResponse = dataJson.candidates[0].content.parts[0].text;
     
-    // Limpieza agresiva por si la IA introduce formato markdown (```json ... ```)
+    // Limpieza de seguridad y conversión a JSON
     const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsedData = JSON.parse(cleanJson);
 
