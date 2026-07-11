@@ -73,6 +73,8 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
+  const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#0ea5e9', '#d946ef', '#14b8a6'];
+
   useEffect(() => { 
     setIsMounted(true); 
     fetch(`/api/finances?t=${Date.now()}`)
@@ -245,21 +247,21 @@ export default function Home() {
     setShowConfig(false);
   };
 
-  const filtrarDatos = (datosBase: any[], tipoFiltro: string) => {
-    if (tipoFiltro === "all") return datosBase;
-    const ahora = new Date().getTime();
-    return datosBase.filter(item => {
-      const [d, m, y] = item.name.split('/');
-      const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
-      const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
-      if (tipoFiltro === 'month') return diffDias <= 30;
-      if (tipoFiltro === 'quarter') return diffDias <= 90;
-      if (tipoFiltro === 'year') return diffDias <= 365;
-      return true;
-    });
+  const determinarRangoDias = (tipoFiltro: string) => {
+    if (tipoFiltro === 'month') return 30;
+    if (tipoFiltro === 'quarter') return 90;
+    if (tipoFiltro === 'year') return 365;
+    return Infinity;
   };
 
-  const datosVisibles = filtrarDatos(data, filtro);
+  const datosVisibles = data.filter(item => {
+    if (filtro === "all") return true;
+    const ahora = new Date().getTime();
+    const [d, m, y] = item.name.split('/');
+    const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+    const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
+    return diffDias <= determinarRangoDias(filtro);
+  });
 
   const datosCronologicos = [...datosVisibles].sort((a, b) => {
     const pA = a.name.split('/');
@@ -267,7 +269,6 @@ export default function Home() {
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
-  // 🚀 AQUÍ ESTÁ CHARTDATA CORREGIDO PARA LA GRÁFICA DOBLE
   const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
     let clave = curr.name;
     if (filtro === 'year' || filtro === 'quarter') {
@@ -348,26 +349,11 @@ export default function Home() {
 
   const alertasDinamicas = generarAlertas();
 
-  useEffect(() => {
-    if (!empresaId) return; 
-
-    setData([]);
-    setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
-    
-    fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
-      .then(res => res.ok ? res.json() : [])
-      .then(d => {
-        if (d && d.length > 0) setData(d);
-        else setData([]);
-      });
-  }, [empresaId]);
-
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsScanning(true);
-    
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
@@ -406,37 +392,23 @@ export default function Home() {
 
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault(); 
-    
-    if (!empresaId) {
-       alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
-       return;
-    }
-    if (!mes) {
-       alert("⚠️ Por favor, selecciona una fecha operativa.");
-       return;
-    }
-    if (!ingreso) {
-       alert("⚠️ Por favor, introduce un importe en Base Imponible.");
-       return;
-    }
+    if (!empresaId) return alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
+    if (!mes) return alert("⚠️ Por favor, selecciona una fecha operativa.");
+    if (!ingreso) return alert("⚠️ Por favor, introduce un importe en Base Imponible.");
 
     setIsSaving(true);
-    
     try {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
-      
-      const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
-      const numeroLimpio = parseFloat(textoLimpio);
+      const numeroLimpio = parseFloat(ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
 
       if (isNaN(numeroLimpio)) {
          setIsSaving(false);
-         alert("⚠️ El importe introducido no es válido. Usa solo números y comas/puntos.");
+         alert("⚠️ El importe introducido no es válido. Usa solo números.");
          return;
       }
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
-     
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -445,8 +417,7 @@ export default function Home() {
 
       if (res.ok) {
         const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
-        const actualizadosBD = await resRefresh.json();
-        setData(actualizadosBD);
+        setData(await resRefresh.json());
         setIngreso('');
         setIsRecurrent(false);
         setFrecuencia('Mensual');
@@ -456,7 +427,6 @@ export default function Home() {
       }
     } catch (error) {
       console.error(error);
-      alert("⚠️ Error de conexión a internet al intentar guardar.");
     } finally {
       setIsSaving(false);
     }
@@ -464,10 +434,7 @@ export default function Home() {
 
   const eliminarDato = async (id: number) => {
     const res = await fetch(`/api/finances?id=${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      const restantes = data.filter(item => item.id !== id);
-      setData(restantes);
-    }
+    if (res.ok) setData(data.filter(item => item.id !== id));
   };
 
   const iniciarEdicion = (item: any) => {
@@ -487,27 +454,18 @@ export default function Home() {
       const [y, m, d] = editFormData.mes.split('-');
       const fecha = `${d}/${m}/${y}`;
       const numeroLimpio = parseFloat(editFormData.ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
-      
       if (isNaN(numeroLimpio)) return alert("⚠️ El importe introducido no es válido.");
 
       const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
-
       const res = await fetch('/api/finances', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ 
-          id: id, 
-          month: fecha, 
-          total: valorFinal, 
-          categoria: editFormData.categoria, 
-          iva: editFormData.ivaSeleccionado 
-        }) 
+        body: JSON.stringify({ id, month: fecha, total: valorFinal, categoria: editFormData.categoria, iva: editFormData.ivaSeleccionado }) 
       });
 
       if (res.ok) {
         const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
-        const actualizadosBD = await resRefresh.json();
-        setData(actualizadosBD);
+        setData(await resRefresh.json());
         setEditingId(null);
       }
     } catch (error) {
@@ -516,31 +474,22 @@ export default function Home() {
   };
 
   const pedirAnalisisGemini = (datosParaAnalizar: any[]) => {
-    if (datosParaAnalizar.length < 2) {
-      setAiAnalysis("Muestras insuficientes en este periodo para generar una proyección.");
-      return;
-    }
+    if (datosParaAnalizar.length < 2) return setAiAnalysis("Muestras insuficientes en este periodo.");
     setIsAnalyzing(true);
     setAiAnalysis("Procesando balance de ingresos y gastos operativos con perfil corporativo...");
     
     const datosLimpios = datosParaAnalizar.map(d => ({
-      fecha: d.name,
-      categoria: d.categoria || 'General',
-      importe: d.total,
-      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento',
-      tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
+      fecha: d.name, categoria: d.categoria || 'General', importe: d.total,
+      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento', tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
     }));
-
-    const contextoEmpresarial = `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo Principal: ${perfilEmpresa.objetivo || 'Estabilidad financiera'}.`;
 
     fetch('/api/analyze', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: contextoEmpresarial }), 
+      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo: ${perfilEmpresa.objetivo || 'Estabilidad'}.` }), 
     })
       .then(r => r.json())
       .then(r => setAiAnalysis(r.analysis || "Error al estructurar el reporte."))
-      .catch(() => setAiAnalysis("Error en el servidor de inteligencia artificial."))
       .finally(() => setIsAnalyzing(false));
   };
 
@@ -548,35 +497,24 @@ export default function Home() {
     e.preventDefault();
     if (!currentMessage.trim()) return;
 
-    const nuevoMensaje = { role: 'user', content: currentMessage };
-    const historial = [...chatMessages, nuevoMensaje];
-    
+    const historial = [...chatMessages, { role: 'user', content: currentMessage }];
     setChatMessages(historial);
     setCurrentMessage("");
     setIsChatLoading(true);
-
-    const datosContexto = datosVisibles.map(d => ({ fecha: d.name, categoria: d.categoria, importe: d.total }));
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: historial,
-          contextoFinanciero: datosContexto,
-          empresaId: empresaId,
-          perfil: perfilEmpresa
-        })
+        body: JSON.stringify({ messages: historial, contextoFinanciero: datosVisibles.map(d => ({ fecha: d.name, categoria: d.categoria, importe: d.total })), empresaId, perfil: perfilEmpresa })
       });
 
       if (res.ok) {
         const resData = await res.json();
         setChatMessages([...historial, { role: 'ai', content: resData.reply }]);
-      } else {
-        setChatMessages([...historial, { role: 'ai', content: "⚠️ No pude conectar con el servidor." }]);
       }
     } catch (error) {
-      setChatMessages([...historial, { role: 'ai', content: "⚠️ Error de red." }]);
+      console.error(error);
     } finally {
       setIsChatLoading(false);
     }
@@ -586,10 +524,7 @@ export default function Home() {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
     let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Base Imponible (EUR),IVA (%)\n";
     datosVisibles.forEach(row => {
-      const valorStr = Number(row.total);
-      const tipoTxt = valorStr >= 0 ? "Ingreso" : "Gasto";
-      const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
-      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${valorStr},${row.iva || 0}%\n`;
+      csvContent += `${row.name},${row.categoria || "General"},${row.isRecurrent ? row.frecuencia : "Puntual"},${Number(row.total) >= 0 ? "Ingreso" : "Gasto"},${Number(row.total)},${row.iva || 0}%\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -891,7 +826,12 @@ export default function Home() {
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                         <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={40} />
-                        <Tooltip cursor={{fill: '#f8fafc'}} isAnimationActive={false} />
+                        <Tooltip 
+                           cursor={{fill: '#f1f5f9'}} 
+                           isAnimationActive={false}
+                           contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                           labelStyle={{ color: '#0f172a', fontWeight: '900', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px', fontSize: '14px' }}
+                        />
                         <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600 }} />
                         <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} />
                         <Bar dataKey="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} />
@@ -1126,12 +1066,8 @@ export default function Home() {
         )}
       </Show>
 
-      {/* ======================================================== */}
-      {/* 🚀 EL ESCAPARATE: LA LANDING PAGE PREMIUM B2B          */}
-      {/* ======================================================== */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
             <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
               <div className="flex items-center gap-3">
