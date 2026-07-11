@@ -413,40 +413,33 @@ export default function Home() {
     if (!file) return;
 
     setIsScanning(true);
-    
     const reader = new FileReader();
     reader.readAsDataURL(file);
+    
     reader.onload = async () => {
-      try {
-        const base64 = reader.result as string;
-        const res = await fetch('/api/ocr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: base64, categorias: categoriasGasto })
-        });
+        try {
+          const res = await fetch('/api/ocr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: reader.result, categorias: categoriasGasto })
+          });
 
-        if (res.ok) {
-          const extraido = await res.json();
-          setTipoTransaccion('gasto'); 
-          if (extraido.fecha) setMes(extraido.fecha);
-          if (extraido.base_imponible) setIngreso(extraido.base_imponible.toString());
-          if (extraido.iva !== undefined) setIvaSeleccionado(extraido.iva.toString());
-          
-          if (extraido.categoria && categoriasGasto.includes(extraido.categoria)) {
-             setCategoria(extraido.categoria);
+          const dataRes = await res.json();
+          if (res.ok) {
+            setTipoTransaccion('gasto'); 
+            if (dataRes.fecha) setMes(dataRes.fecha);
+            if (dataRes.base_imponible) setIngreso(dataRes.base_imponible.toString());
+            if (dataRes.iva !== undefined) setIvaSeleccionado(dataRes.iva.toString());
+            if (dataRes.categoria && categoriasGasto.includes(dataRes.categoria)) setCategoria(dataRes.categoria);
           } else {
-             setCategoria(categoriasGasto[0]);
+            alert("Error del servidor: " + (dataRes.error || "Fallo desconocido"));
           }
-        } else {
-          alert("La IA no pudo leer la factura con claridad. Asegúrate de que la foto tenga buena luz.");
+        } catch (err) {
+          alert("Error de conexión al escanear.");
+        } finally {
+          setIsScanning(false);
+          if (fileInputRef.current) fileInputRef.current.value = ''; 
         }
-      } catch (err) {
-        console.error(err);
-        alert("Error de conexión al escanear.");
-      } finally {
-        setIsScanning(false);
-        if (fileInputRef.current) fileInputRef.current.value = ''; 
-      }
     };
   };
 
