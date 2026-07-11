@@ -37,6 +37,12 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
 
+  // 🚀 NUEVOS ESTADOS DE NIVEL PROFESIONAL (Paginación, Búsqueda e Interacción de Gráfica)
+  const [chartFilter, setChartFilter] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const etiquetasFiltro: Record<string, string> = {
     all: "Histórico Completo",
     month: "Último Mes",
@@ -73,8 +79,6 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  const COLORES_DONA = ['#3b82f6', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#0ea5e9', '#d946ef', '#14b8a6'];
-
   useEffect(() => { 
     setIsMounted(true); 
     fetch(`/api/finances?t=${Date.now()}`)
@@ -103,6 +107,13 @@ export default function Home() {
          }
       });
   }, []);
+
+  // 🚀 RESETEO DE FILTROS: Si el usuario cambia de empresa o de periodo de tiempo (Mes/Año), reseteamos la tabla
+  useEffect(() => {
+    setChartFilter(null);
+    setCurrentPage(1);
+    setSearchTerm("");
+  }, [filtro, empresaId]);
 
   useEffect(() => {
     setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
@@ -269,12 +280,17 @@ export default function Home() {
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
+  // 🚀 LÓGICA DE AGRUPACIÓN INTELIGENTE PARA LA GRÁFICA
   const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
-    let clave = curr.name;
-    if (filtro === 'year' || filtro === 'quarter') {
-      const partes = curr.name.split('/'); 
-      clave = `${partes[1]}/${partes[2]}`; 
+    const [d, m, y] = curr.name.split('/');
+    let clave = curr.name; // Por defecto Agrupamos por Día (DD/MM/YYYY)
+    
+    // Si el usuario mira el Año o el Histórico Completo, agrupamos por MES para que no haya 1000 barras enanas.
+    if (filtro === 'year' || filtro === 'all') {
+      const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      clave = `${nombresMeses[Number(m) - 1]} ${y}`; 
     }
+
     const existente = acc.find((item: any) => item.name === clave);
     const valorNum = Number(curr.total); 
     
@@ -284,6 +300,7 @@ export default function Home() {
     } else {
       acc.push({ 
         name: clave, 
+        rawDate: curr.name, // Guardamos la fecha original oculta por si acaso
         Ingresos: valorNum > 0 ? valorNum : 0, 
         Gastos: valorNum < 0 ? Math.abs(valorNum) : 0 
       });
@@ -291,11 +308,39 @@ export default function Home() {
     return acc;
   }, []);
 
+  // 🚀 LÓGICA DE FILTRADO, BÚSQUEDA Y PAGINACIÓN PARA LA TABLA
   const datosTabla = [...datosVisibles].sort((a, b) => {
     const pA = a.name.split('/');
     const pB = b.name.split('/');
     return new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime() - new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
   });
+
+  let datosTablaFiltrados = datosTabla.filter(item => {
+    // 1. Filtrado por clic en la Gráfica (Drill-down)
+    if (chartFilter) {
+      const [d, m, y] = item.name.split('/');
+      if (filtro === 'year' || filtro === 'all') {
+         const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+         const mesGrafica = `${nombresMeses[Number(m) - 1]} ${y}`;
+         if (mesGrafica !== chartFilter) return false;
+      } else {
+         if (item.name !== chartFilter) return false;
+      }
+    }
+    // 2. Filtrado por Búsqueda de Texto
+    if (searchTerm) {
+       const searchLower = searchTerm.toLowerCase();
+       const coincideCategoria = item.categoria?.toLowerCase().includes(searchLower);
+       const coincideMonto = Math.abs(item.total).toString().includes(searchLower);
+       if (!coincideCategoria && !coincideMonto) return false;
+    }
+    return true;
+  });
+
+  // Matemáticas de Paginación
+  const totalPages = Math.ceil(datosTablaFiltrados.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
   const gastosPorCategoria = datosVisibles
     .filter(d => Number(d.total) < 0)
@@ -349,11 +394,26 @@ export default function Home() {
 
   const alertasDinamicas = generarAlertas();
 
+  useEffect(() => {
+    if (!empresaId) return; 
+
+    setData([]);
+    setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
+    
+    fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(d => {
+        if (d && d.length > 0) setData(d);
+        else setData([]);
+      });
+  }, [empresaId]);
+
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsScanning(true);
+    
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
@@ -392,23 +452,37 @@ export default function Home() {
 
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault(); 
-    if (!empresaId) return alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
-    if (!mes) return alert("⚠️ Por favor, selecciona una fecha operativa.");
-    if (!ingreso) return alert("⚠️ Por favor, introduce un importe en Base Imponible.");
+    
+    if (!empresaId) {
+       alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
+       return;
+    }
+    if (!mes) {
+       alert("⚠️ Por favor, selecciona una fecha operativa.");
+       return;
+    }
+    if (!ingreso) {
+       alert("⚠️ Por favor, introduce un importe en Base Imponible.");
+       return;
+    }
 
     setIsSaving(true);
+    
     try {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
-      const numeroLimpio = parseFloat(ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+      
+      const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+      const numeroLimpio = parseFloat(textoLimpio);
 
       if (isNaN(numeroLimpio)) {
          setIsSaving(false);
-         alert("⚠️ El importe introducido no es válido. Usa solo números.");
+         alert("⚠️ El importe introducido no es válido. Usa solo números y comas/puntos.");
          return;
       }
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
+     
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -417,7 +491,8 @@ export default function Home() {
 
       if (res.ok) {
         const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
-        setData(await resRefresh.json());
+        const actualizadosBD = await resRefresh.json();
+        setData(actualizadosBD);
         setIngreso('');
         setIsRecurrent(false);
         setFrecuencia('Mensual');
@@ -427,6 +502,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error(error);
+      alert("⚠️ Error de conexión a internet al intentar guardar.");
     } finally {
       setIsSaving(false);
     }
@@ -434,7 +510,10 @@ export default function Home() {
 
   const eliminarDato = async (id: number) => {
     const res = await fetch(`/api/finances?id=${id}`, { method: 'DELETE' });
-    if (res.ok) setData(data.filter(item => item.id !== id));
+    if (res.ok) {
+      const restantes = data.filter(item => item.id !== id);
+      setData(restantes);
+    }
   };
 
   const iniciarEdicion = (item: any) => {
@@ -454,18 +533,27 @@ export default function Home() {
       const [y, m, d] = editFormData.mes.split('-');
       const fecha = `${d}/${m}/${y}`;
       const numeroLimpio = parseFloat(editFormData.ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+      
       if (isNaN(numeroLimpio)) return alert("⚠️ El importe introducido no es válido.");
 
       const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
+
       const res = await fetch('/api/finances', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id, month: fecha, total: valorFinal, categoria: editFormData.categoria, iva: editFormData.ivaSeleccionado }) 
+        body: JSON.stringify({ 
+          id: id, 
+          month: fecha, 
+          total: valorFinal, 
+          categoria: editFormData.categoria, 
+          iva: editFormData.ivaSeleccionado 
+        }) 
       });
 
       if (res.ok) {
         const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
-        setData(await resRefresh.json());
+        const actualizadosBD = await resRefresh.json();
+        setData(actualizadosBD);
         setEditingId(null);
       }
     } catch (error) {
@@ -474,22 +562,31 @@ export default function Home() {
   };
 
   const pedirAnalisisGemini = (datosParaAnalizar: any[]) => {
-    if (datosParaAnalizar.length < 2) return setAiAnalysis("Muestras insuficientes en este periodo.");
+    if (datosParaAnalizar.length < 2) {
+      setAiAnalysis("Muestras insuficientes en este periodo para generar una proyección.");
+      return;
+    }
     setIsAnalyzing(true);
     setAiAnalysis("Procesando balance de ingresos y gastos operativos con perfil corporativo...");
     
     const datosLimpios = datosParaAnalizar.map(d => ({
-      fecha: d.name, categoria: d.categoria || 'General', importe: d.total,
-      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento', tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
+      fecha: d.name,
+      categoria: d.categoria || 'General',
+      importe: d.total,
+      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento',
+      tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
     }));
+
+    const contextoEmpresarial = `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo Principal: ${perfilEmpresa.objetivo || 'Estabilidad financiera'}.`;
 
     fetch('/api/analyze', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo: ${perfilEmpresa.objetivo || 'Estabilidad'}.` }), 
+      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: contextoEmpresarial }), 
     })
       .then(r => r.json())
       .then(r => setAiAnalysis(r.analysis || "Error al estructurar el reporte."))
+      .catch(() => setAiAnalysis("Error en el servidor de inteligencia artificial."))
       .finally(() => setIsAnalyzing(false));
   };
 
@@ -497,24 +594,35 @@ export default function Home() {
     e.preventDefault();
     if (!currentMessage.trim()) return;
 
-    const historial = [...chatMessages, { role: 'user', content: currentMessage }];
+    const nuevoMensaje = { role: 'user', content: currentMessage };
+    const historial = [...chatMessages, nuevoMensaje];
+    
     setChatMessages(historial);
     setCurrentMessage("");
     setIsChatLoading(true);
+
+    const datosContexto = datosVisibles.map(d => ({ fecha: d.name, categoria: d.categoria, importe: d.total }));
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: historial, contextoFinanciero: datosVisibles.map(d => ({ fecha: d.name, categoria: d.categoria, importe: d.total })), empresaId, perfil: perfilEmpresa })
+        body: JSON.stringify({
+          messages: historial,
+          contextoFinanciero: datosContexto,
+          empresaId: empresaId,
+          perfil: perfilEmpresa
+        })
       });
 
       if (res.ok) {
         const resData = await res.json();
         setChatMessages([...historial, { role: 'ai', content: resData.reply }]);
+      } else {
+        setChatMessages([...historial, { role: 'ai', content: "⚠️ No pude conectar con el servidor." }]);
       }
     } catch (error) {
-      console.error(error);
+      setChatMessages([...historial, { role: 'ai', content: "⚠️ Error de red." }]);
     } finally {
       setIsChatLoading(false);
     }
@@ -524,7 +632,10 @@ export default function Home() {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
     let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Base Imponible (EUR),IVA (%)\n";
     datosVisibles.forEach(row => {
-      csvContent += `${row.name},${row.categoria || "General"},${row.isRecurrent ? row.frecuencia : "Puntual"},${Number(row.total) >= 0 ? "Ingreso" : "Gasto"},${Number(row.total)},${row.iva || 0}%\n`;
+      const valorStr = Number(row.total);
+      const tipoTxt = valorStr >= 0 ? "Ingreso" : "Gasto";
+      const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
+      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${valorStr},${row.iva || 0}%\n`;
     });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -816,13 +927,24 @@ export default function Home() {
               </div>
 
               <div className="xl:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
-                <div>
-                  <h3 className="text-md font-bold text-slate-900 mb-1">Balance Visual del Periodo</h3>
+                <div className="flex justify-between items-center mb-1">
+                  <h3 className="text-md font-bold text-slate-900">Balance Visual del Periodo</h3>
+                  {chartFilter && (
+                     <button onClick={() => setChartFilter(null)} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded-md transition border border-slate-200">
+                        Mostrando: {chartFilter} (Quitar filtro ✖)
+                     </button>
+                  )}
                 </div>
+                <p className="text-[11px] text-slate-400 font-medium mb-4">Haz clic en una barra para filtrar la tabla de abajo.</p>
                 <div className="flex-1 min-h-[220px]">
                   {isMounted && chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} onClick={(state) => {
+                         if (state && state.activeLabel) {
+                            setChartFilter(state.activeLabel);
+                            setCurrentPage(1); // Volvemos a la página 1 al filtrar
+                         }
+                      }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                         <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={40} />
@@ -832,9 +954,9 @@ export default function Home() {
                            contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
                            labelStyle={{ color: '#0f172a', fontWeight: '900', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px', fontSize: '14px' }}
                         />
-                        <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600 }} />
-                        <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} />
-                        <Bar dataKey="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} />
+                        <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }} />
+                        <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
+                        <Bar dataKey="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
@@ -844,13 +966,25 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
-              <div className="p-4 md:p-6 border-b border-slate-100 flex justify-between items-center bg-white z-10">
-                <h3 className="text-md font-bold text-slate-900 mb-1">Libro Mayor Integrado</h3>
-                <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm">CSV</button>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
+              <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between sm:items-center bg-white z-10 gap-4">
+                <div className="flex items-center gap-3">
+                   <h3 className="text-md font-bold text-slate-900">Libro Mayor Integrado</h3>
+                   <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black px-2 py-0.5 rounded-full">{datosTablaFiltrados.length} registros</span>
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                   <input 
+                      type="text" 
+                      placeholder="🔍 Buscar categoría o importe..." 
+                      value={searchTerm}
+                      onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
+                      className="flex-1 sm:w-64 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
+                   />
+                   <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition">CSV</button>
+                </div>
               </div>
               
-              <div className="max-h-[400px] overflow-x-auto overflow-y-auto">
+              <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-100 text-left whitespace-nowrap">
                   <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-20">
                     <tr>
@@ -862,7 +996,7 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                    {datosTabla.map((item: any, index: number) => {
+                    {currentItems.map((item: any, index: number) => {
                       if (editingId === item.id) {
                         return (
                           <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
@@ -923,12 +1057,35 @@ export default function Home() {
                         </tr>
                       );
                     })}
-                    {datosTabla.length === 0 && (
-                      <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">El Libro Mayor está vacío. Añade transacciones para comenzar.</td></tr>
+                    {datosTablaFiltrados.length === 0 && (
+                      <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">No se encontraron registros para esta búsqueda o filtro.</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
+              
+              {/* 🚀 PAGINACIÓN AVANZADA */}
+              {totalPages > 1 && (
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                   <button 
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                      disabled={currentPage === 1}
+                      className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition"
+                   >
+                      Anterior
+                   </button>
+                   <span className="text-xs font-semibold text-slate-500">
+                      Página <span className="font-black text-slate-700">{currentPage}</span> de {totalPages}
+                   </span>
+                   <button 
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                      disabled={currentPage === totalPages}
+                      className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition"
+                   >
+                      Siguiente
+                   </button>
+                </div>
+              )}
             </div>
 
             <div className="h-24 md:h-10"></div>
@@ -1068,6 +1225,7 @@ export default function Home() {
 
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
+          
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
             <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
               <div className="flex items-center gap-3">
