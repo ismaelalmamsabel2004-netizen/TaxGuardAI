@@ -633,8 +633,9 @@ export default function Home() {
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
          
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
+            {/* 🚀 LOGO EN CABECERA MÓVIL */}
             <div className="flex items-center gap-2">
-               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">T</div>
+               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
                <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
             </div>
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-2">
@@ -645,8 +646,9 @@ export default function Home() {
           <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
             <div>
               <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
+                {/* 🚀 LOGO EN MENÚ LATERAL */}
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">T</div>
+                  <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                   <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
                 </div>
                 <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
@@ -733,7 +735,6 @@ export default function Home() {
               </div>
               
               <div className="flex items-center gap-4 self-start lg:self-auto">
-                {/* 🚀 AQUÍ ESTÁ EL ARREGLO DE LA CAMPANITA PARA MÓVILES */}
                 <div className="relative">
                   <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50 transition hover:shadow-md">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
@@ -1224,8 +1225,9 @@ export default function Home() {
           
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
             <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+              {/* 🚀 LOGO EN NAVBAR PÚBLICA */}
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/20">T</div>
+                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain shadow-lg shadow-blue-500/20" />
                 <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
               </div>
               <div className="flex items-center gap-4">
