@@ -97,7 +97,7 @@ export default function Home() {
     
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
-      .then((ajustesGuardados: any) => { // 🚀 Solución TS: : any
+      .then((ajustesGuardados: any) => {
          const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
          
@@ -126,7 +126,7 @@ export default function Home() {
       setNuevaEmpresa("");
       
       const res = await fetch('/api/settings');
-      const actuales: any = await res.json(); // 🚀 Solución TS
+      const actuales: any = await res.json();
       await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaEmpresa });
     }
   };
@@ -145,7 +145,7 @@ export default function Home() {
     setEmpresaId(nuevaActiva);
 
     const res = await fetch('/api/settings');
-    const actuales: any = await res.json(); // 🚀 Solución TS
+    const actuales: any = await res.json();
     await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaActiva, papelera: nuevaPapelera });
   };
 
@@ -158,7 +158,7 @@ export default function Home() {
     setEmpresaId(nombre);
 
     const res = await fetch('/api/settings');
-    const actuales: any = await res.json(); // 🚀 Solución TS
+    const actuales: any = await res.json();
     await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nombre, papelera: nuevaPapelera });
     alert(`✅ El espacio "${nombre}" ha sido restaurado con éxito.`);
   };
@@ -168,7 +168,7 @@ export default function Home() {
 
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
-      .then((ajustesGuardados: any) => { // 🚀 Solución TS
+      .then((ajustesGuardados: any) => {
          
          if (ajustesGuardados.metas && ajustesGuardados.metas[empresaId]) {
            setMetaMensual(ajustesGuardados.metas[empresaId]);
@@ -210,7 +210,7 @@ export default function Home() {
       setMetaMensual(nuevaMetaNum);
       
       const res = await fetch('/api/settings');
-      const actuales: any = await res.json(); // 🚀 Solución TS
+      const actuales: any = await res.json();
       const metasObj = actuales.metas || {};
       metasObj[empresaId] = nuevaMetaNum;
       
@@ -235,7 +235,7 @@ export default function Home() {
     setCategoriasGasto(catA_Guardar.gasto);
 
     const res = await fetch('/api/settings');
-    const actuales: any = await res.json(); // 🚀 Solución TS
+    const actuales: any = await res.json();
     
     const perfilesObj = actuales.perfiles || {};
     perfilesObj[empresaId] = nuevoPerfil;
@@ -664,7 +664,7 @@ export default function Home() {
                         setEmpresaId(newId);
                         
                         const res = await fetch('/api/settings');
-                        const actuales: any = await res.json(); // 🚀 Solución TS
+                        const actuales: any = await res.json(); 
                         await syncSettingsToCloud({ ...actuales, empresaActiva: newId });
                       }} 
                       className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none"
@@ -733,6 +733,7 @@ export default function Home() {
               </div>
               
               <div className="flex items-center gap-4 self-start lg:self-auto">
+                {/* 🚀 AQUÍ ESTÁ EL ARREGLO DE LA CAMPANITA PARA MÓVILES */}
                 <div className="relative">
                   <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50 transition hover:shadow-md">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
@@ -740,7 +741,7 @@ export default function Home() {
                   </button>
 
                   {showNotifications && (
-                    <div className="absolute right-[-1rem] lg:right-0 mt-3 w-[90vw] lg:w-80 max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-right">
+                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-3 w-[85vw] sm:w-80 max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-left sm:origin-top-right">
                       <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
                         <h4 className="text-sm font-bold text-slate-900">Centro de Riesgos</h4>
                         <span className="bg-slate-800 text-white text-[10px] font-black px-2.5 py-1 rounded-full">{alertasDinamicas.length}</span>

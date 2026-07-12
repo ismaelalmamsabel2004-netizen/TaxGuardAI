@@ -7,17 +7,17 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Director Financiero Inteligente y Contabilidad Automatizada para PYMEs',
     start_url: '/',
     display: 'standalone',
-    background_color: '#0f172a', // Color de fondo slate-900 al arrancar la app
-    theme_color: '#2563eb',      // Color azul de tus botones principales para la barra del móvil
+    background_color: '#0f172a',
+    theme_color: '#2563eb',
     icons: [
       {
-        src: '/icon-192x192.png',
+        src: '/icon-192x192.png?v=2',
         sizes: '192x192',
         type: 'image/png',
         purpose: 'any',
       },
       {
-        src: '/icon-512x512.png',
+        src: '/icon-512x512.png?v=2',
         sizes: '512x512',
         type: 'image/png',
         purpose: 'any',
