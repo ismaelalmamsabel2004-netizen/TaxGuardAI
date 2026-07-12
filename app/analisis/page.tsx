@@ -211,8 +211,8 @@ export default function AnalisisAvanzado() {
                         </span>
                     </div>
                     
-                    {/* Renderizado de Markdown con clases de Tailwind Typography */}
-                    <div className="prose prose-sm md:prose-base prose-slate prose-headings:font-black prose-h2:text-blue-900 prose-h3:text-slate-800 prose-p:font-medium prose-strong:text-slate-900 prose-li:font-medium max-w-none">
+                    {/* 🚀 AÑADIDO text-slate-700 COMO BASE PARA QUE NUNCA SE QUEDE EN BLANCO */}
+                    <div className="text-slate-700 prose prose-sm md:prose-base prose-slate prose-headings:font-black prose-h2:text-blue-900 prose-h3:text-slate-800 prose-p:text-slate-700 prose-p:font-medium prose-strong:text-slate-900 prose-li:font-medium max-w-none">
                         <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
                     </div>
                 </div>
