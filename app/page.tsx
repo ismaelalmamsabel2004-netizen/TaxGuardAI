@@ -37,7 +37,6 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
 
-  // 🚀 NUEVOS ESTADOS DE NIVEL PROFESIONAL (Paginación, Búsqueda e Interacción de Gráfica)
   const [chartFilter, setChartFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -65,6 +64,8 @@ export default function Home() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const fileInputCsvRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: string, content: string}[]>([]);
@@ -108,7 +109,6 @@ export default function Home() {
       });
   }, []);
 
-  // 🚀 RESETEO DE FILTROS: Si el usuario cambia de empresa o de periodo de tiempo (Mes/Año), reseteamos la tabla
   useEffect(() => {
     setChartFilter(null);
     setCurrentPage(1);
@@ -280,12 +280,10 @@ export default function Home() {
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
-  // 🚀 LÓGICA DE AGRUPACIÓN INTELIGENTE PARA LA GRÁFICA
   const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
     const [d, m, y] = curr.name.split('/');
-    let clave = curr.name; // Por defecto Agrupamos por Día (DD/MM/YYYY)
+    let clave = curr.name; 
     
-    // Si el usuario mira el Año o el Histórico Completo, agrupamos por MES para que no haya 1000 barras enanas.
     if (filtro === 'year' || filtro === 'all') {
       const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       clave = `${nombresMeses[Number(m) - 1]} ${y}`; 
@@ -300,7 +298,7 @@ export default function Home() {
     } else {
       acc.push({ 
         name: clave, 
-        rawDate: curr.name, // Guardamos la fecha original oculta por si acaso
+        rawDate: curr.name,
         Ingresos: valorNum > 0 ? valorNum : 0, 
         Gastos: valorNum < 0 ? Math.abs(valorNum) : 0 
       });
@@ -308,7 +306,6 @@ export default function Home() {
     return acc;
   }, []);
 
-  // 🚀 LÓGICA DE FILTRADO, BÚSQUEDA Y PAGINACIÓN PARA LA TABLA
   const datosTabla = [...datosVisibles].sort((a, b) => {
     const pA = a.name.split('/');
     const pB = b.name.split('/');
@@ -316,7 +313,6 @@ export default function Home() {
   });
 
   let datosTablaFiltrados = datosTabla.filter(item => {
-    // 1. Filtrado por clic en la Gráfica (Drill-down)
     if (chartFilter) {
       const [d, m, y] = item.name.split('/');
       if (filtro === 'year' || filtro === 'all') {
@@ -327,7 +323,6 @@ export default function Home() {
          if (item.name !== chartFilter) return false;
       }
     }
-    // 2. Filtrado por Búsqueda de Texto
     if (searchTerm) {
        const searchLower = searchTerm.toLowerCase();
        const coincideCategoria = item.categoria?.toLowerCase().includes(searchLower);
@@ -337,7 +332,6 @@ export default function Home() {
     return true;
   });
 
-  // Matemáticas de Paginación
   const totalPages = Math.ceil(datosTablaFiltrados.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
@@ -441,6 +435,43 @@ export default function Home() {
           if (fileInputRef.current) fileInputRef.current.value = ''; 
         }
     };
+  };
+
+  // 🚀 AQUÍ AÑADIMOS EL NUEVO MOTOR DE IMPORTACIÓN BANCARIA (CSV)
+  const manejarImportarCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const reader = new FileReader();
+    
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      try {
+        const res = await fetch('/api/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ csvText: text, empresaId })
+        });
+
+        const dataRes = await res.json();
+
+        if (res.ok && dataRes.success) {
+          alert(`✅ ¡Éxito! Se han importado y clasificado automáticamente ${dataRes.count} movimientos bancarios.`);
+          const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
+          setData(await resRefresh.json());
+        } else {
+          alert("Error del servidor al importar: " + (dataRes.error || "Fallo desconocido"));
+        }
+      } catch (err) {
+        alert("Error de conexión al procesar el archivo bancario.");
+      } finally {
+        setIsImporting(false);
+        if (fileInputCsvRef.current) fileInputCsvRef.current.value = '';
+      }
+    };
+    
+    reader.readAsText(file);
   };
 
   const guardarDato = async (e: React.FormEvent) => {
@@ -857,13 +888,21 @@ export default function Home() {
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
               <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
-                  <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 gap-3">
+                  
+                  {/* 🚀 AQUÍ ESTÁN TUS NUEVOS BOTONES DE OCR Y BANCO */}
+                  <div className="flex flex-col gap-3 mb-6">
                     <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
-                    
-                    <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
-                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="w-full lg:w-auto justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
-                      {isScanning ? "⏳ Escaneando..." : "📸 Escanear Factura"}
-                    </button>
+                    <div className="grid grid-cols-2 gap-2 w-full">
+                      <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
+                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                        {isScanning ? "⏳ Leyendo..." : "📸 Factura OCR"}
+                      </button>
+
+                      <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputCsvRef} onChange={manejarImportarCSV} />
+                      <button type="button" onClick={() => fileInputCsvRef.current?.click()} disabled={isImporting} className="justify-center text-[10px] font-bold bg-slate-50 text-slate-600 px-3 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                        {isImporting ? "⏳ Cargando..." : "📊 Banco (CSV)"}
+                      </button>
+                    </div>
                   </div>
 
                   <form onSubmit={guardarDato} className="space-y-4">
@@ -935,7 +974,7 @@ export default function Home() {
                       <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} onClick={(state) => {
                          if (state && state.activeLabel) {
                             setChartFilter(state.activeLabel);
-                            setCurrentPage(1); // Volvemos a la página 1 al filtrar
+                            setCurrentPage(1); 
                          }
                       }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
