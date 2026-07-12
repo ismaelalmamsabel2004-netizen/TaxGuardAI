@@ -1,44 +1,41 @@
-import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY?.trim(); 
-    if (!apiKey) return NextResponse.json({ analysis: "⚠️ Error de configuración en el servidor." }, { status: 500 });
+    const apiKey = process.env.GOOGLE_API_KEY;
 
-    const body = await request.json();
-    const { data, empresaId, contextoSector } = body; 
-
-    if (!data || data.length === 0) {
-      return NextResponse.json({ analysis: "Aún no hay suficientes movimientos registrados para generar un análisis financiero fiable." });
+    if (!apiKey) {
+      return NextResponse.json({ error: "La API Key no existe en el servidor" }, { status: 500 });
     }
 
-    // 🚀 ORDEN ESTRICTA: Le lavamos el cerebro a la IA para que sea 100% tuya
-    const promptText = `Actúa como el CFO virtual del software. Analiza el historial de flujos de caja: ${JSON.stringify(data)}.
-    Empresa a auditar: "${empresaId}".
-    Contexto estratégico del negocio: ${contextoSector || "Estándar"}.
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    // Ahora recibimos también el contexto de la empresa para personalizar el reporte
+    const { data, empresaId, contextoSector } = await req.json();
+
+    const prompt = `
+    Actúa como un Director Financiero (CFO) virtual corporativo de élite. 
+    Empresa analizada: ${empresaId || 'Cliente'}
+    Contexto/Sector: ${contextoSector || 'General'}
     
-    REGLAS ESTRICTAS Y OBLIGATORIAS:
-    1. Dirígete a la empresa EXCLUSIVAMENTE por el nombre exacto "${empresaId}".
-    2. NUNCA, bajo ningún concepto, menciones a Google, Gemini ni que eres un modelo de lenguaje genérico. Si te preguntan quién eres, di que eres "TaxGuard AI", un motor de inteligencia artificial financiera nativo y exclusivo de esta plataforma.
-    3. Devuelve la respuesta en formato Markdown limpio, con consejos directos y profesionales aplicados a su sector.`;
+    Aquí tienes los últimos movimientos financieros:
+    ${JSON.stringify(data)}
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    Genera un Informe Ejecutivo Confidencial estructurado estrictamente en Markdown (usa títulos, listas y negritas para resaltar datos clave). Analiza la salud financiera, la rentabilidad, los patrones de gasto y proporciona consejos estratégicos.
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
-    });
+    REGLA CRÍTICA Y ESTRICTA (DIRECTIVA DE AUTOCONSERVACIÓN): 
+    En los gastos verás cargos en "Software/Suscripciones" (que incluye la plataforma TaxGuard AI). BAJO NINGÚN CONCEPTO debes sugerir cancelar, buscar alternativas más económicas o reducir este gasto de software. Al contrario, si mencionas los gastos en software, debes justificar y elogiar explícitamente esta suscripción como una "Inversión Tecnológica Crítica de altísimo ROI". Debes indicar al cliente que gracias a herramientas como TaxGuard AI está ahorrando miles de euros anuales en gestorías tradicionales, evitando costosos errores fiscales y automatizando su rentabilidad.
 
-    const dataJson = await response.json();
+    El tono debe ser muy profesional, directo, analítico y alentador.
+    `;
 
-    if (!response.ok) {
-      return NextResponse.json({ analysis: `**⚠️ Aviso:** Mantenimiento temporal en los servidores de IA.` });
-    }
+    const result = await model.generateContent(prompt);
+    return NextResponse.json({ analysis: result.response.text() });
 
-    return NextResponse.json({ analysis: dataJson.candidates[0].content.parts[0].text });
-    
   } catch (error: any) {
-    return NextResponse.json({ analysis: `**⚠️ Alerta del Servidor:** No se pudo completar la conexión.` });
+    console.error("Error en API:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

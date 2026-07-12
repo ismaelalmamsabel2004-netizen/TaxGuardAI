@@ -17,44 +17,56 @@ export default function AnalisisAvanzado() {
   const [aiAnalysis, setAiAnalysis] = useState("## Análisis Preliminar\nPara iniciar la auditoría, asegúrate de tener datos registrados en el Libro Mayor y pulsa el botón superior **Generar Nueva Auditoría**.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Función para cargar los datos de la empresa seleccionada
-  const cargarDatosEmpresa = (activa: string) => {
-    const perfilesGuardados = localStorage.getItem('taxguard_perfiles');
-    if (perfilesGuardados) {
-      const perfiles = JSON.parse(perfilesGuardados);
-      if (perfiles[activa]) {
-        setPerfilEmpresa(perfiles[activa]);
-      } else {
-         setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
-      }
+  // Cargamos datos desde la nueva base de datos en la nube
+  useEffect(() => {
+    setIsMounted(true);
+
+    fetch('/api/settings')
+      .then(res => res.ok ? res.json() : {})
+      .then((ajustesGuardados: any) => {
+         const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
+         setEmpresas(listaEmpresas);
+         
+         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         setEmpresaId(activa);
+
+         if (activa && ajustesGuardados.perfiles && ajustesGuardados.perfiles[activa]) {
+            setPerfilEmpresa(ajustesGuardados.perfiles[activa]);
+         } else {
+            setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
+         }
+
+         if (activa) {
+           fetch(`/api/finances?empresaId=${activa}&t=${Date.now()}`)
+             .then(res => res.ok ? res.json() : [])
+             .then(d => setData(d))
+             .catch(err => console.error("Error cargando finanzas:", err));
+         }
+      });
+  }, []);
+
+  const cambiarEmpresa = async (nuevaEmpresa: string) => {
+    setEmpresaId(nuevaEmpresa);
+    setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Pulsa **Generar Nueva Auditoría** para analizar este nuevo espacio de trabajo.");
+    
+    // Guardar el cambio de empresa activa en la nube
+    const res = await fetch('/api/settings');
+    const actuales: any = await res.json();
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
+    });
+
+    if (actuales.perfiles && actuales.perfiles[nuevaEmpresa]) {
+       setPerfilEmpresa(actuales.perfiles[nuevaEmpresa]);
     } else {
        setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
     }
 
-    if (activa) {
-      fetch(`/api/finances?empresaId=${activa}&t=${Date.now()}`)
-        .then(res => res.ok ? res.json() : [])
-        .then(d => setData(d))
-        .catch(err => console.error("Error cargando datos:", err));
-    }
-  };
-
-  useEffect(() => {
-    setIsMounted(true);
-    const activa = localStorage.getItem('taxguard_empresaActiva') || "";
-    setEmpresaId(activa);
-
-    const guardadas = localStorage.getItem('taxguard_empresas');
-    if (guardadas) setEmpresas(JSON.parse(guardadas));
-
-    cargarDatosEmpresa(activa);
-  }, []);
-
-  const cambiarEmpresa = (nuevaEmpresa: string) => {
-    setEmpresaId(nuevaEmpresa);
-    localStorage.setItem('taxguard_empresaActiva', nuevaEmpresa);
-    setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Pulsa **Generar Nueva Auditoría** para analizar este nuevo espacio de trabajo.");
-    cargarDatosEmpresa(nuevaEmpresa);
+    fetch(`/api/finances?empresaId=${nuevaEmpresa}&t=${Date.now()}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setData(d));
   };
 
   const generarAuditoria = async () => {
@@ -97,10 +109,10 @@ export default function AnalisisAvanzado() {
     <Show when="signed-in">
       <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
         
-        {/* CABECERA MÓVIL */}
+        {/* 🚀 CABECERA MÓVIL CON ESCUDO */}
         <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
           <div className="flex items-center gap-2">
-             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">T</div>
+             <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
              <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
           </div>
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-2">
@@ -108,12 +120,12 @@ export default function AnalisisAvanzado() {
           </button>
         </div>
 
-        {/* BARRA LATERAL EXACTA A LA DEL RESTO DE LA APP */}
         <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
           <div>
             <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
+              {/* 🚀 MENÚ LATERAL CON ESCUDO */}
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">T</div>
+                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                 <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
               </div>
               <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
@@ -158,7 +170,6 @@ export default function AnalisisAvanzado() {
 
         {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
-        {/* CONTENIDO PRINCIPAL */}
         <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
           <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-8 border-b border-slate-200 pb-6 gap-4">
             <div>
@@ -171,7 +182,6 @@ export default function AnalisisAvanzado() {
           </header>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* PANEL IZQUIERDO: PERFIL */}
             <div className="xl:col-span-1 space-y-6">
                 <div className="bg-white p-6 md:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm">
                     <div className="flex items-center gap-2 mb-6">
@@ -198,7 +208,6 @@ export default function AnalisisAvanzado() {
                 </div>
             </div>
 
-            {/* PANEL DERECHO: INFORME GENERADO */}
             <div className="xl:col-span-2">
                 <div className="bg-white p-6 md:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm h-full">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-8 gap-4 border-b border-slate-100 pb-6">
@@ -211,7 +220,6 @@ export default function AnalisisAvanzado() {
                         </span>
                     </div>
                     
-                    {/* 🚀 AÑADIDO text-slate-700 COMO BASE PARA QUE NUNCA SE QUEDE EN BLANCO */}
                     <div className="text-slate-700 prose prose-sm md:prose-base prose-slate prose-headings:font-black prose-h2:text-blue-900 prose-h3:text-slate-800 prose-p:text-slate-700 prose-p:font-medium prose-strong:text-slate-900 prose-li:font-medium max-w-none">
                         <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
                     </div>
