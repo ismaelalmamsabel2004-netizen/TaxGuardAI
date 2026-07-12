@@ -5,7 +5,6 @@ import { UserButton, Show, SignInButton } from "@clerk/nextjs";
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 
-// Registramos fuentes profesionales para un acabado Premium en el PDF
 Font.register({
   family: 'Roboto',
   fonts: [
@@ -16,7 +15,6 @@ Font.register({
   ]
 });
 
-// Estilos PREMIUM PARA EL PDF
 const styles = StyleSheet.create({
   page: { backgroundColor: '#ffffff', padding: 50, fontFamily: 'Roboto' },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#2563eb', marginBottom: 40 },
@@ -151,14 +149,26 @@ export default function GeneradorFacturas() {
 
   useEffect(() => {
     setIsMounted(true);
-    fetch(`/api/finances?t=${Date.now()}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(d => {
-        const list = Array.from(new Set(d.map((x:any) => x.empresaId))) as string[];
-        setEmpresas(list.length > 0 ? list : ["Mi Primera Empresa"]);
+    fetch('/api/settings')
+      .then(res => res.ok ? res.json() : {})
+      .then((ajustesGuardados: any) => {
+         const listaEmpresas = ajustesGuardados.empresas || ["Mi Primera Empresa"];
+         setEmpresas(listaEmpresas);
+         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         setEmpresaId(activa);
       });
-    setEmpresaId(localStorage.getItem('taxguard_empresaActiva') || "");
   }, []);
+
+  const cambiarEmpresa = async (nuevaEmpresa: string) => {
+    setEmpresaId(nuevaEmpresa);
+    const res = await fetch('/api/settings');
+    const actuales: any = await res.json();
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
+    });
+  };
 
   if (!isMounted) return null;
 
@@ -187,7 +197,7 @@ export default function GeneradorFacturas() {
     try {
       const [y, m, d] = fecha.split('-');
       const fechaFormateada = `${d}/${m}/${y}`;
-     
+      
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -223,10 +233,10 @@ export default function GeneradorFacturas() {
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
-          {/* CABECERA MÓVIL CORRECTA Y ELEGANTE */}
+          {/* 🚀 CABECERA MÓVIL CON ESCUDO */}
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
-               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">T</div>
+               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
                <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
             </div>
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-2">
@@ -234,12 +244,12 @@ export default function GeneradorFacturas() {
             </button>
           </div>
 
-          {/* BARRA LATERAL ESTÉTICA (Como en las otras pantallas) */}
           <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
             <div>
               <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
+                {/* 🚀 MENÚ LATERAL CON ESCUDO */}
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">T</div>
+                  <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                   <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
                 </div>
                 <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
@@ -249,10 +259,7 @@ export default function GeneradorFacturas() {
              
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
-                <select value={empresaId} onChange={(e) => {
-                    setEmpresaId(e.target.value);
-                    localStorage.setItem('taxguard_empresaActiva', e.target.value);
-                }} className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none">
+                <select value={empresaId} onChange={(e) => cambiarEmpresa(e.target.value)} className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none">
                     {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                 </select>
               </div>
@@ -285,10 +292,8 @@ export default function GeneradorFacturas() {
             </div>
           </aside>
 
-          {/* Sombra de fondo menú móvil */}
           {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
-          {/* ZONA PRINCIPAL DE LA PANTALLA */}
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-8 border-b border-slate-200 pb-6 gap-4">
               <div>
@@ -328,11 +333,9 @@ export default function GeneradorFacturas() {
               </div>
             )}
 
-            {/* FORMULARIO ESTÉTICO Y PROFESIONAL */}
             <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-5xl mx-auto">
               <div className="grid grid-cols-1 lg:grid-cols-2">
                 
-                {/* Lado Izquierdo - Datos */}
                 <div className="p-5 md:p-8 border-b lg:border-b-0 lg:border-r border-slate-100 bg-white">
                   <div className="flex items-center gap-2 mb-6">
                     <span className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse"></span>
@@ -372,7 +375,6 @@ export default function GeneradorFacturas() {
                   </div>
                 </div>
 
-                {/* Lado Derecho - Cálculos */}
                 <div className="p-5 md:p-8 bg-slate-50/50 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-6">
@@ -404,7 +406,6 @@ export default function GeneradorFacturas() {
                     </div>
                   </div>
 
-                  {/* Bloque de Resumen y Total */}
                   <div className="mt-10 bg-white p-6 rounded-2xl border border-slate-200 shadow-md relative overflow-hidden">
                      <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                      <div className="space-y-3 mb-5">
@@ -430,13 +431,13 @@ export default function GeneradorFacturas() {
         </div>
       </Show>
 
-      {/* Landing Page (Para usuarios no logueados) */}
+      {/* 🚀 LANDING PAGE CON ESCUDO PARA NO LOGUEADOS */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
             <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/20">T</div>
+                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain shadow-lg shadow-blue-500/20" />
                 <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
               </div>
               <div className="flex items-center gap-4">

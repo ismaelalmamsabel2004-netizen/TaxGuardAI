@@ -20,48 +20,46 @@ export default function ModelosTributarios() {
   useEffect(() => {
     setIsMounted(true);
     
-    // Recuperar el trimestre actual automáticamente
     const mesActual = new Date().getMonth() + 1;
     if (mesActual <= 3) setTrimestre("1T");
     else if (mesActual <= 6) setTrimestre("2T");
     else if (mesActual <= 9) setTrimestre("3T");
     else setTrimestre("4T");
 
-    const activa = localStorage.getItem('taxguard_empresaActiva') || "";
-    setEmpresaId(activa);
-
-    fetch(`/api/finances?t=${Date.now()}`)
-      .then(res => res.ok ? res.json() : [])
-      .then(d => {
-         const cloudEmpresas = Array.from(new Set(d.map((x:any) => x.empresaId).filter(Boolean))) as string[];
-         const guardadas = localStorage.getItem('taxguard_empresas');
-         let lista = guardadas ? JSON.parse(guardadas) : ["Alperez"];
+    fetch('/api/settings')
+      .then(res => res.ok ? res.json() : {})
+      .then((ajustesGuardados: any) => {
+         const listaEmpresas = ajustesGuardados.empresas || ["Alperez"];
+         setEmpresas(listaEmpresas);
          
-         if (cloudEmpresas.length > 0) {
-            lista = Array.from(new Set([...lista, ...cloudEmpresas]));
-         }
-         
-         setEmpresas(lista);
-         localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
+         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         setEmpresaId(activa);
 
-         if (!activa && lista.length > 0) {
-            setEmpresaId(lista[0]);
-            localStorage.setItem('taxguard_empresaActiva', lista[0]);
+         if (activa) {
+           fetch(`/api/finances?empresaId=${activa}&t=${Date.now()}`)
+             .then(res => res.ok ? res.json() : [])
+             .then(d => setData(d));
          }
       });
   }, []);
 
-  // 🚀 CARGAR DATOS FINANCIEROS
-  useEffect(() => {
-    if (!empresaId) return;
-    fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
-      .then(res => res.ok ? res.json() : [])
+  const cambiarEmpresa = async (nuevaEmpresa: string) => {
+    setEmpresaId(nuevaEmpresa);
+    const res = await fetch('/api/settings');
+    const actuales: any = await res.json();
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
+    });
+
+    fetch(`/api/finances?empresaId=${nuevaEmpresa}&t=${Date.now()}`)
+      .then(r => r.ok ? r.json() : [])
       .then(d => setData(d));
-  }, [empresaId]);
+  };
 
   // 🚀 MOTOR MATEMÁTICO DEL MODELO 303
   const calcularModelo303 = () => {
-    // 1. Filtrar los datos por el Trimestre y Año seleccionado
     const datosTrimestre = data.filter(d => {
       const [dia, mesStr, anioStr] = d.name.split('/');
       if (anioStr !== anio) return false;
@@ -74,11 +72,9 @@ export default function ModelosTributarios() {
       return false;
     });
 
-    // 2. Separar Ingresos y Gastos
     const ingresos = datosTrimestre.filter(d => Number(d.total) > 0);
     const gastos = datosTrimestre.filter(d => Number(d.total) < 0);
 
-    // 3. I. IVA DEVENGADO (Ingresos divididos por tramos de IVA)
     const base21 = ingresos.filter(i => Number(i.iva) === 21).reduce((acc, curr) => acc + Number(curr.total), 0);
     const cuota21 = base21 * 0.21;
 
@@ -90,14 +86,12 @@ export default function ModelosTributarios() {
 
     const totalCuotaDevengada = cuota21 + cuota10 + cuota4;
 
-    // 4. II. IVA DEDUCIBLE (Gastos)
     const baseDeducible = gastos.reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const cuotaDeducible = gastos.reduce((acc, curr) => {
        const tipoIva = Number(curr.iva) || 0;
        return acc + (Math.abs(Number(curr.total)) * (tipoIva / 100));
     }, 0);
 
-    // 5. RESULTADO FINAL
     const resultado = totalCuotaDevengada - cuotaDeducible;
 
     return {
@@ -108,7 +102,6 @@ export default function ModelosTributarios() {
 
   const mod303 = calcularModelo303();
 
-  // Función para descargar un informe rápido (TXT)
   const descargarInforme = () => {
     const texto = `MODELO 303 - BORRADOR\nEmpresa: ${empresaId}\nPeriodo: ${trimestre} ${anio}\n\nIVA DEVENGADO (Ingresos)\n- Base 21%: ${mod303.base21.toFixed(2)} € | Cuota: ${mod303.cuota21.toFixed(2)} €\n- Base 10%: ${mod303.base10.toFixed(2)} € | Cuota: ${mod303.cuota10.toFixed(2)} €\n- Base 4%: ${mod303.base4.toFixed(2)} € | Cuota: ${mod303.cuota4.toFixed(2)} €\nTOTAL DEVENGADO: ${mod303.totalCuotaDevengada.toFixed(2)} €\n\nIVA DEDUCIBLE (Gastos)\n- Base: ${mod303.baseDeducible.toFixed(2)} € | Cuota: ${mod303.cuotaDeducible.toFixed(2)} €\n\nRESULTADO LIQUIDACIÓN: ${mod303.resultado.toFixed(2)} €`;
     const blob = new Blob([texto], { type: 'text/plain' });
@@ -123,10 +116,10 @@ export default function ModelosTributarios() {
     <Show when="signed-in">
       <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
         
-        {/* CABECERA MÓVIL */}
+        {/* 🚀 CABECERA MÓVIL CON ESCUDO */}
         <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
           <div className="flex items-center gap-2">
-             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">T</div>
+             <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
              <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
           </div>
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-2">
@@ -134,12 +127,12 @@ export default function ModelosTributarios() {
           </button>
         </div>
 
-        {/* BARRA LATERAL EXACTA Y CONSISTENTE */}
         <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
           <div>
             <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
+              {/* 🚀 MENÚ LATERAL CON ESCUDO */}
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">T</div>
+                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                 <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
               </div>
               <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
@@ -151,10 +144,7 @@ export default function ModelosTributarios() {
               <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
               <select 
                  value={empresaId} 
-                 onChange={(e) => {
-                    setEmpresaId(e.target.value);
-                    localStorage.setItem('taxguard_empresaActiva', e.target.value);
-                 }} 
+                 onChange={(e) => cambiarEmpresa(e.target.value)} 
                  className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none"
               >
                   {empresas.map(e => <option key={e} value={e}>{e}</option>)}
@@ -191,7 +181,6 @@ export default function ModelosTributarios() {
 
         {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
-        {/* CONTENIDO PRINCIPAL - MODELO 303 */}
         <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
           
           <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-10 gap-6">
@@ -201,7 +190,6 @@ export default function ModelosTributarios() {
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
-               {/* SELECTOR DE PERIODO */}
                <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
                   {['1T', '2T', '3T', '4T'].map(t => (
                      <button 
@@ -229,10 +217,8 @@ export default function ModelosTributarios() {
             </div>
           </header>
 
-          {/* TARJETA ESTILO AGENCIA TRIBUTARIA (MOCKUP REPLICADO) */}
           <div className="max-w-4xl mx-auto">
              <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
-                {/* Cabecera Naranja (Estilo Hacienda) */}
                 <div className="bg-orange-500 p-6 md:p-8 text-white">
                    <h2 className="text-2xl font-black tracking-tight">Modelo 303</h2>
                    <p className="font-medium text-orange-100 mt-1">Borrador interno calculado en tiempo real para <strong>{empresaId}</strong></p>
@@ -240,11 +226,9 @@ export default function ModelosTributarios() {
 
                 <div className="p-6 md:p-10 space-y-10">
                    
-                   {/* I. IVA DEVENGADO */}
                    <section>
                       <h3 className="text-sm font-black text-orange-600 uppercase tracking-widest mb-4">I. IVA Devengado (Tus Ingresos)</h3>
                       <div className="space-y-4">
-                         {/* Línea 21% */}
                          <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
                             <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen general ordinario (21%)</span>
                             <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
@@ -263,7 +247,6 @@ export default function ModelosTributarios() {
                             </div>
                          </div>
 
-                         {/* Línea 10% */}
                          <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
                             <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen reducido (10%)</span>
                             <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
@@ -282,7 +265,6 @@ export default function ModelosTributarios() {
                             </div>
                          </div>
 
-                         {/* Línea 4% */}
                          <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
                             <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen superreducido (4%)</span>
                             <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
@@ -301,7 +283,6 @@ export default function ModelosTributarios() {
                             </div>
                          </div>
 
-                         {/* Suma Devengado */}
                          <div className="flex justify-between items-center p-4 bg-orange-50 rounded-2xl border border-orange-100">
                             <span className="text-sm font-black text-orange-800 uppercase tracking-wide">Suma de Cuotas [27]:</span>
                             <span className="text-lg font-black text-orange-600">+{mod303.totalCuotaDevengada.toFixed(2)} €</span>
@@ -309,7 +290,6 @@ export default function ModelosTributarios() {
                       </div>
                    </section>
 
-                   {/* II. IVA DEDUCIBLE */}
                    <section>
                       <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">II. IVA Deducible (Tus Gastos)</h3>
                       <div className="space-y-4">
@@ -329,7 +309,6 @@ export default function ModelosTributarios() {
                       </div>
                    </section>
 
-                   {/* RESULTADO FINAL */}
                    <section className="pt-6 border-t border-slate-200">
                       <div className={`p-6 md:p-8 rounded-3xl flex flex-col sm:flex-row justify-between sm:items-center gap-4 border ${mod303.resultado > 0 ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
                          <span className="text-sm font-black text-slate-600 uppercase tracking-widest">Resultado Liquidación [71]</span>
