@@ -4,16 +4,6 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import PwaActivator from './PwaActivator'
-import { useEffect } from 'react';
-
-// Pon esto dentro de tu componente principal en layout.tsx:
-useEffect(() => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
-      .then((reg) => console.log('🚀 TaxGuard AI PWA activada con éxito'))
-      .catch((err) => console.error('Fallo al registrar PWA:', err));
-  }
-}, []);
 
 const inter = Inter({ 
   subsets: ["latin"],
