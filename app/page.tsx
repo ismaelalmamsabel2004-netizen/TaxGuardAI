@@ -76,36 +76,35 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
 
+  const syncSettingsToCloud = async (ajustes: any) => {
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ajustes)
+      });
+    } catch (error) {
+      console.error("Error sincronizando ajustes en la nube", error);
+    }
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
   useEffect(() => { 
     setIsMounted(true); 
-    fetch(`/api/finances?t=${Date.now()}`)
-      .then(res => res.ok ? res.json() : [])
-      .then(d => {
-         const cloudEmpresas = Array.from(new Set(d.map((x:any) => x.empresaId).filter(Boolean))) as string[];
-         const guardadas = localStorage.getItem('taxguard_empresas');
-         let lista = guardadas ? JSON.parse(guardadas) : ["Alperez", "PetClean", "Techmovile"];
+    
+    fetch('/api/settings')
+      .then(res => res.ok ? res.json() : {})
+      .then((ajustesGuardados: any) => { // 🚀 Solución TS: : any
+         const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
+         setEmpresas(listaEmpresas);
          
-         if (cloudEmpresas.length > 0) {
-            lista = Array.from(new Set([...lista, ...cloudEmpresas]));
-         }
-         
-         setEmpresas(lista);
-         localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
+         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         setEmpresaId(activa);
 
-         const papeleraGuardada = localStorage.getItem('taxguard_papelera');
-         if (papeleraGuardada) setPapelera(JSON.parse(papeleraGuardada));
-
-         const activa = localStorage.getItem('taxguard_empresaActiva');
-         if (activa && lista.includes(activa)) {
-           setEmpresaId(activa);
-         } else {
-           setEmpresaId(lista[0] || "");
-           if (lista[0]) localStorage.setItem('taxguard_empresaActiva', lista[0]);
-         }
+         if (ajustesGuardados.papelera) setPapelera(ajustesGuardados.papelera);
       });
   }, []);
 
@@ -119,126 +118,111 @@ export default function Home() {
     setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
   }, [tipoTransaccion, categoriasIngreso, categoriasGasto]);
 
-  const agregarEmpresa = () => {
+  const agregarEmpresa = async () => {
     if (nuevaEmpresa && !empresas.includes(nuevaEmpresa)) {
       const lista = [...empresas, nuevaEmpresa];
       setEmpresas(lista);
-      localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
       setEmpresaId(nuevaEmpresa);
-      localStorage.setItem('taxguard_empresaActiva', nuevaEmpresa);
       setNuevaEmpresa("");
+      
+      const res = await fetch('/api/settings');
+      const actuales: any = await res.json(); // 🚀 Solución TS
+      await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaEmpresa });
     }
   };
 
-  const eliminarEmpresa = (nombre: string) => {
+  const eliminarEmpresa = async (nombre: string) => {
     const confirmacion = window.confirm(`⚠️ ATENCIÓN: ¿Estás seguro de que deseas borrar el espacio de trabajo "${nombre}"?\n\nLos datos se guardarán en la papelera de reciclaje durante 7 días antes de su eliminación definitiva.`);
     if (!confirmacion) return;
 
     const nuevaPapelera = [...papelera, { nombre, fecha: Date.now() }];
     setPapelera(nuevaPapelera);
-    localStorage.setItem('taxguard_papelera', JSON.stringify(nuevaPapelera));
 
     const lista = empresas.filter(e => e !== nombre);
     setEmpresas(lista);
-    localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
     
-    if (empresaId === nombre) {
-      const nuevaActiva = lista[0] || "";
-      setEmpresaId(nuevaActiva);
-      localStorage.setItem('taxguard_empresaActiva', nuevaActiva);
-    }
+    const nuevaActiva = empresaId === nombre ? (lista[0] || "") : empresaId;
+    setEmpresaId(nuevaActiva);
+
+    const res = await fetch('/api/settings');
+    const actuales: any = await res.json(); // 🚀 Solución TS
+    await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaActiva, papelera: nuevaPapelera });
   };
 
-  const recuperarDePapelera = (nombre: string) => {
+  const recuperarDePapelera = async (nombre: string) => {
     const lista = [...empresas, nombre];
     setEmpresas(lista);
-    localStorage.setItem('taxguard_empresas', JSON.stringify(lista));
 
     const nuevaPapelera = papelera.filter(item => item.nombre !== nombre);
     setPapelera(nuevaPapelera);
-    localStorage.setItem('taxguard_papelera', JSON.stringify(nuevaPapelera));
-
     setEmpresaId(nombre);
-    localStorage.setItem('taxguard_empresaActiva', nombre);
+
+    const res = await fetch('/api/settings');
+    const actuales: any = await res.json(); // 🚀 Solución TS
+    await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nombre, papelera: nuevaPapelera });
     alert(`✅ El espacio "${nombre}" ha sido restaurado con éxito.`);
   };
 
   useEffect(() => {
     if (!empresaId) return; 
 
-    const metasGuardadas = localStorage.getItem('taxguard_metas');
-    if (metasGuardadas) {
-      const metas = JSON.parse(metasGuardadas);
-      setMetaMensual(metas[empresaId] ? metas[empresaId] : 5000);
-      setInputMeta(metas[empresaId] ? metas[empresaId].toString() : "5000");
-    } else {
-      setMetaMensual(5000);
-      setInputMeta("5000");
-    }
+    fetch('/api/settings')
+      .then(res => res.ok ? res.json() : {})
+      .then((ajustesGuardados: any) => { // 🚀 Solución TS
+         
+         if (ajustesGuardados.metas && ajustesGuardados.metas[empresaId]) {
+           setMetaMensual(ajustesGuardados.metas[empresaId]);
+           setInputMeta(ajustesGuardados.metas[empresaId].toString());
+         } else {
+           setMetaMensual(5000);
+           setInputMeta("5000");
+         }
 
-    const perfilesGuardados = localStorage.getItem('taxguard_perfiles');
-    if (perfilesGuardados) {
-      const perfiles = JSON.parse(perfilesGuardados);
-      if (perfiles[empresaId]) {
-        setPerfilEmpresa(perfiles[empresaId]);
-        setSectorInput(perfiles[empresaId].sector);
-        setObjetivoInput(perfiles[empresaId].objetivo);
-      } else {
-        setPerfilEmpresa({ sector: "", objetivo: "" });
-        setSectorInput("");
-        setObjetivoInput("");
-      }
-    } else {
-      setPerfilEmpresa({ sector: "", objetivo: "" });
-      setSectorInput("");
-      setObjetivoInput("");
-    }
+         if (ajustesGuardados.perfiles && ajustesGuardados.perfiles[empresaId]) {
+           setPerfilEmpresa(ajustesGuardados.perfiles[empresaId]);
+           setSectorInput(ajustesGuardados.perfiles[empresaId].sector);
+           setObjetivoInput(ajustesGuardados.perfiles[empresaId].objetivo);
+         } else {
+           setPerfilEmpresa({ sector: "", objetivo: "" });
+           setSectorInput("");
+           setObjetivoInput("");
+         }
 
-    const catGuardadas = localStorage.getItem('taxguard_categorias');
-    if (catGuardadas) {
-      const cat = JSON.parse(catGuardadas);
-      if (cat[empresaId]) {
-        setCategoriasIngreso(cat[empresaId].ingreso);
-        setCategoriasGasto(cat[empresaId].gasto);
-        setCatsIngresoInput(cat[empresaId].ingreso.join(", "));
-        setCatsGastoInput(cat[empresaId].gasto.join(", "));
-      } else {
-        setCategoriasIngreso(defaultIngresos);
-        setCategoriasGasto(defaultGastos);
-        setCatsIngresoInput(defaultIngresos.join(", "));
-        setCatsGastoInput(defaultGastos.join(", "));
-      }
-    } else {
-      setCategoriasIngreso(defaultIngresos);
-      setCategoriasGasto(defaultGastos);
-      setCatsIngresoInput(defaultIngresos.join(", "));
-      setCatsGastoInput(defaultGastos.join(", "));
-    }
+         if (ajustesGuardados.categorias && ajustesGuardados.categorias[empresaId]) {
+           setCategoriasIngreso(ajustesGuardados.categorias[empresaId].ingreso);
+           setCategoriasGasto(ajustesGuardados.categorias[empresaId].gasto);
+           setCatsIngresoInput(ajustesGuardados.categorias[empresaId].ingreso.join(", "));
+           setCatsGastoInput(ajustesGuardados.categorias[empresaId].gasto.join(", "));
+         } else {
+           setCategoriasIngreso(defaultIngresos);
+           setCategoriasGasto(defaultGastos);
+           setCatsIngresoInput(defaultIngresos.join(", "));
+           setCatsGastoInput(defaultGastos.join(", "));
+         }
+      });
 
     setChatMessages([]);
   }, [empresaId]);
 
-  const guardarNuevaMeta = () => {
+  const guardarNuevaMeta = async () => {
     const nuevaMetaNum = Number(inputMeta);
     if (nuevaMetaNum > 0) {
       setMetaMensual(nuevaMetaNum);
-      const metasGuardadas = localStorage.getItem('taxguard_metas');
-      const metas = metasGuardadas ? JSON.parse(metasGuardadas) : {};
-      metas[empresaId] = nuevaMetaNum;
-      localStorage.setItem('taxguard_metas', JSON.stringify(metas));
+      
+      const res = await fetch('/api/settings');
+      const actuales: any = await res.json(); // 🚀 Solución TS
+      const metasObj = actuales.metas || {};
+      metasObj[empresaId] = nuevaMetaNum;
+      
+      await syncSettingsToCloud({ ...actuales, metas: metasObj });
     }
     setEditandoMeta(false);
   };
 
-  const guardarPerfil = () => {
+  const guardarPerfil = async () => {
     const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
     setPerfilEmpresa(nuevoPerfil);
     
-    const perfilesGuardados = localStorage.getItem('taxguard_perfiles');
-    const perfiles = perfilesGuardados ? JSON.parse(perfilesGuardados) : {};
-    perfiles[empresaId] = nuevoPerfil;
-    localStorage.setItem('taxguard_perfiles', JSON.stringify(perfiles));
-
     const nuevasIngreso = catsIngresoInput.split(',').map(c => c.trim()).filter(c => c);
     const nuevasGasto = catsGastoInput.split(',').map(c => c.trim()).filter(c => c);
     
@@ -249,11 +233,17 @@ export default function Home() {
     
     setCategoriasIngreso(catA_Guardar.ingreso);
     setCategoriasGasto(catA_Guardar.gasto);
+
+    const res = await fetch('/api/settings');
+    const actuales: any = await res.json(); // 🚀 Solución TS
     
-    const catGuardadas = localStorage.getItem('taxguard_categorias');
-    const catMemoria = catGuardadas ? JSON.parse(catGuardadas) : {};
-    catMemoria[empresaId] = catA_Guardar;
-    localStorage.setItem('taxguard_categorias', JSON.stringify(catMemoria));
+    const perfilesObj = actuales.perfiles || {};
+    perfilesObj[empresaId] = nuevoPerfil;
+    
+    const categoriasObj = actuales.categorias || {};
+    categoriasObj[empresaId] = catA_Guardar;
+    
+    await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj });
     
     setShowConfig(false);
   };
@@ -437,7 +427,6 @@ export default function Home() {
     };
   };
 
-  // 🚀 AQUÍ AÑADIMOS EL NUEVO MOTOR DE IMPORTACIÓN BANCARIA (CSV)
   const manejarImportarCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -585,35 +574,6 @@ export default function Home() {
     }
   };
 
-  const pedirAnalisisGemini = (datosParaAnalizar: any[]) => {
-    if (datosParaAnalizar.length < 2) {
-      setAiAnalysis("Muestras insuficientes en este periodo para generar una proyección.");
-      return;
-    }
-    setIsAnalyzing(true);
-    setAiAnalysis("Procesando balance de ingresos y gastos operativos con perfil corporativo...");
-    
-    const datosLimpios = datosParaAnalizar.map(d => ({
-      fecha: d.name,
-      categoria: d.categoria || 'General',
-      importe: d.total,
-      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento',
-      tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
-    }));
-
-    const contextoEmpresarial = `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo Principal: ${perfilEmpresa.objetivo || 'Estabilidad financiera'}.`;
-
-    fetch('/api/analyze', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: contextoEmpresarial }), 
-    })
-      .then(r => r.json())
-      .then(r => setAiAnalysis(r.analysis || "Error al estructurar el reporte."))
-      .catch(() => setAiAnalysis("Error en el servidor de inteligencia artificial."))
-      .finally(() => setIsAnalyzing(false));
-  };
-
   const enviarMensajeChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentMessage.trim()) return;
@@ -699,9 +659,13 @@ export default function Home() {
                 <div className="flex gap-2 mt-1">
                     <select 
                       value={empresaId} 
-                      onChange={(e) => {
-                        setEmpresaId(e.target.value);
-                        localStorage.setItem('taxguard_empresaActiva', e.target.value);
+                      onChange={async (e) => {
+                        const newId = e.target.value;
+                        setEmpresaId(newId);
+                        
+                        const res = await fetch('/api/settings');
+                        const actuales: any = await res.json(); // 🚀 Solución TS
+                        await syncSettingsToCloud({ ...actuales, empresaActiva: newId });
                       }} 
                       className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none"
                     >
@@ -889,7 +853,6 @@ export default function Home() {
               <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
                   
-                  {/* 🚀 AQUÍ ESTÁN TUS NUEVOS BOTONES DE OCR Y BANCO */}
                   <div className="flex flex-col gap-3 mb-6">
                     <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
                     <div className="grid grid-cols-2 gap-2 w-full">
