@@ -17,7 +17,6 @@ export default function AnalisisAvanzado() {
   const [aiAnalysis, setAiAnalysis] = useState("## Análisis Preliminar\nPara iniciar la auditoría, asegúrate de tener datos registrados en el Libro Mayor y pulsa el botón superior **Generar Nueva Auditoría**.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Cargamos datos desde la nueva base de datos en la nube
   useEffect(() => {
     setIsMounted(true);
 
@@ -49,7 +48,6 @@ export default function AnalisisAvanzado() {
     setEmpresaId(nuevaEmpresa);
     setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Pulsa **Generar Nueva Auditoría** para analizar este nuevo espacio de trabajo.");
     
-    // Guardar el cambio de empresa activa en la nube
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
     await fetch('/api/settings', {
@@ -69,6 +67,7 @@ export default function AnalisisAvanzado() {
       .then(d => setData(d));
   };
 
+  // 🚀 SISTEMA DE DEPURACIÓN EXTREMA
   const generarAuditoria = async () => {
     if (data.length === 0) {
       setAiAnalysis("⚠️ **Datos insuficientes.**\n\nNo hay transacciones en este Espacio de Trabajo. Por favor, añade ingresos o gastos en la Consola General para poder generar una auditoría.");
@@ -94,10 +93,25 @@ export default function AnalisisAvanzado() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: contextoEmpresarial }), 
       });
-      const json = await res.json();
-      setAiAnalysis(json.analysis || "❌ Error al estructurar el reporte de IA.");
-    } catch (error) {
-      setAiAnalysis("❌ Error de conexión con el motor de Inteligencia Artificial.");
+      
+      // En vez de parsear JSON directo, leemos la respuesta en crudo para ver si Vercel nos manda un error HTML (Timeout)
+      const textDecoded = await res.text();
+      
+      try {
+         const json = JSON.parse(textDecoded);
+         if (res.ok && json.analysis) {
+            setAiAnalysis(json.analysis);
+         } else {
+            // Imprimimos el error EXACTO que manda Google Gemini
+            setAiAnalysis(`❌ **Error devuelto por la IA:**\n\n${json.error || "Fallo desconocido."}\n\n*Haz una captura de este mensaje y pásasela a Manolo.*`);
+         }
+      } catch(parseError) {
+         // Si llega aquí, es que Vercel ha cortado la conexión a los 10 segundos
+         setAiAnalysis(`❌ **Error de Vercel (Timeout o Caída):**\n\nEl servidor ha tardado más de 10 segundos y ha abortado. \n\nRespuesta técnica:\n\`\`\`\n${textDecoded.substring(0, 150)}...\n\`\`\``);
+      }
+      
+    } catch (error: any) {
+      setAiAnalysis(`❌ **Error de conexión:** ${error.message}`);
     } finally {
       setIsAnalyzing(false);
     }
@@ -109,7 +123,7 @@ export default function AnalisisAvanzado() {
     <Show when="signed-in">
       <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
         
-        {/* 🚀 CABECERA MÓVIL CON ESCUDO */}
+        {/* CABECERA MÓVIL */}
         <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
           <div className="flex items-center gap-2">
              <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
@@ -120,10 +134,10 @@ export default function AnalisisAvanzado() {
           </button>
         </div>
 
+        {/* BARRA LATERAL */}
         <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
           <div>
             <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
-              {/* 🚀 MENÚ LATERAL CON ESCUDO */}
               <div className="flex items-center gap-3">
                 <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                 <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>

@@ -1,6 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
+// 🚀 ESTO ES CLAVE PARA QUE NO DE ERROR DE TIMEOUT EN VERCEL
+export const runtime = 'edge';
+
 export async function POST(req: Request) {
   try {
     const apiKey = process.env.GOOGLE_API_KEY;
@@ -12,8 +15,8 @@ export async function POST(req: Request) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // Ahora recibimos también el contexto de la empresa para personalizar el reporte
-    const { data, empresaId, contextoSector } = await req.json();
+    const body = await req.json();
+    const { data, empresaId, contextoSector } = body;
 
     const prompt = `
     Actúa como un Director Financiero (CFO) virtual corporativo de élite. 
@@ -32,7 +35,9 @@ export async function POST(req: Request) {
     `;
 
     const result = await model.generateContent(prompt);
-    return NextResponse.json({ analysis: result.response.text() });
+    const responseText = result.response.text();
+    
+    return NextResponse.json({ analysis: responseText });
 
   } catch (error: any) {
     console.error("Error en API:", error.message);
