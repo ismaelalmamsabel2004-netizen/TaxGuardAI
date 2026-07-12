@@ -1,8 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// 🚀 ESTO ES CLAVE PARA QUE NO DE ERROR DE TIMEOUT EN VERCEL
-export const runtime = 'edge';
+// 🚀 SOLUCIÓN DEFINITIVA: Volvemos al servidor normal para que lea la API Key,
+// pero le damos 60 segundos de tiempo de vida para que la IA piense tranquila.
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
