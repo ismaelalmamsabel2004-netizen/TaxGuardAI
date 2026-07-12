@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import PwaActivator from './PwaActivator'
 import { useEffect } from 'react';
 
 // Pon esto dentro de tu componente principal en layout.tsx:
@@ -55,6 +56,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <ClerkProvider>
         <body suppressHydrationWarning className={`${inter.variable} font-sans antialiased bg-background text-foreground`}>
+          <PwaActivator />
           {children}
           {process.env.NODE_ENV === 'production' && <Analytics />}
         </body>
