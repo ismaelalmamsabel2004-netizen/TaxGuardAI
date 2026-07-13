@@ -2,38 +2,91 @@
 
 import { prisma } from '../lib/prisma';
 import { auth } from '@clerk/nextjs/server';
-import { revalidatePath } from 'next/cache';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// 1. GUARDAR MANUAL
-export async function guardarTransaccionManual(formData: FormData) {
+// 1. OBTENER DATOS (Para llenar tu tabla avanzada)
+export async function obtenerDatosSupabase() {
   const { userId } = await auth();
-  if (!userId) return;
+  if (!userId) return [];
 
-  const categoria = formData.get('categoria') as string;
-  const tipo = formData.get('tipo') as string;
-  const baseImponible = parseFloat(formData.get('baseImponible') as string);
-  
+  const transacciones = await prisma.transaccion.findMany({
+    where: { userId: userId },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  // Transformamos los datos de Supabase al formato exacto que usa tu frontend
+  return transacciones.map(t => ({
+    id: t.id,
+    name: t.fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    total: t.tipo === 'GASTO' ? -t.baseImponible : t.baseImponible,
+    categoria: t.categoria,
+    iva: t.iva || 21,
+    isRecurrent: false, 
+    frecuencia: "Mensual"
+  }));
+}
+
+// 2. GUARDAR NUEVO DATO
+export async function guardarDatoSupabase(datos: any) {
+  const { userId } = await auth();
+  if (!userId) return { error: "No autorizado" };
+
+  // Convertimos tu fecha DD/MM/YYYY a un formato de base de datos
+  const [d, m, y] = datos.month.split('/');
+  const fechaObj = new Date(Number(y), Number(m) - 1, Number(d));
+
   await prisma.transaccion.create({
     data: {
       userId: userId,
-      categoria: categoria,
-      tipo: tipo,
-      baseImponible: baseImponible,
-      iva: 21,
+      fecha: fechaObj,
+      categoria: datos.categoria,
+      tipo: datos.total >= 0 ? 'INGRESO' : 'GASTO',
+      baseImponible: Math.abs(datos.total),
+      iva: Number(datos.iva) || 0,
     }
   });
-
-  revalidatePath('/dashboard');
+  return { success: true };
 }
 
-// 2. ESCÁNER IA
-export async function procesarFacturaIA(formData: FormData) {
+// 3. EDITAR DATO (Para tu botón de edición en línea)
+export async function editarDatoSupabase(datos: any) {
   const { userId } = await auth();
-  if (!userId) return { error: "Usuario de seguridad no encontrado." };
+  if (!userId) return { error: "No autorizado" };
+
+  const [d, m, y] = datos.month.split('/');
+  const fechaObj = new Date(Number(y), Number(m) - 1, Number(d));
+
+  await prisma.transaccion.update({
+    where: { id: datos.id, userId: userId },
+    data: {
+      fecha: fechaObj,
+      categoria: datos.categoria,
+      tipo: datos.total >= 0 ? 'INGRESO' : 'GASTO',
+      baseImponible: Math.abs(datos.total),
+      iva: Number(datos.iva) || 0,
+    }
+  });
+  return { success: true };
+}
+
+// 4. BORRAR DATO
+export async function borrarDatoSupabase(id: string) {
+  const { userId } = await auth();
+  if (!userId) return { error: "No autorizado" };
+
+  await prisma.transaccion.delete({
+    where: { id: id, userId: userId }
+  });
+  return { success: true };
+}
+
+// 5. EL CEREBRO DE LA IA (Para tu botón de escáner)
+export async function escanearFacturaIA(formData: FormData) {
+  const { userId } = await auth();
+  if (!userId) return { error: "No autorizado" };
 
   const file = formData.get('factura') as File;
-  if (!file || file.size === 0) return { error: "El archivo no ha llegado al servidor." };
+  const categorias = formData.get('categorias') as string;
 
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -43,73 +96,26 @@ export async function procesarFacturaIA(formData: FormData) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+    // Le decimos a la IA que use TUS categorías personalizadas
     const prompt = `
-      Eres un contable experto. Analiza esta imagen de una factura o ticket. 
-      Devuelve SOLO y EXCLUSIVAMENTE un objeto JSON, sin añadir comillas invertidas (\`\`\`) ni la palabra "json".
-      Ejemplo exacto de lo que debes devolver:
-      {"categoria": "MATERIAL", "tipo": "GASTO", "baseImponible": 45.50}
-      Opciones de categoria: VENTAS, NOMINAS, LOGISTICA, MATERIAL.
-      Opciones de tipo: INGRESO, GASTO.
+      Eres un contable experto. Analiza este ticket o factura.
+      Devuelve SOLO y EXCLUSIVAMENTE este JSON exacto:
+      {
+        "categoria": "Elige la que mejor encaje de esta lista: [${categorias}] o pon 'General'",
+        "base_imponible": (el subtotal sin IVA en número),
+        "iva": (el porcentaje de IVA en número, ej: 21, 10 o 0),
+        "fecha": "YYYY-MM-DD"
+      }
     `;
 
     const result = await model.generateContent([
       prompt,
-      {
-        inlineData: {
-          data: base64Image,
-          mimeType: file.type
-        }
-      }
+      { inlineData: { data: base64Image, mimeType: file.type } }
     ]);
 
-    const textoRespuesta = result.response.text();
-    let jsonLimpio = textoRespuesta.replace(/```json/gi, '').replace(/```/g, '').trim();
-    
-    let datosExtraidos;
-    try {
-      datosExtraidos = JSON.parse(jsonLimpio);
-    } catch (parseError) {
-      console.log("Lo que respondió la IA:", textoRespuesta);
-      return { error: "La IA se ha confundido leyendo la foto. Intenta con una imagen más clara." };
-    }
-
-    await prisma.transaccion.create({
-      data: {
-        userId: userId,
-        categoria: datosExtraidos.categoria,
-        tipo: datosExtraidos.tipo,
-        baseImponible: parseFloat(datosExtraidos.baseImponible),
-        iva: 21,
-      }
-    });
-
-    revalidatePath('/dashboard');
-    return { success: true }; 
-    
+    const texto = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
+    return { success: true, data: JSON.parse(texto) };
   } catch (error: any) {
-    console.error("Fallo del servidor:", error);
-    return { error: error.message || "Fallo grave en la conexión con la IA de Google." };
-  }
-}
-
-// 3. BORRAR TRANSACCIÓN (Control Total)
-export async function borrarTransaccion(transaccionId: string) {
-  const { userId } = await auth();
-  if (!userId) return { error: "Seguridad no validada." };
-
-  try {
-    await prisma.transaccion.delete({
-      where: {
-        id: transaccionId,
-        userId: userId, 
-      }
-    });
-
-    revalidatePath('/dashboard');
-    return { success: true };
-    
-  } catch (error) {
-    console.error(error);
-    return { error: "No se ha podido borrar la transacción. Intenta de nuevo." };
+    return { error: error.message || "Fallo de conexión con IA" };
   }
 }
