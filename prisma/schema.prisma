@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Esta es la estructura de cada movimiento de tu Libro Mayor
+model Transaccion {
+  id            String   @id @default(uuid())
+  userId        String   // El ID del usuario de Clerk
+  fecha         DateTime @default(now())
+  categoria     String   // VENTAS, NÓMINAS, LOGÍSTICA, etc.
+  tipo          String   // INGRESO o GASTO
+  baseImponible Float
+  iva           Float    @default(21) // Por defecto IVA del 21%
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

@@ -11,24 +11,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'TaxGuard AI | Intelligent Tax Analysis',
-  description: 'AI-powered tax analysis and VAT recovery for businesses. Securely analyze invoices and optimize your fiscal health.',
-  generator: 'v0.app',
+  title: 'TaxGuard AI | Director Financiero con Inteligencia Artificial',
+  description: 'Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros. El control total de tu rentabilidad en tiempo real.',
+  generator: 'Next.js',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
+    icon: '/icon.png',
     apple: '/apple-icon.png',
   },
 }
@@ -43,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <ClerkProvider>
         <body suppressHydrationWarning className={`${inter.variable} font-sans antialiased bg-background text-foreground`}>
           <PwaActivator />
