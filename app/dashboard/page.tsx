@@ -15,7 +15,7 @@ export default function Home() {
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  const [data, setData] = useState<{id?: any, name: string, total: number, categoria?: string, isRecurrent?: boolean, frecuencia?: string, iva?: number}[]>([]);
+  const [data, setData] = useState<any[]>([]);
  
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [empresaId, setEmpresaId] = useState(""); 
@@ -584,7 +584,14 @@ export default function Home() {
     setCurrentMessage("");
     setIsChatLoading(true);
 
-    const datosContexto = datosVisibles.map(d => ({ fecha: d.name, categoria: d.categoria, importe: d.total }));
+    const datosContexto = datosVisibles.map(d => ({ 
+   fecha: d.name, 
+   categoria: d.categoria, 
+   importe: d.total, 
+   cliente: d.cliente_nombre || d.cliente || 'Desconocido', 
+   concepto: d.concepto_detalle || d.concepto || 'General', 
+   factura: d.numero_factura || d.factura || 'Manual' 
+}));
 
     try {
       const res = await fetch('/api/chat', {

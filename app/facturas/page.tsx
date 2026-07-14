@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { UserButton, Show, SignInButton } from "@clerk/nextjs";
 import Link from 'next/link';
-// 🚀 NUEVO: Importamos Image de react-pdf para poder pintar tu logo
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 
 Font.register({
@@ -20,7 +19,6 @@ const styles = StyleSheet.create({
   page: { backgroundColor: '#ffffff', padding: 50, fontFamily: 'Roboto' },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#2563eb', marginBottom: 40 },
   logoSection: { flexDirection: 'column', maxWidth: '60%' },
-  // 🚀 ESTILOS DEL LOGO Y PAGOS EN EL PDF
   logoImage: { width: 140, height: 60, objectFit: 'contain', marginBottom: 8 },
   logoText: { fontSize: 28, fontWeight: 700, color: '#0f172a', letterSpacing: -0.5, marginBottom: 4 },
   logoSub: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 },
@@ -66,7 +64,6 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
     <Page size="A4" style={styles.page}>
       <View style={styles.headerContainer}>
         <View style={styles.logoSection}>
-          {/* 🚀 EL PDF DETECTA SI HAS SUBIDO LOGO O NO */}
           {datos.logo ? (
              <Image src={datos.logo} style={styles.logoImage} />
           ) : (
@@ -114,7 +111,6 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
       </View>
 
       <View style={styles.bottomSection}>
-         {/* 🚀 SECCIÓN DE PAGO (IBAN) */}
          <View style={styles.paymentWrapper}>
             <View style={styles.paymentBox}>
                <Text style={styles.paymentTitle}>Método de Pago</Text>
@@ -124,7 +120,6 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
                )}
             </View>
          </View>
-
          <View style={styles.totalsWrapper}>
            <View style={styles.totalsBox}>
              <View style={styles.totalRow}>
@@ -155,16 +150,13 @@ export default function GeneradorFacturas() {
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // 🚀 ESTADO PARA GUARDAR TODA LA CONFIGURACIÓN GLOBAL
   const [allSettings, setAllSettings] = useState<any>({});
-  
   const [empresaId, setEmpresaId] = useState("");
   const [empresas, setEmpresas] = useState<string[]>([]);
   
   const [numeroFactura, setNumeroFactura] = useState(`F-${new Date().getFullYear()}-001`);
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   
-  // 🚀 CAMPOS FISCALES PREDEFINIDOS
   const [miNif, setMiNif] = useState("");
   const [miDireccion, setMiDireccion] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
@@ -182,11 +174,15 @@ export default function GeneradorFacturas() {
   const [isSaving, setIsSaving] = useState(false);
   const [facturaGuardada, setFacturaGuardada] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-
   const [facturaBloqueada, setFacturaBloqueada] = useState(false);
+  
   const [historialFacturas, setHistorialFacturas] = useState<any[]>([]);
 
-  // 1. CARGAMOS TODOS LOS AJUSTES DE SUPABASE AL ENTRAR
+  // 🚀 NUEVOS ESTADOS: Búsqueda y Paginación
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   useEffect(() => {
     setIsMounted(true);
     fetch('/api/settings')
@@ -200,7 +196,6 @@ export default function GeneradorFacturas() {
       });
   }, []);
 
-  // 2. CUANDO CAMBIA LA EMPRESA, CARGAMOS SUS DATOS FISCALES POR DEFECTO
   useEffect(() => {
      if (empresaId && allSettings.datosFacturacion && allSettings.datosFacturacion[empresaId]) {
          const config = allSettings.datosFacturacion[empresaId];
@@ -214,7 +209,6 @@ export default function GeneradorFacturas() {
      }
   }, [empresaId, allSettings]);
 
-  // 3. CARGAMOS EL HISTORIAL Y EL AUTONUMÉRICO
   useEffect(() => {
     if (!empresaId) return;
     fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
@@ -246,7 +240,6 @@ export default function GeneradorFacturas() {
     });
   };
 
-  // 🚀 TRANSFORMA EL LOGO EN UN CÓDIGO QUE LA NUBE PUEDE GUARDAR
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -257,21 +250,13 @@ export default function GeneradorFacturas() {
       reader.readAsDataURL(file);
   };
 
-  // 🚀 GUARDA LOS DATOS POR DEFECTO DEL EMISOR
   const guardarDatosEmisor = async () => {
       const newSettings = { ...allSettings };
       if (!newSettings.datosFacturacion) newSettings.datosFacturacion = {};
-      
       newSettings.datosFacturacion[empresaId] = {
-          nif: miNif,
-          direccion: miDireccion,
-          logo: logo,
-          metodoPago: metodoPago,
-          iban: iban
+          nif: miNif, direccion: miDireccion, logo: logo, metodoPago: metodoPago, iban: iban
       };
-      
       setAllSettings(newSettings);
-      
       await fetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -313,16 +298,9 @@ export default function GeneradorFacturas() {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ 
-          month: fechaFormateada, 
-          total: baseNum, 
-          empresaId: empresaId, 
-          categoria: "Ventas", 
-          isRecurrent: false, 
-          iva: ivaSeleccionado,
-          numero_factura: numeroFactura,
-          cliente_nombre: clienteNombre,
-          cliente_nif: clienteNif,
-          concepto_detalle: concepto
+          month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: "Ventas", 
+          isRecurrent: false, iva: ivaSeleccionado, numero_factura: numeroFactura,
+          cliente_nombre: clienteNombre, cliente_nif: clienteNif, concepto_detalle: concepto
         }) 
       });
 
@@ -346,6 +324,18 @@ export default function GeneradorFacturas() {
      setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); setConcepto(""); setBaseImponible("");
      setFacturaBloqueada(false); 
   };
+
+  // 🚀 LÓGICA DE BÚSQUEDA Y PAGINACIÓN
+  const filteredHistorial = historialFacturas.filter((fac: any) => {
+     const search = searchTerm.toLowerCase();
+     const numFac = fac.numero_factura?.toLowerCase() || "";
+     const cliente = fac.cliente_nombre?.toLowerCase() || "";
+     const conceptoStr = fac.concepto_detalle?.toLowerCase() || "";
+     return numFac.includes(search) || cliente.includes(search) || conceptoStr.includes(search);
+  });
+
+  const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
+  const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <>
@@ -578,7 +568,17 @@ export default function GeneradorFacturas() {
             </div>
 
             <div className="max-w-5xl mx-auto mt-12 mb-10">
-              <h2 className="text-lg font-black text-slate-900 mb-4">Historial de Ingresos ({empresaId})</h2>
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4">
+                  <h2 className="text-lg font-black text-slate-900">Historial de Ingresos ({empresaId})</h2>
+                  <input
+                     type="text"
+                     placeholder="🔍 Buscar cliente, factura o concepto..."
+                     value={searchTerm}
+                     onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                     className="w-full sm:w-72 p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                  />
+              </div>
+              
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                  <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse whitespace-nowrap">
@@ -593,10 +593,10 @@ export default function GeneradorFacturas() {
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100">
-                          {historialFacturas.length === 0 ? (
-                             <tr><td colSpan={6} className="p-8 text-center text-sm font-medium text-slate-400">Aún no hay facturas registradas en este espacio de trabajo.</td></tr>
+                          {currentItems.length === 0 ? (
+                             <tr><td colSpan={6} className="p-8 text-center text-sm font-medium text-slate-400">No hay facturas que coincidan con la búsqueda.</td></tr>
                           ) : (
-                             historialFacturas.map((fac, idx) => (
+                             currentItems.map((fac, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50 transition">
                                    <td className="p-4 md:p-5">
                                       <div className="flex flex-col">
@@ -626,6 +626,28 @@ export default function GeneradorFacturas() {
                        </tbody>
                     </table>
                  </div>
+                 
+                 {totalPages > 1 && (
+                    <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                       <button
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          disabled={currentPage === 1}
+                          className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition shadow-sm"
+                       >
+                          Anterior
+                       </button>
+                       <span className="text-xs font-semibold text-slate-500">
+                          Página <span className="font-black text-slate-700">{currentPage}</span> de {totalPages}
+                       </span>
+                       <button
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          disabled={currentPage === totalPages}
+                          className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition shadow-sm"
+                       >
+                          Siguiente
+                       </button>
+                    </div>
+                 )}
               </div>
             </div>
 
@@ -634,8 +656,9 @@ export default function GeneradorFacturas() {
         </div>
       </Show>
 
+      {/* LANDING PAGE... (Igual que antes) */}
       <Show when="signed-out">
-        {/* ... Lógica de landing intacta ... */}
+         {/* ... El código del Landing Page de Clerk que ya tenías ... */}
       </Show>
     </>
   );
