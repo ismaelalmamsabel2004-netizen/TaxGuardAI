@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserButton, Show } from "@clerk/nextjs";
+import { UserButton, Show, SignInButton } from "@clerk/nextjs";
 import Link from 'next/link';
 
 export default function ModelosTributarios() {
@@ -15,6 +15,8 @@ export default function ModelosTributarios() {
   // 🚀 ESTADOS FISCALES
   const [trimestre, setTrimestre] = useState("1T");
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
+  // 🚀 NUEVO: Array para guardar los años dinámicos detectados
+  const [aniosDisponibles, setAniosDisponibles] = useState<string[]>([new Date().getFullYear().toString()]);
 
   // 🚀 SINCRONIZACIÓN CON LA NUBE
   useEffect(() => {
@@ -38,7 +40,22 @@ export default function ModelosTributarios() {
          if (activa) {
            fetch(`/api/finances?empresaId=${activa}&t=${Date.now()}`)
              .then(res => res.ok ? res.json() : [])
-             .then(d => setData(d));
+             .then(d => {
+                setData(d);
+                // 🚀 LÓGICA INTELIGENTE: Extraer años únicos de los datos reales
+                if (d.length > 0) {
+                    const aniosUnicos = new Set<string>();
+                    d.forEach((item: any) => {
+                        const [, , year] = item.name.split('/');
+                        if (year) aniosUnicos.add(year);
+                    });
+                    // Aseguramos que el año actual siempre esté
+                    aniosUnicos.add(new Date().getFullYear().toString());
+                    // Los ordenamos de más reciente a más antiguo
+                    const aniosOrdenados = Array.from(aniosUnicos).sort((a, b) => Number(b) - Number(a));
+                    setAniosDisponibles(aniosOrdenados);
+                }
+             });
          }
       });
   }, []);
@@ -55,13 +72,25 @@ export default function ModelosTributarios() {
 
     fetch(`/api/finances?empresaId=${nuevaEmpresa}&t=${Date.now()}`)
       .then(r => r.ok ? r.json() : [])
-      .then(d => setData(d));
+      .then(d => {
+          setData(d);
+          // Recalculamos años si cambiamos de empresa
+          if (d.length > 0) {
+              const aniosUnicos = new Set<string>();
+              d.forEach((item: any) => {
+                  const [, , year] = item.name.split('/');
+                  if (year) aniosUnicos.add(year);
+              });
+              aniosUnicos.add(new Date().getFullYear().toString());
+              setAniosDisponibles(Array.from(aniosUnicos).sort((a, b) => Number(b) - Number(a)));
+          }
+      });
   };
 
   // 🚀 MOTOR MATEMÁTICO DEL MODELO 303
   const calcularModelo303 = () => {
     const datosTrimestre = data.filter(d => {
-      const [dia, mesStr, anioStr] = d.name.split('/');
+      const [, mesStr, anioStr] = d.name.split('/');
       if (anioStr !== anio) return false;
       
       const m = Number(mesStr);
@@ -139,7 +168,7 @@ export default function ModelosTributarios() {
                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-           
+            
             <div className="mb-6 px-2">
               <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
               <select 
@@ -150,7 +179,7 @@ export default function ModelosTributarios() {
                   {empresas.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
-           
+            
             <nav className="space-y-1">
               <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/" onClick={() => setIsSidebarOpen(false)}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
@@ -170,7 +199,7 @@ export default function ModelosTributarios() {
               </Link>
             </nav>
           </div>
-         
+          
           <div className="mt-auto">
             <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
               <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
@@ -202,12 +231,13 @@ export default function ModelosTributarios() {
                   ))}
                </div>
                
+               {/* 🚀 NUEVO SELECTOR INTELIGENTE: Pinta los años dinámicamente */}
                <select 
-                  value={anio} 
-                  onChange={(e) => setAnio(e.target.value)}
-                  className="bg-white border border-slate-200 text-slate-700 font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm outline-none"
+                 value={anio} 
+                 onChange={(e) => setAnio(e.target.value)}
+                 className="bg-white border border-slate-200 text-slate-700 font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm outline-none"
                >
-                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                 {aniosDisponibles.map(y => <option key={y} value={y}>{y}</option>)}
                </select>
 
                <button onClick={descargarInforme} className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2">
