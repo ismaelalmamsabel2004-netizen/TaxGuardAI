@@ -4,10 +4,8 @@ import { useState, useEffect } from "react";
 import { UserButton, Show, SignInButton } from "@clerk/nextjs";
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-// 🚀 NUEVO: Importamos los componentes de gráficos
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
-// Colores profesionales para el gráfico circular
 const COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#6366f1', '#14b8a6', '#64748b'];
 
 export default function AnalisisAvanzado() {
@@ -18,24 +16,24 @@ export default function AnalisisAvanzado() {
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   
-  const [data, setData] = useState<any[]>([]);
+  // 🚀 ESTADOS PARA DATOS Y FILTROS
+  const [allData, setAllData] = useState<any[]>([]);
+  const [filtroTiempo, setFiltroTiempo] = useState("year"); 
   const [aiAnalysis, setAiAnalysis] = useState("## Análisis Preliminar\nPara iniciar la auditoría profunda, asegúrate de tener datos registrados en el Libro Mayor y pulsa el botón superior **Generar Nueva Auditoría**.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // 🚀 NUEVOS ESTADOS PARA LOS GRÁFICOS
+  // ESTADOS DE LOS GRÁFICOS
   const [chartDataEvolucion, setChartDataEvolucion] = useState<any[]>([]);
   const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
   const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
 
   useEffect(() => {
     setIsMounted(true);
-
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
          const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
-         
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
 
@@ -48,7 +46,7 @@ export default function AnalisisAvanzado() {
          if (activa) {
            fetch(`/api/finances?empresaId=${activa}&t=${Date.now()}`)
              .then(res => res.ok ? res.json() : [])
-             .then(d => processFinanceData(d))
+             .then(d => setAllData(d))
              .catch(err => console.error("Error cargando finanzas:", err));
          }
       });
@@ -74,30 +72,43 @@ export default function AnalisisAvanzado() {
 
     fetch(`/api/finances?empresaId=${nuevaEmpresa}&t=${Date.now()}`)
       .then(r => r.ok ? r.json() : [])
-      .then(d => processFinanceData(d));
+      .then(d => setAllData(d));
   };
 
-  // 🚀 LÓGICA MATEMÁTICA PARA ALIMENTAR LOS GRÁFICOS
-  const processFinanceData = (rawData: any[]) => {
-    setData(rawData);
-    if (!rawData || rawData.length === 0) {
+  // 🚀 LÓGICA INTELIGENTE DE FILTRADO
+  useEffect(() => {
+    if (!allData || allData.length === 0) {
        setChartDataEvolucion([]); setChartDataGastos([]); setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
        return;
     }
 
+    const ahora = new Date().getTime();
+    
+    const datosFiltrados = allData.filter(item => {
+        if (filtroTiempo === 'all') return true;
+        const [d, m, y] = item.name.split('/');
+        const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+        const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
+        
+        if (filtroTiempo === 'month') return diffDias <= 30;
+        if (filtroTiempo === 'quarter') return diffDias <= 90;
+        if (filtroTiempo === 'year') return diffDias <= 365;
+        return true;
+    });
+
     let totalIngresos = 0;
     let totalGastos = 0;
-    const mensualidades: Record<string, { Ingresos: number, Gastos: number }> = {};
+    const mensualidades: Record<string, { Ingresos: number, Gastos: number, sortKey: number }> = {};
     const categoriasGastos: Record<string, number> = {};
 
-    rawData.forEach(item => {
+    datosFiltrados.forEach(item => {
         const valor = Number(item.total);
         const [dia, mes, anio] = item.name.split('/');
-        // Acortamos el mes para que quede bonito en el gráfico (ej: "Ene 2026")
         const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
         const mesLlave = `${nombresMeses[Number(mes) - 1]} ${anio}`;
+        const sortKey = Number(anio) * 100 + Number(mes); // Para ordenar cronológicamente
 
-        if (!mensualidades[mesLlave]) mensualidades[mesLlave] = { Ingresos: 0, Gastos: 0 };
+        if (!mensualidades[mesLlave]) mensualidades[mesLlave] = { Ingresos: 0, Gastos: 0, sortKey };
 
         if (valor > 0) {
             totalIngresos += valor;
@@ -106,24 +117,24 @@ export default function AnalisisAvanzado() {
             const gastoAbsoluto = Math.abs(valor);
             totalGastos += gastoAbsoluto;
             mensualidades[mesLlave].Gastos += gastoAbsoluto;
-            
             const cat = item.categoria || 'General';
             categoriasGastos[cat] = (categoriasGastos[cat] || 0) + gastoAbsoluto;
         }
     });
 
-    // Formatear datos para el gráfico de barras (Evolución)
-    const evolutionArray = Object.keys(mensualidades).map(key => ({
-        name: key,
-        Ingresos: mensualidades[key].Ingresos,
-        Gastos: mensualidades[key].Gastos
-    })).reverse(); // Invertimos para que el orden cronológico sea natural
+    const evolutionArray = Object.keys(mensualidades)
+        .map(key => ({
+            name: key,
+            Ingresos: mensualidades[key].Ingresos,
+            Gastos: mensualidades[key].Gastos,
+            sortKey: mensualidades[key].sortKey
+        }))
+        .sort((a, b) => a.sortKey - b.sortKey); 
 
-    // Formatear datos para el gráfico circular (Categorías)
     const gastosArray = Object.keys(categoriasGastos).map(key => ({
         name: key,
         value: categoriasGastos[key]
-    })).sort((a, b) => b.value - a.value); // Ordenamos del mayor al menor gasto
+    })).sort((a, b) => b.value - a.value); 
 
     setChartDataEvolucion(evolutionArray);
     setChartDataGastos(gastosArray);
@@ -131,16 +142,11 @@ export default function AnalisisAvanzado() {
     const beneficio = totalIngresos - totalGastos;
     const margen = totalIngresos > 0 ? (beneficio / totalIngresos) * 100 : 0;
     
-    setKpis({ 
-        ingresos: totalIngresos, 
-        gastos: totalGastos, 
-        beneficio: beneficio, 
-        margen: margen 
-    });
-  };
+    setKpis({ ingresos: totalIngresos, gastos: totalGastos, beneficio: beneficio, margen: margen });
+  }, [allData, filtroTiempo]);
 
   const generarAuditoria = async () => {
-    if (data.length === 0) {
+    if (allData.length === 0) {
       setAiAnalysis("⚠️ **Datos insuficientes.**\n\nNo hay transacciones en este Espacio de Trabajo. Por favor, añade ingresos o gastos en la Consola General para poder generar una auditoría.");
       return;
     }
@@ -148,7 +154,7 @@ export default function AnalisisAvanzado() {
     setIsAnalyzing(true);
     setAiAnalysis("⏳ **Conectando con el CFO Virtual...**\n\nAnalizando flujos de caja, identificando patrones de gasto y calculando proyecciones basadas en tu sector corporativo. Esto puede tardar unos segundos...");
 
-    const datosLimpios = data.map(d => ({
+    const datosLimpios = allData.map(d => ({
       fecha: d.name,
       categoria: d.categoria || 'General',
       importe: d.total,
@@ -258,12 +264,32 @@ export default function AnalisisAvanzado() {
                 <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Centro de Inteligencia</h1>
                 <p className="text-sm font-medium text-slate-500 mt-1">Evaluación financiera completa para <span className="font-bold text-blue-600">{empresaId}</span>.</p>
               </div>
-              <button onClick={generarAuditoria} disabled={isAnalyzing} className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-bold transition shadow-md flex items-center justify-center gap-2">
-                {isAnalyzing ? "⏳ Procesando en IA..." : "✨ Generar Auditoría Inteligente"}
-              </button>
+              
+              <div className="flex flex-wrap items-center gap-3">
+                 {/* 🚀 BOTONERA DE FILTROS DE TIEMPO */}
+                 <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
+                     {[
+                         { id: 'all', label: 'Histórico' },
+                         { id: 'year', label: '12 Meses' },
+                         { id: 'quarter', label: '3 Meses' },
+                         { id: 'month', label: '30 Días' }
+                     ].map(f => (
+                         <button 
+                             key={f.id}
+                             onClick={() => setFiltroTiempo(f.id)}
+                             className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${filtroTiempo === f.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                         >
+                             {f.label}
+                         </button>
+                     ))}
+                 </div>
+
+                 <button onClick={generarAuditoria} disabled={isAnalyzing} className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2">
+                   {isAnalyzing ? "⏳ Procesando en IA..." : "✨ Generar Auditoría Inteligente"}
+                 </button>
+              </div>
             </header>
 
-            {/* 🚀 1. KPIs DE RESUMEN ALTA GERENCIA */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Ingresos</span>
@@ -285,16 +311,14 @@ export default function AnalisisAvanzado() {
                </div>
             </div>
 
-            {/* 🚀 2. GRÁFICOS INTERACTIVOS */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
                
-               {/* Gráfico de Barras: Evolución Mensual */}
-               <div className="xl:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
+               <div className="xl:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[400px] xl:h-auto min-h-[450px]">
                   <div className="mb-6 flex items-center gap-2">
                      <span className="w-2.5 h-2.5 bg-blue-500 rounded-full"></span>
                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Evolución P&L (Mensual)</h3>
                   </div>
-                  <div className="flex-1 w-full min-h-0">
+                  <div className="flex-1 w-full min-h-[300px]">
                      {chartDataEvolucion.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
                            <BarChart data={chartDataEvolucion} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -312,18 +336,17 @@ export default function AnalisisAvanzado() {
                            </BarChart>
                         </ResponsiveContainer>
                      ) : (
-                        <div className="h-full flex items-center justify-center text-xs font-bold text-slate-400">Sin datos suficientes</div>
+                        <div className="h-full flex items-center justify-center text-xs font-bold text-slate-400">Sin datos en este periodo</div>
                      )}
                   </div>
                </div>
 
-               {/* Gráfico Circular: Distribución de Gastos */}
-               <div className="xl:col-span-1 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
+               <div className="xl:col-span-1 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-auto min-h-[450px]">
                   <div className="mb-2 flex items-center gap-2">
                      <span className="w-2.5 h-2.5 bg-rose-500 rounded-full"></span>
                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Distribución de Gastos</h3>
                   </div>
-                  <div className="flex-1 w-full min-h-0 relative">
+                  <div className="h-[220px] w-full relative">
                      {chartDataGastos.length > 0 ? (
                         <>
                            <ResponsiveContainer width="100%" height="100%">
@@ -332,8 +355,8 @@ export default function AnalisisAvanzado() {
                                     data={chartDataGastos}
                                     cx="50%"
                                     cy="50%"
-                                    innerRadius={70}
-                                    outerRadius={100}
+                                    innerRadius={65}
+                                    outerRadius={90}
                                     paddingAngle={5}
                                     dataKey="value"
                                     stroke="none"
@@ -343,25 +366,41 @@ export default function AnalisisAvanzado() {
                                     ))}
                                  </Pie>
                                  <RechartsTooltip 
-                                    formatter={(value: number) => [`${value.toLocaleString('es-ES', {minimumFractionDigits: 2})} €`, 'Gasto']}
+                                    formatter={(value: number, name: string) => [`${value.toLocaleString('es-ES', {minimumFractionDigits: 2})} €`, name]}
                                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontWeight: 'bold' }}
                                  />
                               </PieChart>
                            </ResponsiveContainer>
-                           {/* Texto centrado en el donut */}
                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                               <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Costes</span>
-                              <span className="block text-xl font-black text-slate-800">{kpis.gastos > 1000 ? (kpis.gastos/1000).toFixed(1) + 'k' : kpis.gastos.toFixed(0)}€</span>
+                              <span className="block text-lg font-black text-slate-800">{kpis.gastos > 1000 ? (kpis.gastos/1000).toFixed(1) + 'k' : kpis.gastos.toFixed(0)}€</span>
                            </div>
                         </>
                      ) : (
-                        <div className="h-full flex items-center justify-center text-xs font-bold text-slate-400">Aún no hay gastos registrados</div>
+                        <div className="h-full flex items-center justify-center text-xs font-bold text-slate-400">Sin gastos registrados</div>
                      )}
                   </div>
+
+                  {/* 🚀 NUEVO: TOP FUGAS DE CAPITAL */}
+                  {chartDataGastos.length > 0 && (
+                     <div className="mt-6 space-y-4 border-t border-slate-100 pt-4 flex-1">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Ranking de Costes</p>
+                        {chartDataGastos.slice(0, 4).map((gasto, idx) => (
+                           <div key={idx}>
+                              <div className="flex justify-between text-xs font-bold mb-1.5">
+                                 <span className="text-slate-600 truncate mr-2">{gasto.name}</span>
+                                 <span className="text-slate-900">{gasto.value.toLocaleString('es-ES')} €</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                 <div className="h-1.5 rounded-full" style={{ width: `${Math.min((gasto.value / kpis.gastos) * 100, 100)}%`, backgroundColor: COLORS[idx % COLORS.length] }}></div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  )}
                </div>
             </div>
 
-            {/* 🚀 3. EL INFORME EJECUTIVO DE LA IA */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
               <div className="xl:col-span-1 space-y-6">
                   <div className="bg-white p-6 md:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm">
@@ -413,7 +452,6 @@ export default function AnalisisAvanzado() {
         </div>
       </Show>
 
-      {/* LANDING PAGE... (Igual que antes) */}
       <Show when="signed-out">
          {/* ... El código del Landing Page de Clerk que ya tenías ... */}
       </Show>
