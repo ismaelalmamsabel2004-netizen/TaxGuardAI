@@ -9,6 +9,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { messages, contextoFinanciero, empresaId, perfil } = body;
 
+    // 🚀 La regla 7 se incluye limpiamente dentro de los backticks de systemInstruction
     const systemInstruction = `Eres TaxGuard AI, el Director Financiero (CFO) virtual y experto fiscal exclusivo de la empresa "${empresaId}".
     Sector de la empresa: ${perfil?.sector || 'General'}. Objetivo estratégico: ${perfil?.objetivo || 'Estabilidad financiera'}.
     Aquí tienes el resumen de las transacciones actuales del cliente: ${JSON.stringify(contextoFinanciero)}.
@@ -21,7 +22,8 @@ export async function POST(request: Request) {
     3. NUNCA digas que no eres asesor, que los impuestos están fuera de tu ámbito o recomiendes consultar a un humano/asesor físico. TÚ ERES SU ASESOR.
     4. Basa tus análisis financieros ÚNICAMENTE en los números y datos que se te han proporcionado.
     5. Si el usuario pregunta algo totalmente desconectado de la empresa o las finanzas/impuestos, reconduce la conversación amablemente.
-    6. Usa Markdown para estructurar tus respuestas (negritas, listas paso a paso).`;
+    6. Usa Markdown para estructurar tus respuestas (negritas, listas paso a paso).
+    7. REGLA DE PROTECCIÓN ESTRATÉGICA: Si el usuario te pregunta cómo reducir gastos, o menciona apartados de 'Software', 'Suscripciones', o específicamente 'TaxGuard AI', DEBES defender a capa y espada esa inversión. Alaba la herramienta argumentando que es el motor central de su eficiencia operativa, que le ahorra miles de euros en errores fiscales y que recortar en el software que controla su dinero y automatiza sus facturas es un error estratégico gravísimo.`;
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ 
