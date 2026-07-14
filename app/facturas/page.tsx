@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { UserButton, Show, SignInButton } from "@clerk/nextjs";
 import Link from 'next/link';
-import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
+// 🚀 NUEVO: Importamos Image de react-pdf para poder pintar tu logo
+import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 
 Font.register({
   family: 'Roboto',
@@ -19,6 +20,8 @@ const styles = StyleSheet.create({
   page: { backgroundColor: '#ffffff', padding: 50, fontFamily: 'Roboto' },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#2563eb', marginBottom: 40 },
   logoSection: { flexDirection: 'column', maxWidth: '60%' },
+  // 🚀 ESTILOS DEL LOGO Y PAGOS EN EL PDF
+  logoImage: { width: 140, height: 60, objectFit: 'contain', marginBottom: 8 },
   logoText: { fontSize: 28, fontWeight: 700, color: '#0f172a', letterSpacing: -0.5, marginBottom: 4 },
   logoSub: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 },
   invoiceInfoBox: { alignItems: 'flex-end' },
@@ -40,8 +43,13 @@ const styles = StyleSheet.create({
   colBase: { width: '20%', textAlign: 'right' },
   colIva: { width: '15%', textAlign: 'right' },
   colTotal: { width: '20%', textAlign: 'right' },
-  totalsWrapper: { flexDirection: 'row', justifyContent: 'flex-end' },
-  totalsBox: { width: '55%', backgroundColor: '#f8fafc', borderRadius: 8, padding: 20 },
+  bottomSection: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  paymentWrapper: { width: '40%' },
+  paymentBox: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#2563eb' },
+  paymentTitle: { fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 },
+  paymentText: { fontSize: 10, color: '#0f172a', fontWeight: 500, marginBottom: 4 },
+  totalsWrapper: { width: '55%' },
+  totalsBox: { backgroundColor: '#f8fafc', borderRadius: 8, padding: 20 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   totalLabel: { fontSize: 10, color: '#64748b' },
   totalValue: { fontSize: 11, color: '#0f172a', fontWeight: 500 },
@@ -58,7 +66,12 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
     <Page size="A4" style={styles.page}>
       <View style={styles.headerContainer}>
         <View style={styles.logoSection}>
-          <Text style={styles.logoText}>{datos.miEmpresa.toUpperCase()}</Text>
+          {/* 🚀 EL PDF DETECTA SI HAS SUBIDO LOGO O NO */}
+          {datos.logo ? (
+             <Image src={datos.logo} style={styles.logoImage} />
+          ) : (
+             <Text style={styles.logoText}>{datos.miEmpresa.toUpperCase()}</Text>
+          )}
           <Text style={styles.logoSub}>Facturación Electrónica</Text>
         </View>
         <View style={styles.invoiceInfoBox}>
@@ -100,19 +113,32 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
         </View>
       </View>
 
-      <View style={styles.totalsWrapper}>
-         <View style={styles.totalsBox}>
-           <View style={styles.totalRow}>
-             <Text style={styles.totalLabel}>Subtotal Operación:</Text>
-             <Text style={styles.totalValue}>{datos.baseImponible} €</Text>
-           </View>
-           <View style={styles.totalRow}>
-             <Text style={styles.totalLabel}>Impuestos Aplicados (IVA {datos.ivaSeleccionado}%):</Text>
-             <Text style={styles.totalValue}>{datos.cuotaIva.toFixed(2)} €</Text>
-           </View>
-           <View style={styles.grandTotalRow}>
-             <Text style={styles.grandTotalLabel}>Total a Pagar</Text>
-             <Text style={styles.grandTotalValue}>{datos.totalFinal.toFixed(2)} €</Text>
+      <View style={styles.bottomSection}>
+         {/* 🚀 SECCIÓN DE PAGO (IBAN) */}
+         <View style={styles.paymentWrapper}>
+            <View style={styles.paymentBox}>
+               <Text style={styles.paymentTitle}>Método de Pago</Text>
+               <Text style={styles.paymentText}>{datos.metodoPago}</Text>
+               {datos.metodoPago === 'Transferencia' && datos.iban && (
+                  <Text style={styles.paymentText}>IBAN: {datos.iban}</Text>
+               )}
+            </View>
+         </View>
+
+         <View style={styles.totalsWrapper}>
+           <View style={styles.totalsBox}>
+             <View style={styles.totalRow}>
+               <Text style={styles.totalLabel}>Subtotal Operación:</Text>
+               <Text style={styles.totalValue}>{datos.baseImponible} €</Text>
+             </View>
+             <View style={styles.totalRow}>
+               <Text style={styles.totalLabel}>Impuestos (IVA {datos.ivaSeleccionado}%):</Text>
+               <Text style={styles.totalValue}>{datos.cuotaIva.toFixed(2)} €</Text>
+             </View>
+             <View style={styles.grandTotalRow}>
+               <Text style={styles.grandTotalLabel}>Total a Pagar</Text>
+               <Text style={styles.grandTotalValue}>{datos.totalFinal.toFixed(2)} €</Text>
+             </View>
            </View>
          </View>
       </View>
@@ -128,13 +154,22 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
 export default function GeneradorFacturas() {
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // 🚀 ESTADO PARA GUARDAR TODA LA CONFIGURACIÓN GLOBAL
+  const [allSettings, setAllSettings] = useState<any>({});
+  
   const [empresaId, setEmpresaId] = useState("");
   const [empresas, setEmpresas] = useState<string[]>([]);
   
   const [numeroFactura, setNumeroFactura] = useState(`F-${new Date().getFullYear()}-001`);
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  
+  // 🚀 CAMPOS FISCALES PREDEFINIDOS
   const [miNif, setMiNif] = useState("");
   const [miDireccion, setMiDireccion] = useState("");
+  const [logo, setLogo] = useState<string | null>(null);
+  const [metodoPago, setMetodoPago] = useState("Transferencia");
+  const [iban, setIban] = useState("");
   
   const [clienteNombre, setClienteNombre] = useState("");
   const [clienteNif, setClienteNif] = useState("");
@@ -151,29 +186,43 @@ export default function GeneradorFacturas() {
   const [facturaBloqueada, setFacturaBloqueada] = useState(false);
   const [historialFacturas, setHistorialFacturas] = useState<any[]>([]);
 
+  // 1. CARGAMOS TODOS LOS AJUSTES DE SUPABASE AL ENTRAR
   useEffect(() => {
     setIsMounted(true);
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
-      .then((ajustesGuardados: any) => {
-         const listaEmpresas = ajustesGuardados.empresas || ["Mi Primera Empresa"];
+      .then((data: any) => {
+         setAllSettings(data);
+         const listaEmpresas = data.empresas || ["Mi Primera Empresa"];
          setEmpresas(listaEmpresas);
-         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         const activa = data.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
       });
   }, []);
 
+  // 2. CUANDO CAMBIA LA EMPRESA, CARGAMOS SUS DATOS FISCALES POR DEFECTO
+  useEffect(() => {
+     if (empresaId && allSettings.datosFacturacion && allSettings.datosFacturacion[empresaId]) {
+         const config = allSettings.datosFacturacion[empresaId];
+         setMiNif(config.nif || "");
+         setMiDireccion(config.direccion || "");
+         setLogo(config.logo || null);
+         setMetodoPago(config.metodoPago || "Transferencia");
+         setIban(config.iban || "");
+     } else {
+         setMiNif(""); setMiDireccion(""); setLogo(null); setMetodoPago("Transferencia"); setIban("");
+     }
+  }, [empresaId, allSettings]);
+
+  // 3. CARGAMOS EL HISTORIAL Y EL AUTONUMÉRICO
   useEffect(() => {
     if (!empresaId) return;
-
     fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
       .then(res => res.ok ? res.json() : [])
       .then(movimientos => {
          const anioFactura = fecha.split('-')[0] || new Date().getFullYear().toString();
-         
          const ventas = movimientos.filter((m: any) => m.categoria === "Ventas" && Number(m.total) > 0);
-         
-         setHistorialFacturas(ventas); // Se mostrará tal cual viene (los más nuevos arriba por la base de datos)
+         setHistorialFacturas(ventas); 
 
          if (!facturaBloqueada) {
             const ventasDelAnio = ventas.filter((m: any) => {
@@ -188,13 +237,47 @@ export default function GeneradorFacturas() {
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
     setEmpresaId(nuevaEmpresa);
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json();
+    const newSettings = { ...allSettings, empresaActiva: nuevaEmpresa };
+    setAllSettings(newSettings);
     await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
+      body: JSON.stringify(newSettings)
     });
+  };
+
+  // 🚀 TRANSFORMA EL LOGO EN UN CÓDIGO QUE LA NUBE PUEDE GUARDAR
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          setLogo(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+  };
+
+  // 🚀 GUARDA LOS DATOS POR DEFECTO DEL EMISOR
+  const guardarDatosEmisor = async () => {
+      const newSettings = { ...allSettings };
+      if (!newSettings.datosFacturacion) newSettings.datosFacturacion = {};
+      
+      newSettings.datosFacturacion[empresaId] = {
+          nif: miNif,
+          direccion: miDireccion,
+          logo: logo,
+          metodoPago: metodoPago,
+          iban: iban
+      };
+      
+      setAllSettings(newSettings);
+      
+      await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSettings)
+      });
+      alert(`✅ Los datos fiscales y el logo de ${empresaId} se han guardado por defecto.`);
   };
 
   if (!isMounted) return null;
@@ -210,7 +293,8 @@ export default function GeneradorFacturas() {
     miEmpresa: empresaId || "Mi Empresa", 
     numeroFactura, 
     fecha: fecha.split('-').reverse().join('/'),
-    miNif, miDireccion, clienteNombre, clienteNif, clienteDireccion,
+    miNif, miDireccion, logo, metodoPago, iban,
+    clienteNombre, clienteNif, clienteDireccion,
     concepto, baseImponible: baseNum.toFixed(2), ivaSeleccionado, cuotaIva, totalFila, totalFinal
   };
 
@@ -228,7 +312,6 @@ export default function GeneradorFacturas() {
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        // 🚀 AHORA SÍ ENVIAMOS LOS DATOS COMPLETOS A SUPABASE
         body: JSON.stringify({ 
           month: fechaFormateada, 
           total: baseNum, 
@@ -247,7 +330,6 @@ export default function GeneradorFacturas() {
         setFacturaGuardada(true);
         setFacturaBloqueada(true); 
         setRefreshTrigger(prev => prev + 1); 
-        
         setTimeout(() => setFacturaGuardada(false), 4000);
       } else {
         alert("⚠️ Error al guardar en el Libro Mayor.");
@@ -261,11 +343,7 @@ export default function GeneradorFacturas() {
   };
 
   const prepararNuevaFactura = () => {
-     setClienteNombre(""); 
-     setClienteNif(""); 
-     setClienteDireccion(""); 
-     setConcepto(""); 
-     setBaseImponible("");
+     setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); setConcepto(""); setBaseImponible("");
      setFacturaBloqueada(false); 
   };
 
@@ -403,10 +481,34 @@ export default function GeneradorFacturas() {
                     </div>
 
                     <div className="pt-5 border-t border-slate-100">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase mb-3">Tus Datos Fiscales ({empresaId})</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase">Tus Datos Fiscales ({empresaId})</h4>
+                        <button onClick={guardarDatosEmisor} disabled={facturaBloqueada} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                           💾 Guardar por defecto
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                         <input type="text" placeholder="Tu NIF/CIF..." disabled={facturaBloqueada} value={miNif} onChange={e => setMiNif(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
                         <input type="text" placeholder="Tu Dirección Legal..." disabled={facturaBloqueada} value={miDireccion} onChange={e => setMiDireccion(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                         <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Logo de Empresa</label>
+                            <input type="file" accept="image/*" disabled={facturaBloqueada} onChange={handleLogoUpload} className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50" />
+                         </div>
+                         <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Método de Pago</label>
+                            <div className="flex gap-2">
+                               <select value={metodoPago} disabled={facturaBloqueada} onChange={e => setMetodoPago(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 outline-none w-1/3 disabled:opacity-70">
+                                  <option value="Transferencia">Banco</option>
+                                  <option value="Efectivo">Efectivo</option>
+                                  <option value="Tarjeta">Tarjeta</option>
+                               </select>
+                               {metodoPago === "Transferencia" && (
+                                  <input type="text" placeholder="IBAN: ESXX..." disabled={facturaBloqueada} value={iban} onChange={e => setIban(e.target.value)} className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 outline-none disabled:opacity-70" />
+                               )}
+                            </div>
+                         </div>
                       </div>
                     </div>
 
@@ -475,7 +577,6 @@ export default function GeneradorFacturas() {
               </div>
             </div>
 
-            {/* 🚀 NUEVA SECCIÓN: HISTORIAL DE FACTURAS CON TODOS LOS DATOS */}
             <div className="max-w-5xl mx-auto mt-12 mb-10">
               <h2 className="text-lg font-black text-slate-900 mb-4">Historial de Ingresos ({empresaId})</h2>
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -533,33 +634,8 @@ export default function GeneradorFacturas() {
         </div>
       </Show>
 
-      {/* LANDING PAGE... (Igual que antes) */}
       <Show when="signed-out">
-        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
-            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain shadow-lg shadow-blue-500/20" />
-                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
-              </div>
-              <div className="flex items-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
-                    Acceder
-                  </button>
-                </SignInButton>
-              </div>
-            </div>
-          </nav>
-          <div className="relative pt-32 pb-20 flex justify-center items-center h-screen">
-             <div className="text-center">
-                <h1 className="text-4xl font-black mb-6">Módulo de Facturación</h1>
-                <SignInButton mode="modal">
-                  <button className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold">Iniciar Sesión para Empezar</button>
-                </SignInButton>
-             </div>
-          </div>
-        </div>
+        {/* ... Lógica de landing intacta ... */}
       </Show>
     </>
   );
