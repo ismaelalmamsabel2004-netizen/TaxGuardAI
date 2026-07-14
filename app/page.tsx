@@ -6,18 +6,25 @@ import { UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
 
+// 🚀 LAS TUBERÍAS DE SUPABASE Y GEMINI
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA } from './actions';
+
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
+  // 🚀 ARREGLO DE TYPESCRIPT: Molde flexible para admitir Cliente, Concepto y Nº Factura
   const [data, setData] = useState<any[]>([]);
  
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
+
+  // ESTADO PARA SABER SI EL CLIENTE HA PAGADO EN STRIPE
+  const [planActivo, setPlanActivo] = useState('free');
 
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
@@ -105,6 +112,7 @@ export default function Home() {
          setEmpresaId(activa);
 
          if (ajustesGuardados.papelera) setPapelera(ajustesGuardados.papelera);
+         setPlanActivo(ajustesGuardados.planSuscripcion || 'free');
       });
   }, []);
 
@@ -378,53 +386,48 @@ export default function Home() {
 
   const alertasDinamicas = generarAlertas();
 
+  // ✨ CARGAR DATOS DESDE SUPABASE ✨
   useEffect(() => {
     if (!empresaId) return; 
 
     setData([]);
     setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
     
-    fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
-      .then(res => res.ok ? res.json() : [])
-      .then(d => {
-        if (d && d.length > 0) setData(d);
-        else setData([]);
-      });
+    obtenerDatosSupabase().then(d => {
+      if (d && d.length > 0) setData(d);
+      else setData([]);
+    });
   }, [empresaId]);
 
+  // ✨ ESCÁNER CON IA GEMINI ✨
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsScanning(true);
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
     
-    reader.onload = async () => {
-        try {
-          const res = await fetch('/api/ocr', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: reader.result, categorias: categoriasGasto })
-          });
+    const formData = new FormData();
+    formData.append('factura', file);
+    formData.append('categorias', categoriasGasto.join(', '));
+    
+    try {
+      const res = await escanearFacturaIA(formData);
 
-          const dataRes = await res.json();
-          if (res.ok) {
-            setTipoTransaccion('gasto'); 
-            if (dataRes.fecha) setMes(dataRes.fecha);
-            if (dataRes.base_imponible) setIngreso(dataRes.base_imponible.toString());
-            if (dataRes.iva !== undefined) setIvaSeleccionado(dataRes.iva.toString());
-            if (dataRes.categoria && categoriasGasto.includes(dataRes.categoria)) setCategoria(dataRes.categoria);
-          } else {
-            alert("Error del servidor: " + (dataRes.error || "Fallo desconocido"));
-          }
-        } catch (err) {
-          alert("Error de conexión al escanear.");
-        } finally {
-          setIsScanning(false);
-          if (fileInputRef.current) fileInputRef.current.value = ''; 
-        }
-    };
+      if (res.success && res.data) {
+        setTipoTransaccion('gasto'); 
+        if (res.data.fecha) setMes(res.data.fecha);
+        if (res.data.base_imponible) setIngreso(res.data.base_imponible.toString());
+        if (res.data.iva !== undefined) setIvaSeleccionado(res.data.iva.toString());
+        if (res.data.categoria && categoriasGasto.includes(res.data.categoria)) setCategoria(res.data.categoria);
+      } else {
+        alert("Error de la IA: " + (res.error || "Fallo desconocido"));
+      }
+    } catch (err) {
+      alert("Error de conexión al escanear.");
+    } finally {
+      setIsScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = ''; 
+    }
   };
 
   const manejarImportarCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -447,8 +450,8 @@ export default function Home() {
 
         if (res.ok && dataRes.success) {
           alert(`✅ ¡Éxito! Se han importado y clasificado automáticamente ${dataRes.count} movimientos bancarios.`);
-          const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
-          setData(await resRefresh.json());
+          const actualizadosBD = await obtenerDatosSupabase();
+          setData(actualizadosBD);
         } else {
           alert("Error del servidor al importar: " + (dataRes.error || "Fallo desconocido"));
         }
@@ -463,6 +466,7 @@ export default function Home() {
     reader.readAsText(file);
   };
 
+  // ✨ GUARDAR EN SUPABASE ✨
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault(); 
     
@@ -495,16 +499,16 @@ export default function Home() {
       }
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
-     
-      const res = await fetch('/api/finances', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ month: fecha, total: valorFinal, empresaId, categoria, isRecurrent, frecuencia: isRecurrent ? frecuencia : null, iva: ivaSeleccionado }) 
+      
+      const res = await guardarDatoSupabase({ 
+        month: fecha, 
+        total: valorFinal, 
+        categoria, 
+        iva: ivaSeleccionado 
       });
 
-      if (res.ok) {
-        const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
-        const actualizadosBD = await resRefresh.json();
+      if (res.success) {
+        const actualizadosBD = await obtenerDatosSupabase();
         setData(actualizadosBD);
         setIngreso('');
         setIsRecurrent(false);
@@ -521,9 +525,13 @@ export default function Home() {
     }
   };
 
-  const eliminarDato = async (id: number) => {
-    const res = await fetch(`/api/finances?id=${id}`, { method: 'DELETE' });
-    if (res.ok) {
+  // ✨ BORRAR DE SUPABASE ✨
+  const eliminarDato = async (id: any) => {
+    const confirmacion = window.confirm("¿Seguro que deseas eliminar esta transacción?");
+    if (!confirmacion) return;
+
+    const res = await borrarDatoSupabase(id.toString());
+    if (res.success) {
       const restantes = data.filter(item => item.id !== id);
       setData(restantes);
     }
@@ -541,7 +549,8 @@ export default function Home() {
     });
   };
 
-  const guardarEdicion = async (id: number) => {
+  // ✨ EDITAR EN SUPABASE ✨
+  const guardarEdicion = async (id: any) => {
     try {
       const [y, m, d] = editFormData.mes.split('-');
       const fecha = `${d}/${m}/${y}`;
@@ -551,21 +560,16 @@ export default function Home() {
 
       const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
 
-      const res = await fetch('/api/finances', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ 
-          id: id, 
-          month: fecha, 
-          total: valorFinal, 
-          categoria: editFormData.categoria, 
-          iva: editFormData.ivaSeleccionado 
-        }) 
+      const res = await editarDatoSupabase({ 
+        id: id, 
+        month: fecha, 
+        total: valorFinal, 
+        categoria: editFormData.categoria, 
+        iva: editFormData.ivaSeleccionado 
       });
 
-      if (res.ok) {
-        const resRefresh = await fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`);
-        const actualizadosBD = await resRefresh.json();
+      if (res.success) {
+        const actualizadosBD = await obtenerDatosSupabase();
         setData(actualizadosBD);
         setEditingId(null);
       }
@@ -586,13 +590,13 @@ export default function Home() {
     setIsChatLoading(true);
 
     const datosContexto = datosVisibles.map(d => ({ 
-   fecha: d.name, 
-   categoria: d.categoria, 
-   importe: d.total, 
-   cliente: d.cliente_nombre || d.cliente || 'Desconocido', 
-   concepto: d.concepto_detalle || d.concepto || 'General', 
-   factura: d.numero_factura || d.factura || 'Manual' 
-}));
+      fecha: d.name, 
+      categoria: d.categoria, 
+      importe: d.total, 
+      cliente: d.cliente_nombre || d.cliente || 'Desconocido', 
+      concepto: d.concepto_detalle || d.concepto || 'General', 
+      factura: d.numero_factura || d.factura || 'Manual' 
+    }));
 
     try {
       const res = await fetch('/api/chat', {
@@ -638,9 +642,8 @@ export default function Home() {
     <>
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
-         
+          
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
-            {/* 🚀 LOGO EN CABECERA MÓVIL */}
             <div className="flex items-center gap-2">
                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
                <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
@@ -653,7 +656,6 @@ export default function Home() {
           <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
             <div>
               <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
-                {/* 🚀 LOGO EN MENÚ LATERAL */}
                 <div className="flex items-center gap-3">
                   <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                   <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
@@ -662,7 +664,7 @@ export default function Home() {
                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
-             
+              
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1">
@@ -692,7 +694,7 @@ export default function Home() {
                   <button onClick={agregarEmpresa} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-500 transition">+</button>
                 </div>
               </div>
-             
+              
               <nav className="space-y-1">
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm" href="/" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
@@ -712,15 +714,19 @@ export default function Home() {
                 </Link>
               </nav>
             </div>
-           
+            
             <div className="mt-auto">
-              <button onClick={() => alert("El Portal de Pagos de Stripe se conectará aquí próximamente.")} className="w-full flex items-center justify-between bg-blue-900/20 p-3 rounded-2xl border border-blue-900/50 mb-3 hover:bg-blue-900/40 transition cursor-pointer">
+              <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                  <span className="text-xs font-bold text-blue-400">Plan Pro Activo</span>
+                  <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-slate-500'}`}></span>
+                  <span className={`text-xs font-bold ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    {planActivo === 'pro' ? 'Plan Empresa PRO' : planActivo === 'autonomo' ? 'Plan Autónomo' : 'Plan Gratuito'}
+                  </span>
                 </div>
-                <span className="text-[10px] font-bold text-blue-300 bg-blue-900/50 px-2 py-1 rounded-md">Gestionar</span>
-              </button>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-300 bg-emerald-900/50' : 'text-slate-300 bg-slate-700'}`}>
+                  {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activo' : 'Mejorar'}
+                </span>
+              </Link>
               
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
                 <span className="text-xs font-semibold text-slate-400">Perfil y Sesión</span>
@@ -734,7 +740,7 @@ export default function Home() {
           )}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
-           
+            
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 border-b border-slate-200 pb-6 gap-4">
               <div>
                 <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Panel Ejecutivo - <span className="text-blue-600">{empresaId || "Sin Seleccionar"}</span></h1>
@@ -1272,9 +1278,10 @@ export default function Home() {
                     Iniciar Sesión
                   </button>
                 </SignInButton>
-                <button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700 flex items-center justify-center gap-2">
-                  Solicitar Implantación <span className="text-slate-400 text-sm font-normal">(1.200 €)</span>
-                </button>
+                {/* 🚀 BOTÓN MODIFICADO PARA REDIRIGIR A PRECIOS */}
+                <Link href="/precios" className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700 flex items-center justify-center gap-2">
+                  Ver Planes y Precios
+                </Link>
               </div>
             </div>
           </div>
