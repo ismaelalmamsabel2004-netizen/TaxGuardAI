@@ -146,6 +146,8 @@ export default function GeneradorFacturas() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [facturaGuardada, setFacturaGuardada] = useState(false);
+  // 🚀 NUEVO: Gatillo para recalcular la numeración automáticamente al guardar
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     setIsMounted(true);
@@ -158,6 +160,26 @@ export default function GeneradorFacturas() {
          setEmpresaId(activa);
       });
   }, []);
+
+  // 🚀 NUEVA LÓGICA: Calcula el número de factura de forma 100% automatizada
+  useEffect(() => {
+    if (!empresaId) return;
+
+    fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(movimientos => {
+         const anioFactura = fecha.split('-')[0] || new Date().getFullYear().toString();
+         
+         // Contamos cuántas ventas de tipo ingreso existen ya registradas en ese año específico
+         const ventasDelAnio = movimientos.filter((m: any) => {
+            const [, , y] = m.name.split('/');
+            return m.categoria === "Ventas" && Number(m.total) > 0 && y === anioFactura;
+         });
+
+         const siguienteNumero = ventasDelAnio.length + 1;
+         setNumeroFactura(`F-${anioFactura}-${String(siguienteNumero).padStart(3, '0')}`);
+      });
+  }, [empresaId, fecha, refreshTrigger]);
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
     setEmpresaId(nuevaEmpresa);
@@ -213,9 +235,10 @@ export default function GeneradorFacturas() {
 
       if (res.ok) {
         setFacturaGuardada(true);
-        const numActual = parseInt(numeroFactura.split('-')[2]) || 0;
-        setNumeroFactura(`F-${new Date().getFullYear()}-${String(numActual + 1).padStart(3, '0')}`);
+        // Reseteamos campos de texto rápidos
         setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); setConcepto(""); setBaseImponible("");
+        // 🚀 Disparamos el refresco automático de la base de datos para saltar al siguiente número real
+        setRefreshTrigger(prev => prev + 1);
         setTimeout(() => setFacturaGuardada(false), 4000);
       } else {
         alert("⚠️ Error al guardar en el Libro Mayor.");
@@ -256,14 +279,14 @@ export default function GeneradorFacturas() {
                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
-             
+              
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <select value={empresaId} onChange={(e) => cambiarEmpresa(e.target.value)} className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none">
                     {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                 </select>
               </div>
-             
+              
               <nav className="space-y-1">
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
@@ -283,7 +306,7 @@ export default function GeneradorFacturas() {
                 </Link>
               </nav>
             </div>
-           
+            
             <div className="mt-auto">
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
@@ -346,6 +369,7 @@ export default function GeneradorFacturas() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nº Factura</label>
+                        {/* El campo se calcula solo, pero dejamos cambiarlo por si acaso */}
                         <input type="text" value={numeroFactura} onChange={e => setNumeroFactura(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 transition" />
                       </div>
                       <div>
