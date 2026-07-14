@@ -148,7 +148,6 @@ export default function GeneradorFacturas() {
   const [facturaGuardada, setFacturaGuardada] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // 🚀 NUEVO: Control de bloqueo para no perder los datos del PDF y Tabla de Historial
   const [facturaBloqueada, setFacturaBloqueada] = useState(false);
   const [historialFacturas, setHistorialFacturas] = useState<any[]>([]);
 
@@ -174,10 +173,8 @@ export default function GeneradorFacturas() {
          
          const ventas = movimientos.filter((m: any) => m.categoria === "Ventas" && Number(m.total) > 0);
          
-         // Invertimos para que las más recientes salgan arriba en la tabla
-         setHistorialFacturas(ventas.reverse());
+         setHistorialFacturas(ventas); // Se mostrará tal cual viene (los más nuevos arriba por la base de datos)
 
-         // Solo calculamos el siguiente número si NO estamos viendo una factura bloqueada/recién guardada
          if (!facturaBloqueada) {
             const ventasDelAnio = ventas.filter((m: any) => {
                const [, , y] = m.name.split('/');
@@ -231,21 +228,25 @@ export default function GeneradorFacturas() {
       const res = await fetch('/api/finances', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        // 🚀 AHORA SÍ ENVIAMOS LOS DATOS COMPLETOS A SUPABASE
         body: JSON.stringify({ 
           month: fechaFormateada, 
           total: baseNum, 
           empresaId: empresaId, 
           categoria: "Ventas", 
           isRecurrent: false, 
-          iva: ivaSeleccionado 
+          iva: ivaSeleccionado,
+          numero_factura: numeroFactura,
+          cliente_nombre: clienteNombre,
+          cliente_nif: clienteNif,
+          concepto_detalle: concepto
         }) 
       });
 
       if (res.ok) {
         setFacturaGuardada(true);
-        // 🚀 BLOQUEAMOS LOS DATOS EN PANTALLA PARA QUE EL CLIENTE PUEDA DESCARGAR EL PDF
         setFacturaBloqueada(true); 
-        setRefreshTrigger(prev => prev + 1); // Dispara la actualización de la tabla del historial
+        setRefreshTrigger(prev => prev + 1); 
         
         setTimeout(() => setFacturaGuardada(false), 4000);
       } else {
@@ -259,14 +260,12 @@ export default function GeneradorFacturas() {
     }
   };
 
-  // 🚀 LÓGICA PARA LIMPIAR TODO Y CREAR OTRA FACTURA
   const prepararNuevaFactura = () => {
      setClienteNombre(""); 
      setClienteNif(""); 
      setClienteDireccion(""); 
      setConcepto(""); 
      setBaseImponible("");
-     // Al desbloquear, el useEffect detectará que está limpio y saltará al siguiente número F-2026-00X
      setFacturaBloqueada(false); 
   };
 
@@ -342,7 +341,6 @@ export default function GeneradorFacturas() {
               </div>
               
               <div className="flex flex-wrap gap-3">
-                 {/* 🚀 BOTÓN DINÁMICO: Cambia a "Nueva Factura" cuando está guardada */}
                  {!facturaBloqueada ? (
                     <button 
                        onClick={guardarEnLibroMayor} 
@@ -477,7 +475,7 @@ export default function GeneradorFacturas() {
               </div>
             </div>
 
-            {/* 🚀 NUEVA SECCIÓN: HISTORIAL DE FACTURAS */}
+            {/* 🚀 NUEVA SECCIÓN: HISTORIAL DE FACTURAS CON TODOS LOS DATOS */}
             <div className="max-w-5xl mx-auto mt-12 mb-10">
               <h2 className="text-lg font-black text-slate-900 mb-4">Historial de Ingresos ({empresaId})</h2>
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -485,24 +483,36 @@ export default function GeneradorFacturas() {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                        <thead>
                           <tr className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200">
-                             <th className="p-4 md:p-5">Fecha Emisión</th>
-                             <th className="p-4 md:p-5">Concepto DB</th>
-                             <th className="p-4 md:p-5 text-right">Base Imponible</th>
-                             <th className="p-4 md:p-5 text-right">IVA Aplicado</th>
-                             <th className="p-4 md:p-5 text-right">Total Facturado</th>
+                             <th className="p-4 md:p-5">Nº / Fecha</th>
+                             <th className="p-4 md:p-5">Cliente</th>
+                             <th className="p-4 md:p-5">Concepto</th>
+                             <th className="p-4 md:p-5 text-right">Base</th>
+                             <th className="p-4 md:p-5 text-right">IVA</th>
+                             <th className="p-4 md:p-5 text-right">Total</th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100">
                           {historialFacturas.length === 0 ? (
-                             <tr><td colSpan={5} className="p-8 text-center text-sm font-medium text-slate-400">Aún no hay facturas registradas en este espacio de trabajo.</td></tr>
+                             <tr><td colSpan={6} className="p-8 text-center text-sm font-medium text-slate-400">Aún no hay facturas registradas en este espacio de trabajo.</td></tr>
                           ) : (
                              historialFacturas.map((fac, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50 transition">
-                                   <td className="p-4 md:p-5 text-sm font-bold text-slate-700">{fac.name}</td>
                                    <td className="p-4 md:p-5">
-                                      <span className="bg-blue-50 text-blue-600 border border-blue-100 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wide">
-                                         {fac.categoria}
-                                      </span>
+                                      <div className="flex flex-col">
+                                         <span className="text-sm font-bold text-slate-800">{fac.numero_factura || 'Manual'}</span>
+                                         <span className="text-xs text-slate-400 font-medium">{fac.name}</span>
+                                      </div>
+                                   </td>
+                                   <td className="p-4 md:p-5">
+                                      <div className="flex flex-col">
+                                         <span className="text-sm font-bold text-slate-700">{fac.cliente_nombre || 'Sin cliente especificado'}</span>
+                                         <span className="text-[10px] text-slate-400 font-medium">{fac.cliente_nif || '-'}</span>
+                                      </div>
+                                   </td>
+                                   <td className="p-4 md:p-5">
+                                      <div className="text-sm text-slate-600 truncate max-w-[200px]" title={fac.concepto_detalle}>
+                                         {fac.concepto_detalle || 'Ingreso General'}
+                                      </div>
                                    </td>
                                    <td className="p-4 md:p-5 text-sm font-bold text-slate-700 text-right">{Number(fac.total).toFixed(2)} €</td>
                                    <td className="p-4 md:p-5 text-sm font-bold text-slate-500 text-right">{fac.iva}%</td>
@@ -523,6 +533,7 @@ export default function GeneradorFacturas() {
         </div>
       </Show>
 
+      {/* LANDING PAGE... (Igual que antes) */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">

@@ -5,7 +5,6 @@ import { auth } from '@clerk/nextjs/server';
 export const dynamic = 'force-dynamic';
 
 async function ensureTableExists() {
-  // Usamos executeRawUnsafe de Prisma para crear la tabla si no existe
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS finanzas (
       id SERIAL PRIMARY KEY,
@@ -19,6 +18,16 @@ async function ensureTableExists() {
       iva NUMERIC
     );
   `);
+  
+  // 🚀 LA MAGIA: Le decimos a Supabase que añada estas columnas si no existen
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE finanzas ADD COLUMN IF NOT EXISTS numero_factura VARCHAR(255);`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE finanzas ADD COLUMN IF NOT EXISTS cliente_nombre VARCHAR(255);`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE finanzas ADD COLUMN IF NOT EXISTS cliente_nif VARCHAR(255);`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE finanzas ADD COLUMN IF NOT EXISTS concepto_detalle TEXT;`);
+  } catch (e) {
+    // Si ya existen, simplemente ignora el error
+  }
 }
 
 export async function POST(request: Request) {
@@ -29,22 +38,22 @@ export async function POST(request: Request) {
     if (!userId) return NextResponse.json({ error: "Acceso denegado" }, { status: 401 });
 
     const body = await request.json();
-    const { month, total, empresaId, categoria, isRecurrent, frecuencia, iva } = body;
+    // Recibimos los nuevos datos de la factura
+    const { month, total, empresaId, categoria, isRecurrent, frecuencia, iva, numero_factura, cliente_nombre, cliente_nif, concepto_detalle } = body;
 
-    // Prisma $queryRaw actúa como el "sql" de Vercel y devuelve un array con los resultados
     const result = await prisma.$queryRaw<any[]>`
-      INSERT INTO finanzas (user_id, empresa_id, fecha, total, categoria, is_recurrent, frecuencia, iva)
-      VALUES (${userId}, ${empresaId}, ${month}, ${Number(total)}, ${categoria || 'General'}, ${isRecurrent || false}, ${frecuencia || null}, ${Number(iva) || 0})
+      INSERT INTO finanzas (user_id, empresa_id, fecha, total, categoria, is_recurrent, frecuencia, iva, numero_factura, cliente_nombre, cliente_nif, concepto_detalle)
+      VALUES (${userId}, ${empresaId}, ${month}, ${Number(total)}, ${categoria || 'General'}, ${isRecurrent || false}, ${frecuencia || null}, ${Number(iva) || 0}, ${numero_factura || null}, ${cliente_nombre || null}, ${cliente_nif || null}, ${concepto_detalle || null})
       RETURNING *;
     `;
 
     const data = result[0];
     if (!data) throw new Error("No se pudo guardar el dato");
 
-    // 🚀 CORRECCIÓN VITAL: Convertimos a número puro (Number) antes de enviarlo
     return NextResponse.json({
         id: data.id, name: data.fecha, total: Number(data.total), empresaId: data.empresa_id,
-        categoria: data.categoria, isRecurrent: data.is_recurrent, frecuencia: data.frecuencia, iva: Number(data.iva)
+        categoria: data.categoria, isRecurrent: data.is_recurrent, frecuencia: data.frecuencia, iva: Number(data.iva),
+        numero_factura: data.numero_factura, cliente_nombre: data.cliente_nombre, cliente_nif: data.cliente_nif, concepto_detalle: data.concepto_detalle
     });
   } catch (error) {
     console.error("❌ ERROR POST SUPABASE:", error);
@@ -61,7 +70,6 @@ export async function PUT(request: Request) {
       const body = await request.json();
       const { id, month, total, categoria, isRecurrent, frecuencia, iva } = body;
   
-      // Usamos $executeRaw para operaciones UPDATE
       await prisma.$executeRaw`
         UPDATE finanzas
         SET fecha = ${month}, total = ${Number(total)}, categoria = ${categoria}, is_recurrent = ${isRecurrent}, frecuencia = ${frecuencia || null}, iva = ${Number(iva) || 0}
@@ -91,7 +99,7 @@ export async function GET(request: Request) {
         result = await prisma.$queryRaw<any[]>`SELECT * FROM finanzas WHERE user_id = ${userId} ORDER BY id ASC`;
     }
 
-    // 🚀 CORRECCIÓN VITAL: Extraemos los datos como números matemáticos estrictos
+    // Le devolvemos los datos completos a tu tabla
     return NextResponse.json(result.map(item => ({
       id: item.id, 
       name: item.fecha, 
@@ -100,7 +108,11 @@ export async function GET(request: Request) {
       categoria: item.categoria, 
       isRecurrent: item.is_recurrent, 
       frecuencia: item.frecuencia, 
-      iva: Number(item.iva) || 0
+      iva: Number(item.iva) || 0,
+      numero_factura: item.numero_factura,
+      cliente_nombre: item.cliente_nombre,
+      cliente_nif: item.cliente_nif,
+      concepto_detalle: item.concepto_detalle
     })));
   } catch (error) {
     console.error("❌ ERROR GET SUPABASE:", error);
