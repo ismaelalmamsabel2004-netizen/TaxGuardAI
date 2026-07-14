@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { auth } from '@clerk/nextjs/server';
 
 export async function POST(request: Request) {
   try {
+    // 🚀 RECUPERAMOS EL USUARIO DE CLERK
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Acceso denegado. Inicia sesión primero." }, { status: 401 });
+    }
+
     const stripeKey = process.env.STRIPE_SECRET_KEY || '';
     if (!stripeKey) {
       throw new Error("No se encuentra la clave secreta de Stripe en el archivo .env");
     }
 
-    // Usamos la versión estable del servidor de Stripe con el silenciador de errores
     const stripe = new Stripe(stripeKey, {
       apiVersion: '2024-06-20' as any,
     });
@@ -24,6 +30,12 @@ export async function POST(request: Request) {
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
+      // 🚀 ASOCIAMOS EL CLIENTE Y EL PLAN EN LOS METADATOS
+      client_reference_id: userId,
+      metadata: {
+        userId: userId,
+        priceId: priceId
+      },
       line_items: [
         {
           price: priceId,
