@@ -146,8 +146,11 @@ export default function GeneradorFacturas() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [facturaGuardada, setFacturaGuardada] = useState(false);
-  // 🚀 NUEVO: Gatillo para recalcular la numeración automáticamente al guardar
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // 🚀 NUEVO: Control de bloqueo para no perder los datos del PDF y Tabla de Historial
+  const [facturaBloqueada, setFacturaBloqueada] = useState(false);
+  const [historialFacturas, setHistorialFacturas] = useState<any[]>([]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -161,7 +164,6 @@ export default function GeneradorFacturas() {
       });
   }, []);
 
-  // 🚀 NUEVA LÓGICA: Calcula el número de factura de forma 100% automatizada
   useEffect(() => {
     if (!empresaId) return;
 
@@ -170,16 +172,22 @@ export default function GeneradorFacturas() {
       .then(movimientos => {
          const anioFactura = fecha.split('-')[0] || new Date().getFullYear().toString();
          
-         // Contamos cuántas ventas de tipo ingreso existen ya registradas en ese año específico
-         const ventasDelAnio = movimientos.filter((m: any) => {
-            const [, , y] = m.name.split('/');
-            return m.categoria === "Ventas" && Number(m.total) > 0 && y === anioFactura;
-         });
+         const ventas = movimientos.filter((m: any) => m.categoria === "Ventas" && Number(m.total) > 0);
+         
+         // Invertimos para que las más recientes salgan arriba en la tabla
+         setHistorialFacturas(ventas.reverse());
 
-         const siguienteNumero = ventasDelAnio.length + 1;
-         setNumeroFactura(`F-${anioFactura}-${String(siguienteNumero).padStart(3, '0')}`);
+         // Solo calculamos el siguiente número si NO estamos viendo una factura bloqueada/recién guardada
+         if (!facturaBloqueada) {
+            const ventasDelAnio = ventas.filter((m: any) => {
+               const [, , y] = m.name.split('/');
+               return y === anioFactura;
+            });
+            const siguienteNumero = ventasDelAnio.length + 1;
+            setNumeroFactura(`F-${anioFactura}-${String(siguienteNumero).padStart(3, '0')}`);
+         }
       });
-  }, [empresaId, fecha, refreshTrigger]);
+  }, [empresaId, fecha, refreshTrigger, facturaBloqueada]);
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
     setEmpresaId(nuevaEmpresa);
@@ -235,10 +243,10 @@ export default function GeneradorFacturas() {
 
       if (res.ok) {
         setFacturaGuardada(true);
-        // Reseteamos campos de texto rápidos
-        setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); setConcepto(""); setBaseImponible("");
-        // 🚀 Disparamos el refresco automático de la base de datos para saltar al siguiente número real
-        setRefreshTrigger(prev => prev + 1);
+        // 🚀 BLOQUEAMOS LOS DATOS EN PANTALLA PARA QUE EL CLIENTE PUEDA DESCARGAR EL PDF
+        setFacturaBloqueada(true); 
+        setRefreshTrigger(prev => prev + 1); // Dispara la actualización de la tabla del historial
+        
         setTimeout(() => setFacturaGuardada(false), 4000);
       } else {
         alert("⚠️ Error al guardar en el Libro Mayor.");
@@ -251,12 +259,22 @@ export default function GeneradorFacturas() {
     }
   };
 
+  // 🚀 LÓGICA PARA LIMPIAR TODO Y CREAR OTRA FACTURA
+  const prepararNuevaFactura = () => {
+     setClienteNombre(""); 
+     setClienteNif(""); 
+     setClienteDireccion(""); 
+     setConcepto(""); 
+     setBaseImponible("");
+     // Al desbloquear, el useEffect detectará que está limpio y saltará al siguiente número F-2026-00X
+     setFacturaBloqueada(false); 
+  };
+
   return (
     <>
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
-          {/* 🚀 CABECERA MÓVIL CON ESCUDO */}
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
@@ -270,7 +288,6 @@ export default function GeneradorFacturas() {
           <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
             <div>
               <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
-                {/* 🚀 MENÚ LATERAL CON ESCUDO */}
                 <div className="flex items-center gap-3">
                   <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                   <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
@@ -325,13 +342,23 @@ export default function GeneradorFacturas() {
               </div>
               
               <div className="flex flex-wrap gap-3">
-                 <button 
-                    onClick={guardarEnLibroMayor} 
-                    disabled={isSaving || baseNum <= 0}
-                    className="w-full sm:w-auto bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-800 transition shadow-md disabled:opacity-50"
-                 >
-                    {isSaving ? "Guardando..." : "1. Guardar Ingreso"}
-                 </button>
+                 {/* 🚀 BOTÓN DINÁMICO: Cambia a "Nueva Factura" cuando está guardada */}
+                 {!facturaBloqueada ? (
+                    <button 
+                       onClick={guardarEnLibroMayor} 
+                       disabled={isSaving || baseNum <= 0}
+                       className="w-full sm:w-auto bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-800 transition shadow-md disabled:opacity-50"
+                    >
+                       {isSaving ? "Guardando..." : "1. Guardar Ingreso"}
+                    </button>
+                 ) : (
+                    <button 
+                       onClick={prepararNuevaFactura} 
+                       className="w-full sm:w-auto bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-md shadow-emerald-500/20"
+                    >
+                       + Nueva Factura
+                    </button>
+                 )}
                  
                  {baseNum > 0 && (
                    <PDFDownloadLink document={<FacturaPDF datos={datosPDF} />} fileName={`${numeroFactura}_${empresaId.replace(/\s+/g, '')}.pdf`}>
@@ -351,12 +378,12 @@ export default function GeneradorFacturas() {
                 <span className="w-8 h-8 bg-emerald-100 text-emerald-600 flex items-center justify-center rounded-full font-black text-lg shadow-sm">✓</span>
                 <div>
                   <h4 className="text-sm font-bold text-emerald-800">Factura registrada con éxito</h4>
-                  <p className="text-xs text-emerald-600 font-medium">El ingreso y el IVA ya están sumados en tu Consola General.</p>
+                  <p className="text-xs text-emerald-600 font-medium">El ingreso y el IVA ya están sumados en tu Consola General. Ya puedes descargar el PDF.</p>
                 </div>
               </div>
             )}
 
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-5xl mx-auto">
+            <div className={`bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-5xl mx-auto transition ${facturaBloqueada ? 'opacity-80' : ''}`}>
               <div className="grid grid-cols-1 lg:grid-cols-2">
                 
                 <div className="p-5 md:p-8 border-b lg:border-b-0 lg:border-r border-slate-100 bg-white">
@@ -369,30 +396,29 @@ export default function GeneradorFacturas() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nº Factura</label>
-                        {/* El campo se calcula solo, pero dejamos cambiarlo por si acaso */}
-                        <input type="text" value={numeroFactura} onChange={e => setNumeroFactura(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 transition" />
+                        <input type="text" value={numeroFactura} disabled={facturaBloqueada} onChange={e => setNumeroFactura(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Emisión</label>
-                        <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 transition" />
+                        <input type="date" value={fecha} disabled={facturaBloqueada} onChange={e => setFecha(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
                       </div>
                     </div>
 
                     <div className="pt-5 border-t border-slate-100">
                       <h4 className="text-xs font-bold text-slate-400 uppercase mb-3">Tus Datos Fiscales ({empresaId})</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
-                        <input type="text" placeholder="Tu NIF/CIF..." value={miNif} onChange={e => setMiNif(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition" />
-                        <input type="text" placeholder="Tu Dirección Legal..." value={miDireccion} onChange={e => setMiDireccion(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition" />
+                        <input type="text" placeholder="Tu NIF/CIF..." disabled={facturaBloqueada} value={miNif} onChange={e => setMiNif(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
+                        <input type="text" placeholder="Tu Dirección Legal..." disabled={facturaBloqueada} value={miDireccion} onChange={e => setMiDireccion(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
                       </div>
                     </div>
 
                     <div className="pt-5 border-t border-slate-100">
                       <h4 className="text-xs font-bold text-slate-400 uppercase mb-3">Datos del Cliente receptor</h4>
                       <div className="space-y-4">
-                        <input type="text" placeholder="Nombre de la empresa o cliente..." value={clienteNombre} onChange={e => setClienteNombre(e.target.value)} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition" />
+                        <input type="text" placeholder="Nombre de la empresa o cliente..." disabled={facturaBloqueada} value={clienteNombre} onChange={e => setClienteNombre(e.target.value)} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed" />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                           <input type="text" placeholder="NIF/CIF del cliente..." value={clienteNif} onChange={e => setClienteNif(e.target.value)} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition" />
-                           <input type="text" placeholder="Dirección del cliente..." value={clienteDireccion} onChange={e => setClienteDireccion(e.target.value)} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition" />
+                           <input type="text" placeholder="NIF/CIF del cliente..." disabled={facturaBloqueada} value={clienteNif} onChange={e => setClienteNif(e.target.value)} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed" />
+                           <input type="text" placeholder="Dirección del cliente..." disabled={facturaBloqueada} value={clienteDireccion} onChange={e => setClienteDireccion(e.target.value)} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
                       </div>
                     </div>
@@ -409,17 +435,17 @@ export default function GeneradorFacturas() {
                     <div className="space-y-5">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Descripción del Servicio</label>
-                        <input type="text" placeholder="Ej: Consultoría web y marketing..." value={concepto} onChange={e => setConcepto(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition" />
+                        <input type="text" placeholder="Ej: Consultoría web y marketing..." disabled={facturaBloqueada} value={concepto} onChange={e => setConcepto(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed" />
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
-                          <input type="text" inputMode="decimal" placeholder="0.00" value={baseImponible} onChange={e => setBaseImponible(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition" />
+                          <input type="text" inputMode="decimal" placeholder="0.00" disabled={facturaBloqueada} value={baseImponible} onChange={e => setBaseImponible(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Impuesto Aplicado</label>
-                          <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition">
+                          <select value={ivaSeleccionado} disabled={facturaBloqueada} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed">
                               <option value="21">IVA General (21%)</option>
                               <option value="10">IVA Reducido (10%)</option>
                               <option value="4">IVA Superreducido (4%)</option>
@@ -450,12 +476,53 @@ export default function GeneradorFacturas() {
                 </div>
               </div>
             </div>
+
+            {/* 🚀 NUEVA SECCIÓN: HISTORIAL DE FACTURAS */}
+            <div className="max-w-5xl mx-auto mt-12 mb-10">
+              <h2 className="text-lg font-black text-slate-900 mb-4">Historial de Ingresos ({empresaId})</h2>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                       <thead>
+                          <tr className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200">
+                             <th className="p-4 md:p-5">Fecha Emisión</th>
+                             <th className="p-4 md:p-5">Concepto DB</th>
+                             <th className="p-4 md:p-5 text-right">Base Imponible</th>
+                             <th className="p-4 md:p-5 text-right">IVA Aplicado</th>
+                             <th className="p-4 md:p-5 text-right">Total Facturado</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100">
+                          {historialFacturas.length === 0 ? (
+                             <tr><td colSpan={5} className="p-8 text-center text-sm font-medium text-slate-400">Aún no hay facturas registradas en este espacio de trabajo.</td></tr>
+                          ) : (
+                             historialFacturas.map((fac, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50 transition">
+                                   <td className="p-4 md:p-5 text-sm font-bold text-slate-700">{fac.name}</td>
+                                   <td className="p-4 md:p-5">
+                                      <span className="bg-blue-50 text-blue-600 border border-blue-100 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wide">
+                                         {fac.categoria}
+                                      </span>
+                                   </td>
+                                   <td className="p-4 md:p-5 text-sm font-bold text-slate-700 text-right">{Number(fac.total).toFixed(2)} €</td>
+                                   <td className="p-4 md:p-5 text-sm font-bold text-slate-500 text-right">{fac.iva}%</td>
+                                   <td className="p-4 md:p-5 text-sm font-black text-emerald-600 text-right">
+                                      {(Number(fac.total) * (1 + Number(fac.iva) / 100)).toFixed(2)} €
+                                   </td>
+                                </tr>
+                             ))
+                          )}
+                       </tbody>
+                    </table>
+                 </div>
+              </div>
+            </div>
+
             <div className="h-10"></div>
           </main>
         </div>
       </Show>
 
-      {/* 🚀 LANDING PAGE CON ESCUDO PARA NO LOGUEADOS */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
