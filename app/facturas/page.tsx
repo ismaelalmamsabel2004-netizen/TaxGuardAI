@@ -178,10 +178,11 @@ export default function GeneradorFacturas() {
   
   const [historialFacturas, setHistorialFacturas] = useState<any[]>([]);
 
-  // 🚀 NUEVOS ESTADOS: Búsqueda y Paginación
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  const [planActivo, setPlanActivo] = useState('free');
 
   useEffect(() => {
     setIsMounted(true);
@@ -193,6 +194,9 @@ export default function GeneradorFacturas() {
          setEmpresas(listaEmpresas);
          const activa = data.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
+         
+         // 🚀 LEYENDO PLAN ACTIVO
+         setPlanActivo(data.planSuscripcion || 'free');
       });
   }, []);
 
@@ -325,7 +329,6 @@ export default function GeneradorFacturas() {
      setFacturaBloqueada(false); 
   };
 
-  // 🚀 LÓGICA DE BÚSQUEDA Y PAGINACIÓN
   const filteredHistorial = historialFacturas.filter((fac: any) => {
      const search = searchTerm.toLowerCase();
      const numFac = fac.numero_factura?.toLowerCase() || "";
@@ -336,7 +339,6 @@ export default function GeneradorFacturas() {
 
   const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
   return (
     <>
       <Show when="signed-in">
@@ -392,8 +394,21 @@ export default function GeneradorFacturas() {
             </div>
             
             <div className="mt-auto">
+              {/* 🚀 EL BOTÓN PROFESIONAL UNIFICADO SIN "PLAN GRATUITO" */}
+              <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                  <span className={`text-xs font-bold ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                    {planActivo === 'pro' ? 'Plan Empresa PRO' : planActivo === 'autonomo' ? 'Plan Autónomo' : 'Suscripción Inactiva'}
+                  </span>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-300 bg-emerald-900/50' : 'text-slate-800 bg-white'}`}>
+                  {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
+                </span>
+              </Link>
+              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
-                <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
+                <span className="text-xs font-semibold text-slate-400">Perfil y Sesión</span>
                 <UserButton/>
               </div>
             </div>
@@ -474,7 +489,7 @@ export default function GeneradorFacturas() {
                       <div className="flex justify-between items-center mb-3">
                         <h4 className="text-xs font-bold text-slate-400 uppercase">Tus Datos Fiscales ({empresaId})</h4>
                         <button onClick={guardarDatosEmisor} disabled={facturaBloqueada} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                           💾 Guardar por defecto
+                            💾 Guardar por defecto
                         </button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -606,7 +621,7 @@ export default function GeneradorFacturas() {
                                    </td>
                                    <td className="p-4 md:p-5">
                                       <div className="flex flex-col">
-                                         <span className="text-sm font-bold text-slate-700">{fac.cliente_nombre || 'Sin cliente especificado'}</span>
+                                         <span className="text-sm font-bold text-slate-700">{fac.cliente_nombre || 'Sin cliente'}</span>
                                          <span className="text-[10px] text-slate-400 font-medium">{fac.cliente_nif || '-'}</span>
                                       </div>
                                    </td>
@@ -656,9 +671,50 @@ export default function GeneradorFacturas() {
         </div>
       </Show>
 
-      {/* LANDING PAGE... (Igual que antes) */}
+      {/* 🚀 LANDING PÚBLICA MODIFICADA PARA COHERENCIA DE MARCA */}
       <Show when="signed-out">
-         {/* ... El código del Landing Page de Clerk que ya tenías ... */}
+        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
+          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
+            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain" />
+                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
+              </div>
+              <div className="flex items-center gap-4">
+                <SignInButton mode="modal">
+                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
+                    Acceso a Clientes
+                  </button>
+                </SignInButton>
+              </div>
+            </div>
+          </nav>
+
+          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden text-center">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
+            <div className="max-w-7xl mx-auto px-6 relative z-10">
+              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
+                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
+              </h1>
+              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium">
+                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <SignInButton mode="modal">
+                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-blue-400/20">
+                    Iniciar Sesión
+                  </button>
+                </SignInButton>
+                <Link href="/precios" className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700">
+                  Ver Planes y Precios
+                </Link>
+              </div>
+            </div>
+          </div>
+          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
+            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
+          </footer>
+        </div>
       </Show>
     </>
   );

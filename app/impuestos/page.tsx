@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserButton, Show, SignInButton } from "@clerk/nextjs";
+import { UserButton, Show } from "@clerk/nextjs";
 import Link from 'next/link';
 
 export default function ModelosTributarios() {
@@ -11,14 +11,12 @@ export default function ModelosTributarios() {
   const [empresaId, setEmpresaId] = useState("");
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [data, setData] = useState<any[]>([]);
+  const [planActivo, setPlanActivo] = useState('free');
 
-  // 🚀 ESTADOS FISCALES
   const [trimestre, setTrimestre] = useState("1T");
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
-  // 🚀 NUEVO: Array para guardar los años dinámicos detectados
   const [aniosDisponibles, setAniosDisponibles] = useState<string[]>([new Date().getFullYear().toString()]);
 
-  // 🚀 SINCRONIZACIÓN CON LA NUBE
   useEffect(() => {
     setIsMounted(true);
     
@@ -33,25 +31,23 @@ export default function ModelosTributarios() {
       .then((ajustesGuardados: any) => {
          const listaEmpresas = ajustesGuardados.empresas || ["Alperez"];
          setEmpresas(listaEmpresas);
-         
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
+         
+         setPlanActivo(ajustesGuardados.planSuscripcion || 'free');
 
          if (activa) {
            fetch(`/api/finances?empresaId=${activa}&t=${Date.now()}`)
              .then(res => res.ok ? res.json() : [])
              .then(d => {
                 setData(d);
-                // 🚀 LÓGICA INTELIGENTE: Extraer años únicos de los datos reales
                 if (d.length > 0) {
                     const aniosUnicos = new Set<string>();
                     d.forEach((item: any) => {
                         const [, , year] = item.name.split('/');
                         if (year) aniosUnicos.add(year);
                     });
-                    // Aseguramos que el año actual siempre esté
                     aniosUnicos.add(new Date().getFullYear().toString());
-                    // Los ordenamos de más reciente a más antiguo
                     const aniosOrdenados = Array.from(aniosUnicos).sort((a, b) => Number(b) - Number(a));
                     setAniosDisponibles(aniosOrdenados);
                 }
@@ -74,7 +70,6 @@ export default function ModelosTributarios() {
       .then(r => r.ok ? r.json() : [])
       .then(d => {
           setData(d);
-          // Recalculamos años si cambiamos de empresa
           if (d.length > 0) {
               const aniosUnicos = new Set<string>();
               d.forEach((item: any) => {
@@ -87,7 +82,6 @@ export default function ModelosTributarios() {
       });
   };
 
-  // 🚀 MOTOR MATEMÁTICO DEL MODELO 303
   const calcularModelo303 = () => {
     const datosTrimestre = data.filter(d => {
       const [, mesStr, anioStr] = d.name.split('/');
@@ -106,13 +100,10 @@ export default function ModelosTributarios() {
 
     const base21 = ingresos.filter(i => Number(i.iva) === 21).reduce((acc, curr) => acc + Number(curr.total), 0);
     const cuota21 = base21 * 0.21;
-
     const base10 = ingresos.filter(i => Number(i.iva) === 10).reduce((acc, curr) => acc + Number(curr.total), 0);
     const cuota10 = base10 * 0.10;
-
     const base4 = ingresos.filter(i => Number(i.iva) === 4).reduce((acc, curr) => acc + Number(curr.total), 0);
     const cuota4 = base4 * 0.04;
-
     const totalCuotaDevengada = cuota21 + cuota10 + cuota4;
 
     const baseDeducible = gastos.reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
@@ -123,10 +114,7 @@ export default function ModelosTributarios() {
 
     const resultado = totalCuotaDevengada - cuotaDeducible;
 
-    return {
-      base21, cuota21, base10, cuota10, base4, cuota4,
-      totalCuotaDevengada, baseDeducible, cuotaDeducible, resultado
-    };
+    return { base21, cuota21, base10, cuota10, base4, cuota4, totalCuotaDevengada, baseDeducible, cuotaDeducible, resultado };
   };
 
   const mod303 = calcularModelo303();
@@ -141,11 +129,11 @@ export default function ModelosTributarios() {
   };
 
   if (!isMounted) return null;
+  
   return (
     <Show when="signed-in">
       <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
         
-        {/* 🚀 CABECERA MÓVIL CON ESCUDO */}
         <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
           <div className="flex items-center gap-2">
              <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
@@ -159,7 +147,6 @@ export default function ModelosTributarios() {
         <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
           <div>
             <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
-              {/* 🚀 MENÚ LATERAL CON ESCUDO */}
               <div className="flex items-center gap-3">
                 <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
                 <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
@@ -201,6 +188,18 @@ export default function ModelosTributarios() {
           </div>
           
           <div className="mt-auto">
+            <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                <span className={`text-xs font-bold ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  {planActivo === 'pro' ? 'Plan Empresa PRO' : planActivo === 'autonomo' ? 'Plan Autónomo' : 'Suscripción Inactiva'}
+                </span>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-300 bg-emerald-900/50' : 'text-slate-800 bg-white'}`}>
+                {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
+              </span>
+            </Link>
+            
             <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
               <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
               <UserButton/>
@@ -231,7 +230,6 @@ export default function ModelosTributarios() {
                   ))}
                </div>
                
-               {/* 🚀 NUEVO SELECTOR INTELIGENTE: Pinta los años dinámicamente */}
                <select 
                  value={anio} 
                  onChange={(e) => setAnio(e.target.value)}
@@ -247,112 +245,132 @@ export default function ModelosTributarios() {
             </div>
           </header>
 
-          <div className="max-w-4xl mx-auto">
-             <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
-                <div className="bg-orange-500 p-6 md:p-8 text-white">
-                   <h2 className="text-2xl font-black tracking-tight">Modelo 303</h2>
-                   <p className="font-medium text-orange-100 mt-1">Borrador interno calculado en tiempo real para <strong>{empresaId}</strong></p>
-                </div>
+          {/* 🚀 MURO DE PAGO PARA EL MODELO 303 (SOLO PLAN PRO) */}
+          {planActivo !== 'pro' ? (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden mt-8">
+                 <div className="p-10 md:p-20 flex flex-col items-center justify-center text-center relative">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-500 to-amber-500"></div>
+                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-slate-100">
+                       <span className="text-5xl">🏛️</span>
+                    </div>
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-50 border border-orange-100 text-orange-600 text-[10px] font-black uppercase tracking-widest mb-4">
+                       Módulo Fiscal Premium
+                    </div>
+                    <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-4 tracking-tight">Cálculo Oficial Automático</h2>
+                    <p className="text-base text-slate-500 max-w-lg mx-auto mb-10 leading-relaxed font-medium">
+                       La generación automática del Modelo 303 (IVA Trimestral) cruzado con tus Libros Mayores está reservada para el Plan Empresa Pro. Olvídate de la calculadora.
+                    </p>
+                    <Link href="/precios" className="bg-orange-500 text-white font-black px-8 py-4 rounded-2xl shadow-lg shadow-orange-500/30 hover:bg-orange-600 transition hover:-translate-y-1 flex items-center gap-2">
+                       ⭐ Mejorar a Plan Empresa Pro
+                    </Link>
+                 </div>
+              </div>
+          ) : (
+            <div className="max-w-4xl mx-auto">
+               <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
+                  <div className="bg-orange-500 p-6 md:p-8 text-white">
+                     <h2 className="text-2xl font-black tracking-tight">Modelo 303</h2>
+                     <p className="font-medium text-orange-100 mt-1">Borrador interno calculado en tiempo real para <strong>{empresaId}</strong></p>
+                  </div>
 
-                <div className="p-6 md:p-10 space-y-10">
-                   
-                   <section>
-                      <h3 className="text-sm font-black text-orange-600 uppercase tracking-widest mb-4">I. IVA Devengado (Tus Ingresos)</h3>
-                      <div className="space-y-4">
-                         <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
-                            <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen general ordinario (21%)</span>
-                            <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
-                               <div className="flex flex-col items-start sm:items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Base [01]</span>
-                                  <span className="text-sm font-bold text-slate-900">{mod303.base21.toFixed(2)} €</span>
-                               </div>
-                               <div className="flex flex-col items-center">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Tipo [02]</span>
-                                  <span className="text-sm font-bold text-slate-900">21%</span>
-                               </div>
-                               <div className="flex flex-col items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota [03]</span>
-                                  <span className="text-sm font-black text-emerald-600">+{mod303.cuota21.toFixed(2)} €</span>
-                               </div>
-                            </div>
-                         </div>
+                  <div className="p-6 md:p-10 space-y-10">
+                     <section>
+                        <h3 className="text-sm font-black text-orange-600 uppercase tracking-widest mb-4">I. IVA Devengado (Tus Ingresos)</h3>
+                        <div className="space-y-4">
+                           <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                              <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen general ordinario (21%)</span>
+                              <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
+                                 <div className="flex flex-col items-start sm:items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Base [01]</span>
+                                    <span className="text-sm font-bold text-slate-900">{mod303.base21.toFixed(2)} €</span>
+                                 </div>
+                                 <div className="flex flex-col items-center">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Tipo [02]</span>
+                                    <span className="text-sm font-bold text-slate-900">21%</span>
+                                 </div>
+                                 <div className="flex flex-col items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota [03]</span>
+                                    <span className="text-sm font-black text-emerald-600">+{mod303.cuota21.toFixed(2)} €</span>
+                                 </div>
+                              </div>
+                           </div>
 
-                         <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
-                            <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen reducido (10%)</span>
-                            <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
-                               <div className="flex flex-col items-start sm:items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Base [04]</span>
-                                  <span className="text-sm font-bold text-slate-900">{mod303.base10.toFixed(2)} €</span>
-                               </div>
-                               <div className="flex flex-col items-center">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Tipo [05]</span>
-                                  <span className="text-sm font-bold text-slate-900">10%</span>
-                               </div>
-                               <div className="flex flex-col items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota [06]</span>
-                                  <span className="text-sm font-black text-emerald-600">+{mod303.cuota10.toFixed(2)} €</span>
-                               </div>
-                            </div>
-                         </div>
+                           <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                              <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen reducido (10%)</span>
+                              <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
+                                 <div className="flex flex-col items-start sm:items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Base [04]</span>
+                                    <span className="text-sm font-bold text-slate-900">{mod303.base10.toFixed(2)} €</span>
+                                 </div>
+                                 <div className="flex flex-col items-center">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Tipo [05]</span>
+                                    <span className="text-sm font-bold text-slate-900">10%</span>
+                                 </div>
+                                 <div className="flex flex-col items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota [06]</span>
+                                    <span className="text-sm font-black text-emerald-600">+{mod303.cuota10.toFixed(2)} €</span>
+                                 </div>
+                              </div>
+                           </div>
 
-                         <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
-                            <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen superreducido (4%)</span>
-                            <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
-                               <div className="flex flex-col items-start sm:items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Base [07]</span>
-                                  <span className="text-sm font-bold text-slate-900">{mod303.base4.toFixed(2)} €</span>
-                               </div>
-                               <div className="flex flex-col items-center">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Tipo [08]</span>
-                                  <span className="text-sm font-bold text-slate-900">4%</span>
-                               </div>
-                               <div className="flex flex-col items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota [09]</span>
-                                  <span className="text-sm font-black text-emerald-600">+{mod303.cuota4.toFixed(2)} €</span>
-                               </div>
-                            </div>
-                         </div>
+                           <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                              <span className="text-sm font-bold text-slate-700 sm:w-1/3">Régimen superreducido (4%)</span>
+                              <div className="flex flex-wrap sm:flex-nowrap justify-between sm:justify-end gap-x-8 gap-y-2 w-full sm:w-2/3">
+                                 <div className="flex flex-col items-start sm:items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Base [07]</span>
+                                    <span className="text-sm font-bold text-slate-900">{mod303.base4.toFixed(2)} €</span>
+                                 </div>
+                                 <div className="flex flex-col items-center">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Tipo [08]</span>
+                                    <span className="text-sm font-bold text-slate-900">4%</span>
+                                 </div>
+                                 <div className="flex flex-col items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota [09]</span>
+                                    <span className="text-sm font-black text-emerald-600">+{mod303.cuota4.toFixed(2)} €</span>
+                                 </div>
+                              </div>
+                           </div>
 
-                         <div className="flex justify-between items-center p-4 bg-orange-50 rounded-2xl border border-orange-100">
-                            <span className="text-sm font-black text-orange-800 uppercase tracking-wide">Suma de Cuotas [27]:</span>
-                            <span className="text-lg font-black text-orange-600">+{mod303.totalCuotaDevengada.toFixed(2)} €</span>
-                         </div>
-                      </div>
-                   </section>
+                           <div className="flex justify-between items-center p-4 bg-orange-50 rounded-2xl border border-orange-100">
+                              <span className="text-sm font-black text-orange-800 uppercase tracking-wide">Suma de Cuotas [27]:</span>
+                              <span className="text-lg font-black text-orange-600">+{mod303.totalCuotaDevengada.toFixed(2)} €</span>
+                           </div>
+                        </div>
+                     </section>
 
-                   <section>
-                      <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">II. IVA Deducible (Tus Gastos)</h3>
-                      <div className="space-y-4">
-                         <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
-                            <span className="text-sm font-bold text-slate-700 sm:w-1/2">Operaciones interiores corrientes</span>
-                            <div className="flex justify-between sm:justify-end gap-8 w-full sm:w-1/2">
-                               <div className="flex flex-col items-start sm:items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Base [28]</span>
-                                  <span className="text-sm font-bold text-slate-900">{mod303.baseDeducible.toFixed(2)} €</span>
-                               </div>
-                               <div className="flex flex-col items-end">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota Deducible [29]</span>
-                                  <span className="text-sm font-black text-rose-500">-{mod303.cuotaDeducible.toFixed(2)} €</span>
-                               </div>
-                            </div>
-                         </div>
-                      </div>
-                   </section>
+                     <section>
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">II. IVA Deducible (Tus Gastos)</h3>
+                        <div className="space-y-4">
+                           <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                              <span className="text-sm font-bold text-slate-700 sm:w-1/2">Operaciones interiores corrientes</span>
+                              <div className="flex justify-between sm:justify-end gap-8 w-full sm:w-1/2">
+                                 <div className="flex flex-col items-start sm:items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Base [28]</span>
+                                    <span className="text-sm font-bold text-slate-900">{mod303.baseDeducible.toFixed(2)} €</span>
+                                 </div>
+                                 <div className="flex flex-col items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Cuota Deducible [29]</span>
+                                    <span className="text-sm font-black text-rose-500">-{mod303.cuotaDeducible.toFixed(2)} €</span>
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
+                     </section>
 
-                   <section className="pt-6 border-t border-slate-200">
-                      <div className={`p-6 md:p-8 rounded-3xl flex flex-col sm:flex-row justify-between sm:items-center gap-4 border ${mod303.resultado > 0 ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
-                         <span className="text-sm font-black text-slate-600 uppercase tracking-widest">Resultado Liquidación [71]</span>
-                         <div className="text-left sm:text-right">
-                            <span className={`text-4xl md:text-5xl font-black tracking-tight ${mod303.resultado > 0 ? 'text-amber-600' : 'text-blue-600'}`}>
-                               {mod303.resultado > 0 ? 'A Pagar:' : 'A Favor:'} {Math.abs(mod303.resultado).toFixed(2)} €
-                            </span>
-                         </div>
-                      </div>
-                   </section>
-
-                </div>
-             </div>
-          </div>
+                     <section className="pt-6 border-t border-slate-200">
+                        <div className={`p-6 md:p-8 rounded-3xl flex flex-col sm:flex-row justify-between sm:items-center gap-4 border ${mod303.resultado > 0 ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
+                           <span className="text-sm font-black text-slate-600 uppercase tracking-widest">Resultado Liquidación [71]</span>
+                           <div className="text-left sm:text-right">
+                              <span className={`text-4xl md:text-5xl font-black tracking-tight ${mod303.resultado > 0 ? 'text-amber-600' : 'text-blue-600'}`}>
+                                 {mod303.resultado > 0 ? 'A Pagar:' : 'A Favor:'} {Math.abs(mod303.resultado).toFixed(2)} €
+                              </span>
+                           </div>
+                        </div>
+                     </section>
+                  </div>
+               </div>
+            </div>
+          )}
           <div className="h-10"></div>
         </main>
       </div>

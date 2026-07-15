@@ -13,12 +13,16 @@ export default function Precios() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priceId })
       });
+      
       const data = await res.json();
       
-      if (data.url) {
+      // 🚀 SOLUCIÓN AL ERROR: Controlamos si no ha iniciado sesión
+      if (res.status === 401) {
+        alert("🔒 Acceso Denegado: Tienes que iniciar sesión o crear una cuenta primero para poder suscribirte a un plan.");
+      } else if (data.url) {
         window.location.href = data.url; 
       } else {
-        alert("⚠️ Revisa tus claves de Stripe en el archivo .env.local");
+        alert(`⚠️ Error del servidor: ${data.error || 'Revisa que las variables STRIPE_SECRET_KEY estén puestas en Vercel.'}`);
       }
     } catch (error) {
       console.error("Error al procesar el pago:", error);
@@ -29,7 +33,6 @@ export default function Precios() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-4 selection:bg-blue-500/30 font-sans relative overflow-hidden" translate="no">
       
-      {/* 🚀 NAVBAR PARA PODER VOLVER AL INICIO */}
       <nav className="absolute top-0 w-full z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between border-b border-white/5 bg-slate-950/50 backdrop-blur-md">
           <Link href="/" className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition">
@@ -42,7 +45,6 @@ export default function Precios() {
         </div>
       </nav>
 
-      {/* EFECTOS DE LUZ DE FONDO (Igual que en la Landing) */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/10 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
 
       <div className="relative z-10 w-full max-w-5xl mt-20">
@@ -57,7 +59,6 @@ export default function Precios() {
         
         <div className="flex flex-col md:flex-row gap-8 w-full items-center md:items-stretch">
           
-          {/* TARJETA PLAN AUTÓNOMO */}
           <div className="bg-slate-900/50 p-8 rounded-3xl shadow-xl border border-slate-800 flex-1 flex flex-col w-full max-w-md md:max-w-none backdrop-blur-sm hover:border-slate-700 transition">
             <h2 className="text-2xl font-bold text-white">Plan Autónomo Inteligente</h2>
             <div className="mt-6 mb-6">
@@ -73,11 +74,10 @@ export default function Precios() {
               disabled={loading === 'price_1Tsjz1JhA316XLs0dk9307W2'}
               className="w-full mt-8 bg-slate-800 text-white font-bold py-3.5 rounded-xl border border-slate-700 hover:bg-slate-700 transition shadow-sm disabled:opacity-50"
             >
-              {loading === 'price_1Tsjz1JhA316XLs0dk9307W2' ? 'Conectando con Stripe...' : 'Empezar como Autónomo'}
+              {loading === 'price_1Tsjz1JhA316XLs0dk9307W2' ? 'Conectando...' : 'Empezar como Autónomo'}
             </button>
           </div>
 
-          {/* TARJETA PLAN EMPRESA PRO (DESTACADA) */}
           <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl border-2 border-blue-500 flex-1 flex flex-col relative transform md:-translate-y-4 w-full max-w-md md:max-w-none">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg shadow-blue-500/30">
               MÁS RECOMENDADO
@@ -96,7 +96,7 @@ export default function Precios() {
               disabled={loading === 'price_1Tsk0EJhA316XLs049Nl6hka'}
               className="w-full mt-8 bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-500 shadow-xl shadow-blue-500/20 border border-blue-400/20 transition disabled:opacity-50"
             >
-              {loading === 'price_1Tsk0EJhA316XLs049Nl6hka' ? 'Conectando con Stripe...' : 'Dominar mis finanzas'}
+              {loading === 'price_1Tsk0EJhA316XLs049Nl6hka' ? 'Conectando...' : 'Dominar mis finanzas'}
             </button>
           </div>
 

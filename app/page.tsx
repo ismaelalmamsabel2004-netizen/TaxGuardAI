@@ -386,7 +386,6 @@ export default function Home() {
 
   const alertasDinamicas = generarAlertas();
 
-  // ✨ CARGAR DATOS DESDE SUPABASE ✨
   useEffect(() => {
     if (!empresaId) return; 
 
@@ -399,7 +398,6 @@ export default function Home() {
     });
   }, [empresaId]);
 
-  // ✨ ESCÁNER CON IA GEMINI ✨
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -466,7 +464,6 @@ export default function Home() {
     reader.readAsText(file);
   };
 
-  // ✨ GUARDAR EN SUPABASE ✨
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault(); 
     
@@ -525,7 +522,6 @@ export default function Home() {
     }
   };
 
-  // ✨ BORRAR DE SUPABASE ✨
   const eliminarDato = async (id: any) => {
     const confirmacion = window.confirm("¿Seguro que deseas eliminar esta transacción?");
     if (!confirmacion) return;
@@ -549,7 +545,6 @@ export default function Home() {
     });
   };
 
-  // ✨ EDITAR EN SUPABASE ✨
   const guardarEdicion = async (id: any) => {
     try {
       const [y, m, d] = editFormData.mes.split('-');
@@ -716,15 +711,16 @@ export default function Home() {
             </div>
             
             <div className="mt-auto">
+              {/* 🚀 BOTÓN DE SUSCRIPCIÓN CORREGIDO (Adiós "Gratuito") */}
               <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-slate-500'}`}></span>
-                  <span className={`text-xs font-bold ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-400' : 'text-slate-400'}`}>
-                    {planActivo === 'pro' ? 'Plan Empresa PRO' : planActivo === 'autonomo' ? 'Plan Autónomo' : 'Plan Gratuito'}
+                  <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                  <span className={`text-xs font-bold ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                    {planActivo === 'pro' ? 'Plan Empresa PRO' : planActivo === 'autonomo' ? 'Plan Autónomo' : 'Suscripción Inactiva'}
                   </span>
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-300 bg-emerald-900/50' : 'text-slate-300 bg-slate-700'}`}>
-                  {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activo' : 'Mejorar'}
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-300 bg-emerald-900/50' : 'text-slate-800 bg-white'}`}>
+                  {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
                 </span>
               </Link>
               
@@ -1233,12 +1229,12 @@ export default function Home() {
         )}
       </Show>
 
+      {/* 🚀 LANDING PAGE PÚBLICA MODIFICADA (Botón "Ver Planes y Precios") */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
             <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-              {/* 🚀 LOGO EN NAVBAR PÚBLICA */}
               <div className="flex items-center gap-3">
                 <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain shadow-lg shadow-blue-500/20" />
                 <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
@@ -1278,7 +1274,6 @@ export default function Home() {
                     Iniciar Sesión
                   </button>
                 </SignInButton>
-                {/* 🚀 BOTÓN MODIFICADO PARA REDIRIGIR A PRECIOS */}
                 <Link href="/precios" className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700 flex items-center justify-center gap-2">
                   Ver Planes y Precios
                 </Link>
