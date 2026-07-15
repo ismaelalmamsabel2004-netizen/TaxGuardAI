@@ -2,8 +2,9 @@
 
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect, useRef } from "react";
-// 🚀 IMPORTAMOS SignUpButton AQUÍ
+// 🚀 IMPORTAMOS useRouter PARA EXPULSAR A LOS QUE NO PAGAN
 import { UserButton, Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
 
@@ -11,6 +12,7 @@ import Link from 'next/link';
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA } from './actions';
 
 export default function Home() {
+  const router = useRouter(); // Inicializamos el router
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
@@ -24,8 +26,8 @@ export default function Home() {
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
 
-  // ESTADO PARA SABER SI EL CLIENTE HA PAGADO EN STRIPE
-  const [planActivo, setPlanActivo] = useState('free');
+  // 🚀 CAMBIO CLAVE: Empezamos en estado 'loading' para evitar parpadeos
+  const [planActivo, setPlanActivo] = useState('loading');
 
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
@@ -106,6 +108,16 @@ export default function Home() {
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
+         const planDetectado = ajustesGuardados.planSuscripcion || 'free';
+         
+         // 🚀 LÓGICA DE HARD PAYWALL: Si no ha pagado, lo echamos a /precios instantáneamente
+         if (planDetectado === 'free') {
+            router.push('/precios');
+            return; // Detenemos la ejecución para que no cargue nada más
+         }
+
+         setPlanActivo(planDetectado);
+
          const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
          
@@ -113,9 +125,8 @@ export default function Home() {
          setEmpresaId(activa);
 
          if (ajustesGuardados.papelera) setPapelera(ajustesGuardados.papelera);
-         setPlanActivo(ajustesGuardados.planSuscripcion || 'free');
       });
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     setChartFilter(null);
@@ -173,7 +184,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!empresaId) return; 
+    if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
@@ -211,7 +222,7 @@ export default function Home() {
       });
 
     setChatMessages([]);
-  }, [empresaId]);
+  }, [empresaId, planActivo]);
 
   const guardarNuevaMeta = async () => {
     const nuevaMetaNum = Number(inputMeta);
@@ -388,7 +399,7 @@ export default function Home() {
   const alertasDinamicas = generarAlertas();
 
   useEffect(() => {
-    if (!empresaId) return; 
+    if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
     setData([]);
     setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
@@ -397,7 +408,7 @@ export default function Home() {
       if (d && d.length > 0) setData(d);
       else setData([]);
     });
-  }, [empresaId]);
+  }, [empresaId, planActivo]);
 
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -634,6 +645,32 @@ export default function Home() {
     link.download = `Balance_TaxGuardAI_${filtro}.csv`;
     link.click();
   };
+
+  if (!isMounted) return null;
+  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS
+  if (planActivo === 'loading') {
+     return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
+           <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
+           <h2 className="text-xl font-black tracking-tight mb-2">Preparando entorno seguro...</h2>
+           <p className="text-sm font-medium text-slate-500 mb-3">Comprobando credenciales y conexión cifrada</p>
+           
+           {/* 🚀 CORREO DE SOPORTE INTEGRADO EN LA CARGA */}
+           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2 rounded-xl mb-8 flex items-center gap-2">
+              <span className="text-xl">🛡️</span>
+              <p className="text-xs font-bold text-slate-400">Soporte Técnico: <span className="text-blue-400">soporte.taxguard@gmail.com</span></p>
+           </div>
+
+           <div className="flex gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></span>
+           </div>
+        </div>
+     );
+  }
+
+  // Si entra a esta parte, significa que ya verificamos que es PRO o Autónomo.
   return (
     <>
       <Show when="signed-in">
