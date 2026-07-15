@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import PwaActivator from './PwaActivator'
+import { esES } from '@clerk/localizations';
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -31,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <ClerkProvider>
+      <ClerkProvider localization={esES}>
         <body suppressHydrationWarning className={`${inter.variable} font-sans antialiased bg-background text-foreground`}>
           <PwaActivator />
           {children}

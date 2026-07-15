@@ -2,7 +2,8 @@
 
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect, useRef } from "react";
-import { UserButton, Show, SignInButton } from "@clerk/nextjs";
+// 🚀 IMPORTAMOS SignUpButton AQUÍ
+import { UserButton, Show, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
 
@@ -711,7 +712,6 @@ export default function Home() {
             </div>
             
             <div className="mt-auto">
-              {/* 🚀 BOTÓN DE SUSCRIPCIÓN CORREGIDO (Adiós "Gratuito") */}
               <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
@@ -1229,7 +1229,7 @@ export default function Home() {
         )}
       </Show>
 
-      {/* 🚀 LANDING PAGE PÚBLICA MODIFICADA (Botón "Ver Planes y Precios") */}
+      {/* 🚀 LANDING PAGE PÚBLICA MODIFICADA CON EL BOTÓN "CREAR CUENTA" */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           
@@ -1239,13 +1239,17 @@ export default function Home() {
                 <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain shadow-lg shadow-blue-500/20" />
                 <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
               </div>
-              <div className="flex items-center gap-4">
-                <span className="hidden sm:block text-sm font-medium text-slate-400">¿Ya eres cliente?</span>
+              <div className="flex items-center gap-3 sm:gap-4">
                 <SignInButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
-                    Acceso a Clientes
+                  <button className="hidden sm:block text-sm font-bold text-slate-400 hover:text-white transition">
+                    Iniciar Sesión
                   </button>
                 </SignInButton>
+                <SignUpButton mode="modal">
+                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
+                    Crear Cuenta
+                  </button>
+                </SignUpButton>
               </div>
             </div>
           </nav>
@@ -1269,12 +1273,19 @@ export default function Home() {
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <SignInButton mode="modal">
+                <SignUpButton mode="modal">
                   <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">
+                    Crear Cuenta Gratis
+                  </button>
+                </SignUpButton>
+
+                <SignInButton mode="modal">
+                  <button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700">
                     Iniciar Sesión
                   </button>
                 </SignInButton>
-                <Link href="/precios" className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700 flex items-center justify-center gap-2">
+
+                <Link href="/precios" className="w-full sm:w-auto text-slate-400 hover:text-white text-sm font-bold underline transition mt-4 sm:mt-0 sm:ml-4">
                   Ver Planes y Precios
                 </Link>
               </div>
