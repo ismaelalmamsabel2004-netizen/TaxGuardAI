@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+// 🚀 IMPORTAMOS LOS CONTROLES DE CLERK
+import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 
 export default function Precios() {
   const [loading, setLoading] = useState<string | null>(null);
@@ -16,7 +18,7 @@ export default function Precios() {
       
       const data = await res.json();
       
-      // 🚀 SOLUCIÓN AL ERROR: Controlamos si no ha iniciado sesión
+      // 🚀 Controlamos si no ha iniciado sesión
       if (res.status === 401) {
         alert("🔒 Acceso Denegado: Tienes que iniciar sesión o crear una cuenta primero para poder suscribirte a un plan.");
       } else if (data.url) {
@@ -39,9 +41,24 @@ export default function Precios() {
             <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain shadow-lg shadow-blue-500/20" />
             <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
           </Link>
-          <Link href="/" className="text-slate-400 hover:text-white text-sm font-bold transition">
-            Volver al Inicio
-          </Link>
+          
+          {/* 🚀 BOTÓN INTELIGENTE: Cambia según si el usuario existe o no */}
+          <div className="flex items-center">
+            <SignedIn>
+              <Link href="/" className="text-slate-400 hover:text-white text-sm font-bold transition px-4 py-2 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10">
+                Volver a mi Consola
+              </Link>
+            </SignedIn>
+            
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button className="text-slate-300 hover:text-white text-sm font-bold transition px-5 py-2.5 bg-blue-600/20 rounded-lg border border-blue-500/30 hover:bg-blue-600/40 shadow-lg shadow-blue-900/20 cursor-pointer">
+                  Acceder / Crear Cuenta
+                </button>
+              </SignInButton>
+            </SignedOut>
+          </div>
+
         </div>
       </nav>
 
