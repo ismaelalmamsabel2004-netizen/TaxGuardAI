@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-// 🚀 IMPORTAMOS useUser y useRouter para el bloqueo de seguridad
 import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+
+// 🚀 IMPORTAMOS EL NUEVO CEREBRO CENTRAL
+import { obtenerDatosSupabase } from '../actions';
 
 export default function ModelosTributarios() {
   const router = useRouter();
@@ -16,7 +18,6 @@ export default function ModelosTributarios() {
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [data, setData] = useState<any[]>([]);
   
-  // 🚀 Empezamos en estado loading para evitar parpadeos visuales
   const [planActivo, setPlanActivo] = useState('loading');
 
   const [trimestre, setTrimestre] = useState("1T");
@@ -32,7 +33,6 @@ export default function ModelosTributarios() {
     else if (mesActual <= 9) setTrimestre("3T");
     else setTrimestre("4T");
 
-    // Solo busca el plan si el usuario está conectado
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
@@ -41,8 +41,6 @@ export default function ModelosTributarios() {
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          
-         // 🚀 EXPULSIÓN INMEDIATA SI ES FREE
-         // Los modelos tributarios son para Autónomos (49€) o PRO (89€)
          if (planDetectado === 'free') {
             router.push('/precios');
             return; 
@@ -56,9 +54,8 @@ export default function ModelosTributarios() {
          setEmpresaId(activa);
 
          if (activa) {
-           fetch(`/api/finances?empresaId=${activa}&t=${Date.now()}`)
-             .then(res => res.ok ? res.json() : [])
-             .then(d => {
+           // 🚀 LLAMAMOS DIRECTAMENTE AL CEREBRO DE ACTIONS.TS
+           obtenerDatosSupabase(activa).then(d => {
                 setData(d);
                 if (d.length > 0) {
                     const aniosUnicos = new Set<string>();
@@ -70,7 +67,7 @@ export default function ModelosTributarios() {
                     const aniosOrdenados = Array.from(aniosUnicos).sort((a, b) => Number(b) - Number(a));
                     setAniosDisponibles(aniosOrdenados);
                 }
-             });
+           });
          }
       });
   }, [isLoaded, isSignedIn, router]);
@@ -85,9 +82,8 @@ export default function ModelosTributarios() {
       body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
     });
 
-    fetch(`/api/finances?empresaId=${nuevaEmpresa}&t=${Date.now()}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(d => {
+    // 🚀 LLAMAMOS AL CEREBRO CENTRAL AL CAMBIAR DE EMPRESA
+    obtenerDatosSupabase(nuevaEmpresa).then(d => {
           setData(d);
           if (d.length > 0) {
               const aniosUnicos = new Set<string>();
@@ -98,11 +94,14 @@ export default function ModelosTributarios() {
               aniosUnicos.add(new Date().getFullYear().toString());
               setAniosDisponibles(Array.from(aniosUnicos).sort((a, b) => Number(b) - Number(a)));
           }
-      });
+    });
   };
 
   const calcularModelo303 = () => {
     const datosTrimestre = data.filter(d => {
+      // 🚀 Controlamos que la fecha tenga el formato correcto (DD/MM/YYYY)
+      if (!d.name || !d.name.includes('/')) return false;
+
       const [, mesStr, anioStr] = d.name.split('/');
       if (anioStr !== anio) return false;
       
@@ -177,7 +176,7 @@ export default function ModelosTributarios() {
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
@@ -203,12 +202,8 @@ export default function ModelosTributarios() {
               
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
-                <select 
-                   value={empresaId} 
-                   onChange={(e) => cambiarEmpresa(e.target.value)} 
-                   className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none focus:ring-2 focus:ring-blue-500/50 transition"
-                >
-                   {empresas.map(e => <option key={e} value={e}>{e}</option>)}
+                <select value={empresaId} onChange={(e) => cambiarEmpresa(e.target.value)} className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none focus:ring-2 focus:ring-blue-500/50 transition">
+                    {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                 </select>
               </div>
               
@@ -255,7 +250,6 @@ export default function ModelosTributarios() {
           {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
-            
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-10 gap-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Modelos Oficiales</h1>
