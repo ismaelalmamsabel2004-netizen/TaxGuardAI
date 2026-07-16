@@ -96,7 +96,7 @@ export async function editarDatoSupabase(datos: any) {
 
   try {
     await prisma.transaccion.update({
-      where: { id: String(datos.id), userId: userId }, // 🚀 ARREGLADO: Ahora lee el ID como texto (String)
+      where: { id: Number(datos.id), userId: userId }, // 🚀 DEVUELTO A NUMBER
       data: {
         fecha: fechaObj,
         categoria: datos.categoria,
@@ -120,7 +120,7 @@ export async function borrarDatoSupabase(id: string) {
 
   try {
     await prisma.transaccion.delete({
-      where: { id: String(id), userId: userId } // 🚀 ARREGLADO: Ahora lee el ID como texto (String)
+      where: { id: Number(id), userId: userId } // 🚀 DEVUELTO A NUMBER
     });
     return { success: true };
   } catch (error: any) {
