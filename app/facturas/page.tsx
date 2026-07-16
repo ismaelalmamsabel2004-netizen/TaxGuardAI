@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserButton, Show, SignInButton } from "@clerk/nextjs";
+// 🚀 IMPORTAMOS useUser y useRouter para el bloqueo de seguridad
+import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 
@@ -147,6 +149,8 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
 );
 
 export default function GeneradorFacturas() {
+  const router = useRouter();
+  const { isSignedIn, isLoaded } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -182,35 +186,47 @@ export default function GeneradorFacturas() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
-  const [planActivo, setPlanActivo] = useState('free');
+  // 🚀 Empezamos en estado loading para evitar parpadeos visuales
+  const [planActivo, setPlanActivo] = useState('loading');
 
   useEffect(() => {
     setIsMounted(true);
+    
+    // Solo busca el plan si el usuario está conectado
+    if (!isLoaded) return;
+    if (!isSignedIn) return;
+
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((data: any) => {
+         const planDetectado = data.planSuscripcion || 'free';
+         
+         // 🚀 EXPULSIÓN INMEDIATA SI ES FREE
+         if (planDetectado === 'free') {
+            router.push('/precios');
+            return; 
+         }
+
+         setPlanActivo(planDetectado);
          setAllSettings(data);
          const listaEmpresas = data.empresas || ["Mi Primera Empresa"];
          setEmpresas(listaEmpresas);
          const activa = data.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
-         
-         // 🚀 LEYENDO PLAN ACTIVO
-         setPlanActivo(data.planSuscripcion || 'free');
       });
-  }, []);
+  }, [isLoaded, isSignedIn, router]);
 
   useEffect(() => {
-     if (empresaId && allSettings.datosFacturacion && allSettings.datosFacturacion[empresaId]) {
-         const config = allSettings.datosFacturacion[empresaId];
-         setMiNif(config.nif || "");
-         setMiDireccion(config.direccion || "");
-         setLogo(config.logo || null);
-         setMetodoPago(config.metodoPago || "Transferencia");
-         setIban(config.iban || "");
-     } else {
-         setMiNif(""); setMiDireccion(""); setLogo(null); setMetodoPago("Transferencia"); setIban("");
-     }
+      if (empresaId && allSettings.datosFacturacion && allSettings.datosFacturacion[empresaId]) {
+          const config = allSettings.datosFacturacion[empresaId];
+          setMiNif(config.nif || "");
+          setMiDireccion(config.direccion || "");
+          setLogo(config.logo || null);
+          setMetodoPago(config.metodoPago || "Transferencia");
+          setIban(config.iban || "");
+      } else {
+          setMiNif(""); setMiDireccion(""); setLogo(null); setMetodoPago("Transferencia"); setIban("");
+      }
   }, [empresaId, allSettings]);
 
   useEffect(() => {
@@ -270,7 +286,6 @@ export default function GeneradorFacturas() {
   };
 
   if (!isMounted) return null;
-
   const textoLimpio = baseImponible.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
   const baseNum = parseFloat(textoLimpio) || 0;
   const ivaNum = Number(ivaSeleccionado) || 0;
@@ -339,6 +354,144 @@ export default function GeneradorFacturas() {
 
   const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS
+  if (planActivo === 'loading') {
+     return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
+           <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
+           <h2 className="text-xl font-black tracking-tight mb-2">Verificando nivel de acceso...</h2>
+           <p className="text-sm font-medium text-slate-500 mb-6">Comprobando permisos del espacio de trabajo</p>
+           
+           {/* 🚀 CORREO DE SOPORTE INTEGRADO EN LA CARGA */}
+           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
+              <span className="text-xl">🛡️</span>
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Soporte Técnico VIP</p>
+                <p className="text-sm font-bold text-blue-400">soporte.taxguard@gmail.com</p>
+              </div>
+           </div>
+
+           <div className="flex gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></span>
+           </div>
+        </div>
+     );
+  }
+
+  return (
+    <>
+      <Show when="signed-in">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
+          
+          <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
+            <div className="flex items-center gap-2">
+               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
+               <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
+            </div>
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-2">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+          </div>
+
+          <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          const textoLimpio = baseImponible.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+  const baseNum = parseFloat(textoLimpio) || 0;
+  const ivaNum = Number(ivaSeleccionado) || 0;
+  const cuotaIva = baseNum * (ivaNum / 100);
+  const totalFila = baseNum + cuotaIva;
+  const totalFinal = totalFila;
+
+  const datosPDF = {
+    miEmpresa: empresaId || "Mi Empresa", 
+    numeroFactura, 
+    fecha: fecha.split('-').reverse().join('/'),
+    miNif, miDireccion, logo, metodoPago, iban,
+    clienteNombre, clienteNif, clienteDireccion,
+    concepto, baseImponible: baseNum.toFixed(2), ivaSeleccionado, cuotaIva, totalFila, totalFinal
+  };
+
+  const guardarEnLibroMayor = async () => {
+    if (!empresaId) return alert("⚠️ Por favor, selecciona un Espacio de Trabajo.");
+    if (!concepto) return alert("⚠️ Rellena el concepto de la factura.");
+    if (baseNum <= 0) return alert("⚠️ Introduce un importe válido mayor a 0.");
+    
+    setIsSaving(true);
+    
+    try {
+      const [y, m, d] = fecha.split('-');
+      const fechaFormateada = `${d}/${m}/${y}`;
+      
+      const res = await fetch('/api/finances', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ 
+          month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: "Ventas", 
+          isRecurrent: false, iva: ivaSeleccionado, numero_factura: numeroFactura,
+          cliente_nombre: clienteNombre, cliente_nif: clienteNif, concepto_detalle: concepto
+        }) 
+      });
+
+      if (res.ok) {
+        setFacturaGuardada(true);
+        setFacturaBloqueada(true); 
+        setRefreshTrigger(prev => prev + 1); 
+        setTimeout(() => setFacturaGuardada(false), 4000);
+      } else {
+        alert("⚠️ Error al guardar en el Libro Mayor.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("⚠️ Error de conexión al guardar.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const prepararNuevaFactura = () => {
+     setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); setConcepto(""); setBaseImponible("");
+     setFacturaBloqueada(false); 
+  };
+
+  const filteredHistorial = historialFacturas.filter((fac: any) => {
+     const search = searchTerm.toLowerCase();
+     const numFac = fac.numero_factura?.toLowerCase() || "";
+     const cliente = fac.cliente_nombre?.toLowerCase() || "";
+     const conceptoStr = fac.concepto_detalle?.toLowerCase() || "";
+     return numFac.includes(search) || cliente.includes(search) || conceptoStr.includes(search);
+  });
+
+  const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
+  const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS
+  if (planActivo === 'loading') {
+     return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
+           <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
+           <h2 className="text-xl font-black tracking-tight mb-2">Verificando nivel de acceso...</h2>
+           <p className="text-sm font-medium text-slate-500 mb-6">Comprobando permisos del espacio de trabajo</p>
+           
+           {/* 🚀 CORREO DE SOPORTE INTEGRADO EN LA CARGA */}
+           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
+              <span className="text-xl">🛡️</span>
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Soporte Técnico VIP</p>
+                <p className="text-sm font-bold text-blue-400">soporte.taxguard@gmail.com</p>
+              </div>
+           </div>
+
+           <div className="flex gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></span>
+           </div>
+        </div>
+     );
+  }
+
   return (
     <>
       <Show when="signed-in">
@@ -368,7 +521,7 @@ export default function GeneradorFacturas() {
               
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
-                <select value={empresaId} onChange={(e) => cambiarEmpresa(e.target.value)} className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none">
+                <select value={empresaId} onChange={(e) => cambiarEmpresa(e.target.value)} className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none focus:ring-2 focus:ring-blue-500/50 transition">
                     {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                 </select>
               </div>
@@ -386,7 +539,7 @@ export default function GeneradorFacturas() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Modelos Tributarios
                 </Link>
-                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium shadow-sm" href="/facturas" onClick={() => setIsSidebarOpen(false)}>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-medium shadow-md shadow-blue-600/20" href="/facturas" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Facturación PDF
                 </Link>
@@ -394,7 +547,6 @@ export default function GeneradorFacturas() {
             </div>
             
             <div className="mt-auto">
-              {/* 🚀 EL BOTÓN PROFESIONAL UNIFICADO SIN "PLAN GRATUITO" */}
               <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
@@ -407,8 +559,8 @@ export default function GeneradorFacturas() {
                 </span>
               </Link>
               
-              <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
-                <span className="text-xs font-semibold text-slate-400">Perfil y Sesión</span>
+              <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
+                <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
               </div>
             </div>
@@ -671,50 +823,18 @@ export default function GeneradorFacturas() {
         </div>
       </Show>
 
-      {/* 🚀 LANDING PÚBLICA MODIFICADA PARA COHERENCIA DE MARCA */}
+      {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
       <Show when="signed-out">
-        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
-            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain" />
-                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
-              </div>
-              <div className="flex items-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
-                    Acceso a Clientes
-                  </button>
-                </SignInButton>
-              </div>
+         <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center" translate="no">
+            <div className="text-center">
+               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 mx-auto mb-6 shadow-2xl shadow-blue-500/20" />
+               <h2 className="text-2xl font-black mb-4">Acceso Restringido</h2>
+               <p className="text-slate-400 mb-8 max-w-sm">Esta es una zona privada para clientes de TaxGuard AI. Inicia sesión para continuar.</p>
+               <Link href="/" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition">
+                  Ir al Inicio
+               </Link>
             </div>
-          </nav>
-
-          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden text-center">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
-            <div className="max-w-7xl mx-auto px-6 relative z-10">
-              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
-                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
-              </h1>
-              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium">
-                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-blue-400/20">
-                    Iniciar Sesión
-                  </button>
-                </SignInButton>
-                <Link href="/precios" className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700">
-                  Ver Planes y Precios
-                </Link>
-              </div>
-            </div>
-          </div>
-          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
-            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
-          </footer>
-        </div>
+         </div>
       </Show>
     </>
   );
