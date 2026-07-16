@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserButton, Show, SignInButton } from "@clerk/nextjs";
+// 🚀 IMPORTAMOS useUser y useRouter para el bloqueo de seguridad
+import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -9,6 +11,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 const COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#6366f1', '#14b8a6', '#64748b'];
 
 export default function AnalisisAvanzado() {
+  const router = useRouter();
+  const { isSignedIn, isLoaded } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -25,21 +29,34 @@ export default function AnalisisAvanzado() {
   const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
   const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
 
-  // 🚀 ESTADO DEL PLAN (Aquí controlamos si tiene el candado o no)
-  const [planActivo, setPlanActivo] = useState('free');
+  // 🚀 Empezamos en estado loading para evitar parpadeos visuales
+  const [planActivo, setPlanActivo] = useState('loading');
 
   useEffect(() => {
     setIsMounted(true);
+    
+    // Solo busca el plan si el usuario está conectado
+    if (!isLoaded) return;
+    if (!isSignedIn) return;
+
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
+         const planDetectado = ajustesGuardados.planSuscripcion || 'free';
+         
+         // 🚀 EXPULSIÓN INMEDIATA SI NO ES PRO (El análisis avanzado es solo para el plan Pro de 89€)
+         // Opcionalmente: si quieres que el autónomo lo vea, cambia esta lógica.
+         if (planDetectado === 'free') {
+            router.push('/precios');
+            return; 
+         }
+
+         setPlanActivo(planDetectado);
+
          const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
-
-         // 🚀 LEEMOS EL PLAN DEL CLIENTE DESDE LA BASE DE DATOS
-         setPlanActivo(ajustesGuardados.planSuscripcion || 'free');
 
          if (activa && ajustesGuardados.perfiles && ajustesGuardados.perfiles[activa]) {
             setPerfilEmpresa(ajustesGuardados.perfiles[activa]);
@@ -54,7 +71,7 @@ export default function AnalisisAvanzado() {
              .catch(err => console.error("Error cargando finanzas:", err));
          }
       });
-  }, []);
+  }, [isLoaded, isSignedIn, router]);
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
     setEmpresaId(nuevaEmpresa);
@@ -80,6 +97,7 @@ export default function AnalisisAvanzado() {
   };
 
   useEffect(() => {
+    // Si no hay datos, limpiamos los gráficos para que no arrastren información vieja
     if (!allData || allData.length === 0) {
        setChartDataEvolucion([]); setChartDataGastos([]); setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
        return;
@@ -87,8 +105,11 @@ export default function AnalisisAvanzado() {
 
     const ahora = new Date().getTime();
     
+    // 🚀 LÓGICA DE FILTRADO CORREGIDA (Soporta formatos DD/MM/YYYY)
     const datosFiltrados = allData.filter(item => {
         if (filtroTiempo === 'all') return true;
+        if (!item.name || !item.name.includes('/')) return false;
+
         const [d, m, y] = item.name.split('/');
         const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
         const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
@@ -106,6 +127,8 @@ export default function AnalisisAvanzado() {
 
     datosFiltrados.forEach(item => {
         const valor = Number(item.total);
+        if (!item.name || !item.name.includes('/')) return;
+
         const [dia, mes, anio] = item.name.split('/');
         const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
         const mesLlave = `${nombresMeses[Number(mes) - 1]} ${anio}`;
@@ -195,6 +218,23 @@ export default function AnalisisAvanzado() {
   };
 
   if (!isMounted) return null;
+  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS Y LECTURAS LENTAS
+  if (planActivo === 'loading') {
+     return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
+           <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
+           <h2 className="text-xl font-black tracking-tight mb-2">Verificando nivel de acceso...</h2>
+           <p className="text-sm font-medium text-slate-500 mb-6">Comprobando permisos del espacio de trabajo</p>
+           
+           <div className="flex gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></span>
+           </div>
+        </div>
+     );
+  }
+
   return (
     <>
       <Show when="signed-in">
@@ -305,7 +345,7 @@ export default function AnalisisAvanzado() {
               </div>
             </header>
 
-            {/* 🚀 AQUÍ ENTRA EL MURO DE PAGO (PAYWALL) */}
+            {/* 🚀 AQUÍ ENTRA EL MURO DE PAGO (PAYWALL PARA EL AUTÓNOMO) */}
             {planActivo !== 'pro' ? (
               <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden mt-8">
                  <div className="p-10 md:p-20 flex flex-col items-center justify-center text-center relative">
@@ -480,49 +520,18 @@ export default function AnalisisAvanzado() {
         </div>
       </Show>
 
+      {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
       <Show when="signed-out">
-         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
-            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain" />
-                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
-              </div>
-              <div className="flex items-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
-                    Acceso a Clientes
-                  </button>
-                </SignInButton>
-              </div>
+         <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center" translate="no">
+            <div className="text-center">
+               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 mx-auto mb-6 shadow-2xl shadow-blue-500/20" />
+               <h2 className="text-2xl font-black mb-4">Acceso Restringido</h2>
+               <p className="text-slate-400 mb-8 max-w-sm">Esta es una zona privada para clientes de TaxGuard AI. Inicia sesión para continuar.</p>
+               <Link href="/" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition">
+                  Ir al Inicio
+               </Link>
             </div>
-          </nav>
-
-          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden text-center">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
-            <div className="max-w-7xl mx-auto px-6 relative z-10">
-              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
-                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
-              </h1>
-              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium">
-                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-blue-400/20">
-                    Iniciar Sesión
-                  </button>
-                </SignInButton>
-                <Link href="/precios" className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700">
-                  Ver Planes y Precios
-                </Link>
-              </div>
-            </div>
-          </div>
-          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
-            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
-          </footer>
-        </div>
+         </div>
       </Show>
     </>
   );

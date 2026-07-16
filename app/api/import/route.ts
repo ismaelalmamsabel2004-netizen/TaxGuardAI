@@ -27,15 +27,19 @@ export async function POST(request: Request) {
       "Nóminas", "Impuestos", "Dietas", "Mantenimiento", "Seguros", "Otros"
     ];
 
-    // 2. EL PROMPT MAESTRO: Enseñamos a la IA a procesar un extracto bancario completo
-    const promptText = `Actúas como un contable robotizado de alta precisión. Te voy a pasar un extracto de movimientos bancarios en texto bruto.
+    // 2. EL PROMPT MAESTRO (CORREGIDO PARA EVITAR EL BUG DE LOS CERO EUROS)
+    const promptText = `Actúas como un contable robotizado de alta precisión. Te voy a pasar un extracto de movimientos bancarios en texto bruto o formato CSV.
     Tu único trabajo es leer cada línea, identificar la fecha, el concepto, el importe y emparejarlo con la mejor categoría de esta lista exacta: [${categoriasValidas.join(', ')}].
 
     TEXTO BRUTO DEL EXTRACTO BANCO:
     ${csvText}
 
     REGLAS ESTRICTAS DE SALIDA:
-    - Debes devolver ÚNICAMENTE un array JSON con objetos que contengan exactamente estas claves: "fecha" (formato DD/MM/YYYY), "concepto", "total" (número matemático positivo o negativo), "categoria" (de la lista proporcionada), "iva" (número entero, pon 0 si no se deduce, o 21 si es una factura estándar obvia).
+    - Debes devolver ÚNICAMENTE un array JSON.
+    - La clave "fecha" DEBE tener el formato exacto europeo separada por barras: DD/MM/YYYY. Ejemplo: "16/07/2026". Si el mes es un solo dígito, añádele un cero delante (ej. "07"). Si viene con guiones, cámbialos por barras. ¡ESTO ES CRÍTICO!
+    - La clave "total" debe ser un número matemático positivo (ingresos) o negativo (gastos).
+    - La clave "categoria" debe ser exactamente de la lista proporcionada.
+    - La clave "iva" debe ser un número entero (0 si no se deduce, 21 si es una factura estándar).
     - No escribas explicaciones, ni introducciones, ni formato markdown. Solo el array JSON directo.
     
     EJEMPLO DE SALIDA:
@@ -72,8 +76,7 @@ export async function POST(request: Request) {
        throw new Error("La IA no devolvió un formato de lista válido.");
     }
 
-    // 4. INSERCIÓN MASIVA EN LA BASE DE DATOS (Neon / Vercel Postgres)
-    // Recorremos cada movimiento clasificado y lo guardamos automáticamente en tu tabla
+    // 4. INSERCIÓN MASIVA EN LA BASE DE DATOS
     for (const mov of movimientosACargar) {
        await sql`
          INSERT INTO finanzas (user_id, empresa_id, fecha, total, categoria, is_recurrent, frecuencia, iva)
