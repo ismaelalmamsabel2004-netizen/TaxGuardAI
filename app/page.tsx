@@ -2,31 +2,30 @@
 
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect, useRef } from "react";
-// 🚀 IMPORTAMOS useRouter PARA EXPULSAR A LOS QUE NO PAGAN
-import { UserButton, Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+// 🚀 IMPORTAMOS useUser PARA UN MURO DE PAGO IMPENETRABLE
+import { useUser, UserButton, SignInButton, SignUpButton, Show } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
 
-// 🚀 LAS TUBERÍAS DE SUPABASE Y GEMINI
+// LAS TUBERÍAS DE SUPABASE Y GEMINI
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA } from './actions';
 
 export default function Home() {
-  const router = useRouter(); // Inicializamos el router
+  const router = useRouter(); 
+  const { isSignedIn, isLoaded } = useUser(); // 🚀 Escáner de seguridad de Clerk
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  // 🚀 ARREGLO DE TYPESCRIPT: Molde flexible para admitir Cliente, Concepto y Nº Factura
   const [data, setData] = useState<any[]>([]);
- 
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
 
-  // 🚀 CAMBIO CLAVE: Empezamos en estado 'loading' para evitar parpadeos
+  // Empezamos en estado loading para que no haya parpadeos
   const [planActivo, setPlanActivo] = useState('loading');
 
   const [mes, setMes] = useState("");
@@ -105,28 +104,31 @@ export default function Home() {
   useEffect(() => { 
     setIsMounted(true); 
     
+    // 🚀 LÓGICA DE SEGURIDAD: Solo busca el plan si el usuario está conectado
+    if (!isLoaded) return;
+    if (!isSignedIn) return;
+
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          
-         // 🚀 LÓGICA DE HARD PAYWALL: Si no ha pagado, lo echamos a /precios instantáneamente
+         // EXPULSIÓN INMEDIATA SI NO HA PAGADO
          if (planDetectado === 'free') {
             router.push('/precios');
-            return; // Detenemos la ejecución para que no cargue nada más
+            return; 
          }
 
          setPlanActivo(planDetectado);
 
          const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
-         
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
 
          if (ajustesGuardados.papelera) setPapelera(ajustesGuardados.papelera);
       });
-  }, [router]);
+  }, [isLoaded, isSignedIn, router]);
 
   useEffect(() => {
     setChartFilter(null);
@@ -189,7 +191,6 @@ export default function Home() {
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
-         
          if (ajustesGuardados.metas && ajustesGuardados.metas[empresaId]) {
            setMetaMensual(ajustesGuardados.metas[empresaId]);
            setInputMeta(ajustesGuardados.metas[empresaId].toString());
@@ -228,12 +229,10 @@ export default function Home() {
     const nuevaMetaNum = Number(inputMeta);
     if (nuevaMetaNum > 0) {
       setMetaMensual(nuevaMetaNum);
-      
       const res = await fetch('/api/settings');
       const actuales: any = await res.json();
       const metasObj = actuales.metas || {};
       metasObj[empresaId] = nuevaMetaNum;
-      
       await syncSettingsToCloud({ ...actuales, metas: metasObj });
     }
     setEditandoMeta(false);
@@ -256,15 +255,12 @@ export default function Home() {
 
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
-    
     const perfilesObj = actuales.perfiles || {};
     perfilesObj[empresaId] = nuevoPerfil;
-    
     const categoriasObj = actuales.categorias || {};
     categoriasObj[empresaId] = catA_Guardar;
     
     await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj });
-    
     setShowConfig(false);
   };
 
@@ -653,12 +649,15 @@ export default function Home() {
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
            <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
            <h2 className="text-xl font-black tracking-tight mb-2">Preparando entorno seguro...</h2>
-           <p className="text-sm font-medium text-slate-500 mb-3">Comprobando credenciales y conexión cifrada</p>
+           <p className="text-sm font-medium text-slate-500 mb-6">Comprobando credenciales y conexión cifrada</p>
            
            {/* 🚀 CORREO DE SOPORTE INTEGRADO EN LA CARGA */}
-           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2 rounded-xl mb-8 flex items-center gap-2">
+           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
               <span className="text-xl">🛡️</span>
-              <p className="text-xs font-bold text-slate-400">Soporte Técnico: <span className="text-blue-400">soporte.taxguard@gmail.com</span></p>
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Soporte Técnico VIP</p>
+                <p className="text-sm font-bold text-blue-400">soporte.taxguard@gmail.com</p>
+              </div>
            </div>
 
            <div className="flex gap-2">
@@ -1266,7 +1265,7 @@ export default function Home() {
         )}
       </Show>
 
-      {/* 🚀 LANDING PAGE PÚBLICA MODIFICADA CON EL BOTÓN "CREAR CUENTA" */}
+      {/* 🚀 LANDING PAGE PÚBLICA (CON LA NUEVA SECCIÓN DE PLANES Y RENTABILIDAD) */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           
@@ -1283,7 +1282,7 @@ export default function Home() {
                   </button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
+                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm">
                     Crear Cuenta
                   </button>
                 </SignUpButton>
@@ -1291,7 +1290,7 @@ export default function Home() {
             </div>
           </nav>
 
-          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden border-b border-white/5">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
             <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
             
@@ -1321,50 +1320,103 @@ export default function Home() {
                     Iniciar Sesión
                   </button>
                 </SignInButton>
-
-                <Link href="/precios" className="w-full sm:w-auto text-slate-400 hover:text-white text-sm font-bold underline transition mt-4 sm:mt-0 sm:ml-4">
-                  Ver Planes y Precios
-                </Link>
               </div>
             </div>
           </div>
 
-          <div className="max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10 bg-slate-950">
+          {/* 🚀 NUEVA SECCIÓN DE PLANES Y COMPARATIVA PARA VENDER EL PRODUCTO */}
+          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10">
             <div className="text-center mb-16">
-              <h2 className="text-3xl font-black text-white mb-4">Todo lo que tu empresa necesita para escalar</h2>
-              <p className="text-slate-400">Sustituye horas de trabajo manual por precisión algorítmica.</p>
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-4">La Inversión que se paga sola</h2>
+              <p className="text-slate-400 max-w-2xl mx-auto text-lg">
+                No contrates un software. Contrata tiempo. TaxGuard AI está diseñado para ahorrarte más de <span className="text-blue-400 font-bold">30 horas al mes</span> en gestión administrativa y cientos de euros en errores fiscales.
+              </p>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-blue-500/30 transition">
-                <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-3">Escáner OCR Inteligente</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Sube la foto de un ticket o factura y la Inteligencia Artificial extraerá automáticamente el concepto, base imponible y tipo de IVA.</p>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
               
-              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-emerald-500/30 transition">
-                <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              {/* TARJETA AUTÓNOMO */}
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 hover:border-slate-600 transition flex flex-col relative">
+                <div className="mb-6">
+                   <h3 className="text-2xl font-bold text-white mb-2">Plan Autónomo</h3>
+                   <p className="text-slate-400 text-sm">El reemplazo perfecto a la gestoría tradicional de picar datos.</p>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Gestoría Automatizada</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Genera tus modelos de IVA trimestral (Mod 303) al instante, y emite facturas en PDF profesionales para tus clientes con un solo clic.</p>
-              </div>
-              
-              <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-purple-500/30 transition">
-                <div className="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-xl flex items-center justify-center mb-6">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                <div className="mb-8 pb-8 border-b border-white/10">
+                   <span className="text-5xl font-black text-white">49€</span><span className="text-slate-500 font-medium">/mes</span>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">CFO Virtual 24/7</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Chatea directamente con tu panel financiero. Pídele auditorías de gastos, previsiones de tesorería y alertas de desvíos en tiempo real.</p>
+                <ul className="space-y-4 mb-8 flex-1">
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Escáner OCR Ilimitado con Inteligencia Artificial. Sube tickets y olvídate.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Cálculo Automático del Modelo 303 (IVA). Listo para copiar y pegar en Hacienda.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Generador de Facturas en PDF oficiales y personalizadas con tu logo.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Libro Mayor y Escudo Fiscal (Soporte ante auditorías).</span>
+                   </li>
+                </ul>
+                <SignUpButton mode="modal">
+                  <button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition">
+                    Empezar como Autónomo
+                  </button>
+                </SignUpButton>
               </div>
+
+              {/* TARJETA EMPRESA PRO */}
+              <div className="bg-slate-900 p-8 rounded-3xl border-2 border-blue-500 shadow-2xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg">
+                  MÁS RECOMENDADO
+                </div>
+                <div className="mb-6">
+                   <h3 className="text-2xl font-bold text-white mb-2">Plan Empresa Pro</h3>
+                   <p className="text-blue-300 text-sm font-medium">Un departamento financiero entero dentro de tu pantalla.</p>
+                </div>
+                <div className="mb-8 pb-8 border-b border-white/10">
+                   <span className="text-5xl font-black text-blue-400">89€</span><span className="text-slate-500 font-medium">/mes</span>
+                </div>
+                <ul className="space-y-4 mb-8 flex-1">
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-white text-sm font-bold">Todo lo incluido en el Plan Autónomo.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">CFO Virtual 24/7:</strong> Un asistente que responde dudas sobre rentabilidad y estrategias.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Auditorías Avanzadas:</strong> Reportes ejecutivos generados por IA identificando fugas de capital.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Gráficos P&L:</strong> Visualiza márgenes operativos y evolución mensual interactiva.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Soporte Técnico VIP Prioritario.</span>
+                   </li>
+                </ul>
+                <SignUpButton mode="modal">
+                  <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition">
+                    Dominar mis finanzas por 89€
+                  </button>
+                </SignUpButton>
+              </div>
+
             </div>
           </div>
 
           <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
             <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
             <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs.</p>
+            <p className="mt-6 text-xs text-slate-600">Contacto: soporte.taxguard@gmail.com</p>
           </footer>
         </div>
       </Show>
