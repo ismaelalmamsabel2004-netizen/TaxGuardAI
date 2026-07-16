@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 
+// 🚀 IMPORTAMOS EL CEREBRO CENTRAL DE PRISMA
+import { obtenerDatosSupabase, guardarDatoSupabase } from '../actions';
+
 Font.register({
   family: 'Roboto',
   fonts: [
@@ -185,13 +188,11 @@ export default function GeneradorFacturas() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
-  // 🚀 Empezamos en estado loading para evitar parpadeos visuales
   const [planActivo, setPlanActivo] = useState('loading');
 
   useEffect(() => {
     setIsMounted(true);
     
-    // Solo busca el plan si el usuario está conectado
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
@@ -200,7 +201,6 @@ export default function GeneradorFacturas() {
       .then((data: any) => {
          const planDetectado = data.planSuscripcion || 'free';
          
-         // 🚀 EXPULSIÓN INMEDIATA SI ES FREE
          if (planDetectado === 'free') {
             router.push('/precios');
             return; 
@@ -228,11 +228,10 @@ export default function GeneradorFacturas() {
       }
   }, [empresaId, allSettings]);
 
+  // 🚀 LECTURA DIRECTA DEL CEREBRO DE PRISMA
   useEffect(() => {
     if (!empresaId) return;
-    fetch(`/api/finances?empresaId=${empresaId}&t=${Date.now()}`)
-      .then(res => res.ok ? res.json() : [])
-      .then(movimientos => {
+    obtenerDatosSupabase(empresaId).then(movimientos => {
          const anioFactura = fecha.split('-')[0] || new Date().getFullYear().toString();
          const ventas = movimientos.filter((m: any) => m.categoria === "Ventas" && Number(m.total) > 0);
          setHistorialFacturas(ventas); 
@@ -245,7 +244,7 @@ export default function GeneradorFacturas() {
             const siguienteNumero = ventasDelAnio.length + 1;
             setNumeroFactura(`F-${anioFactura}-${String(siguienteNumero).padStart(3, '0')}`);
          }
-      });
+    });
   }, [empresaId, fecha, refreshTrigger, facturaBloqueada]);
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
@@ -301,7 +300,6 @@ export default function GeneradorFacturas() {
     clienteNombre, clienteNif, clienteDireccion,
     concepto, baseImponible: baseNum.toFixed(2), ivaSeleccionado, cuotaIva, totalFila, totalFinal
   };
-
   const guardarEnLibroMayor = async () => {
     if (!empresaId) return alert("⚠️ Por favor, selecciona un Espacio de Trabajo.");
     if (!concepto) return alert("⚠️ Rellena el concepto de la factura.");
@@ -313,17 +311,21 @@ export default function GeneradorFacturas() {
       const [y, m, d] = fecha.split('-');
       const fechaFormateada = `${d}/${m}/${y}`;
       
-      const res = await fetch('/api/finances', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ 
-          month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: "Ventas", 
-          isRecurrent: false, iva: ivaSeleccionado, numero_factura: numeroFactura,
-          cliente_nombre: clienteNombre, cliente_nif: clienteNif, concepto_detalle: concepto
-        }) 
+      // 🚀 INYECCIÓN DIRECTA EN EL CEREBRO CENTRAL (Prisma)
+      const res = await guardarDatoSupabase({
+        month: fechaFormateada, 
+        total: baseNum, 
+        empresaId: empresaId, 
+        categoria: "Ventas", 
+        isRecurrent: false, 
+        iva: ivaSeleccionado, 
+        numero_factura: numeroFactura,
+        cliente_nombre: clienteNombre, 
+        cliente_nif: clienteNif, 
+        concepto_detalle: concepto
       });
 
-      if (res.ok) {
+      if (res.success) {
         setFacturaGuardada(true);
         setFacturaBloqueada(true); 
         setRefreshTrigger(prev => prev + 1); 

@@ -400,12 +400,12 @@ export default function Home() {
     setData([]);
     setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
     
-    obtenerDatosSupabase().then(d => {
+    // 🚀 AHORA SÍ: Le pasamos la etiqueta de la empresa al leer
+    obtenerDatosSupabase(empresaId).then(d => {
       if (d && d.length > 0) setData(d);
       else setData([]);
     });
   }, [empresaId, planActivo]);
-
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -456,7 +456,8 @@ export default function Home() {
 
         if (res.ok && dataRes.success) {
           alert(`✅ ¡Éxito! Se han importado y clasificado automáticamente ${dataRes.count} movimientos bancarios.`);
-          const actualizadosBD = await obtenerDatosSupabase();
+          // 🚀 REFRESCO VINCULADO AL ESPACIO DE TRABAJO
+          const actualizadosBD = await obtenerDatosSupabase(empresaId);
           setData(actualizadosBD);
         } else {
           alert("Error del servidor al importar: " + (dataRes.error || "Fallo desconocido"));
@@ -505,15 +506,19 @@ export default function Home() {
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
       
+      // 🚀 MAGIA: AHORA SÍ LE ESTAMOS PASANDO LA ETIQUETA "empresaId" A PRISMA
       const res = await guardarDatoSupabase({ 
         month: fecha, 
         total: valorFinal, 
         categoria, 
-        iva: ivaSeleccionado 
+        iva: ivaSeleccionado,
+        empresaId: empresaId,
+        isRecurrent: isRecurrent,
+        frecuencia: isRecurrent ? frecuencia : null
       });
 
       if (res.success) {
-        const actualizadosBD = await obtenerDatosSupabase();
+        const actualizadosBD = await obtenerDatosSupabase(empresaId);
         setData(actualizadosBD);
         setIngreso('');
         setIsRecurrent(false);
@@ -572,7 +577,7 @@ export default function Home() {
       });
 
       if (res.success) {
-        const actualizadosBD = await obtenerDatosSupabase();
+        const actualizadosBD = await obtenerDatosSupabase(empresaId);
         setData(actualizadosBD);
         setEditingId(null);
       }
