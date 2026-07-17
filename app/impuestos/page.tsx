@@ -4,10 +4,157 @@ import { useState, useEffect } from "react";
 import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 
 // 🚀 IMPORTAMOS EL NUEVO CEREBRO CENTRAL
 import { obtenerDatosSupabase } from '../actions';
 
+// Registramos fuentes profesionales para el PDF
+Font.register({
+  family: 'Roboto',
+  fonts: [
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf', fontWeight: 300 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf', fontWeight: 400 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf', fontWeight: 500 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf', fontWeight: 700 },
+  ]
+});
+
+// Estilos del nuevo PDF Premium
+const styles = StyleSheet.create({
+  page: { backgroundColor: '#ffffff', padding: 40, fontFamily: 'Roboto' },
+  header: { borderBottomWidth: 2, borderBottomColor: '#f97316', paddingBottom: 20, marginBottom: 30 },
+  title: { fontSize: 24, fontWeight: 700, color: '#0f172a', marginBottom: 5 },
+  subtitle: { fontSize: 10, color: '#f97316', fontWeight: 700, letterSpacing: 1 },
+  warningBadge: { backgroundColor: '#fff7ed', padding: 8, borderRadius: 4, marginBottom: 20, borderLeftWidth: 3, borderLeftColor: '#ea580c' },
+  warningText: { fontSize: 9, color: '#ea580c', fontWeight: 700 },
+  infoGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, backgroundColor: '#f8fafc', padding: 15, borderRadius: 6 },
+  infoCol: { flexDirection: 'column' },
+  infoLabel: { fontSize: 9, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 },
+  infoValue: { fontSize: 12, fontWeight: 700, color: '#0f172a' },
+  sectionTitle: { fontSize: 12, fontWeight: 700, color: '#f97316', textTransform: 'uppercase', marginBottom: 10, marginTop: 20 },
+  table: { width: '100%', marginBottom: 15 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#f1f5f9', padding: 8, borderBottomWidth: 1, borderBottomColor: '#cbd5e1' },
+  thConcepto: { width: '40%', fontSize: 9, fontWeight: 700, color: '#475569' },
+  thBase: { width: '20%', fontSize: 9, fontWeight: 700, color: '#475569', textAlign: 'right' },
+  thTipo: { width: '20%', fontSize: 9, fontWeight: 700, color: '#475569', textAlign: 'center' },
+  thCuota: { width: '20%', fontSize: 9, fontWeight: 700, color: '#475569', textAlign: 'right' },
+  tableRow: { flexDirection: 'row', padding: 8, borderBottomWidth: 1, borderBottomColor: '#f8fafc' },
+  tdConcepto: { width: '40%', fontSize: 10, color: '#334155' },
+  tdBase: { width: '20%', fontSize: 10, color: '#0f172a', textAlign: 'right' },
+  tdTipo: { width: '20%', fontSize: 10, color: '#0f172a', textAlign: 'center' },
+  tdCuota: { width: '20%', fontSize: 10, fontWeight: 700, color: '#10b981', textAlign: 'right' },
+  tdCuotaGasto: { width: '20%', fontSize: 10, fontWeight: 700, color: '#f43f5e', textAlign: 'right' },
+  totalBox: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fff7ed', padding: 12, borderRadius: 6, marginTop: 5 },
+  totalLabel: { fontSize: 11, fontWeight: 700, color: '#9a3412', textTransform: 'uppercase' },
+  totalValue: { fontSize: 14, fontWeight: 700, color: '#ea580c' },
+  resultBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderRadius: 8, marginTop: 30, borderWidth: 1 },
+  resultBoxPagar: { backgroundColor: '#fffbeb', borderColor: '#fde68a' },
+  resultBoxDevolver: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
+  resultLabel: { fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' },
+  resultValuePagar: { fontSize: 24, fontWeight: 700, color: '#d97706' },
+  resultValueDevolver: { fontSize: 24, fontWeight: 700, color: '#2563eb' },
+  footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
+  footerText: { fontSize: 8, color: '#94a3b8' },
+});
+
+// Componente del PDF
+const Borrador303PDF = ({ mod303, empresaId, trimestre, anio }: any) => (
+  <Document>
+    <Page size="A4" style={styles.page}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Borrador - Modelo 303</Text>
+        <Text style={styles.subtitle}>LIQUIDACIÓN TRIMESTRAL DEL IVA</Text>
+      </View>
+
+      <View style={styles.warningBadge}>
+        <Text style={styles.warningText}>⚠️ DOCUMENTO INTERNO: Este informe es un cálculo estimativo generado por TaxGuard AI para control interno y no es válido para su presentación oficial ante la Agencia Tributaria.</Text>
+      </View>
+
+      <View style={styles.infoGrid}>
+        <View style={styles.infoCol}>
+          <Text style={styles.infoLabel}>Espacio de Trabajo</Text>
+          <Text style={styles.infoValue}>{empresaId}</Text>
+        </View>
+        <View style={styles.infoCol}>
+          <Text style={styles.infoLabel}>Ejercicio / Periodo</Text>
+          <Text style={styles.infoValue}>{trimestre} {anio}</Text>
+        </View>
+        <View style={styles.infoCol}>
+          <Text style={styles.infoLabel}>Fecha de Cálculo</Text>
+          <Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text>
+        </View>
+      </View>
+
+      {/* IVA DEVENGADO */}
+      <Text style={styles.sectionTitle}>I. IVA Devengado (Tus Ingresos)</Text>
+      <View style={styles.table}>
+        <View style={styles.tableHeader}>
+          <Text style={styles.thConcepto}>RÉGIMEN</Text>
+          <Text style={styles.thBase}>BASE IMPONIBLE</Text>
+          <Text style={styles.thTipo}>TIPO</Text>
+          <Text style={styles.thCuota}>CUOTA</Text>
+        </View>
+        <View style={styles.tableRow}>
+          <Text style={styles.tdConcepto}>Régimen general ordinario</Text>
+          <Text style={styles.tdBase}>{mod303.base21.toFixed(2)} €</Text>
+          <Text style={styles.tdTipo}>21%</Text>
+          <Text style={styles.tdCuota}>+{mod303.cuota21.toFixed(2)} €</Text>
+        </View>
+        <View style={styles.tableRow}>
+          <Text style={styles.tdConcepto}>Régimen reducido</Text>
+          <Text style={styles.tdBase}>{mod303.base10.toFixed(2)} €</Text>
+          <Text style={styles.tdTipo}>10%</Text>
+          <Text style={styles.tdCuota}>+{mod303.cuota10.toFixed(2)} €</Text>
+        </View>
+        <View style={styles.tableRow}>
+          <Text style={styles.tdConcepto}>Régimen superreducido</Text>
+          <Text style={styles.tdBase}>{mod303.base4.toFixed(2)} €</Text>
+          <Text style={styles.tdTipo}>4%</Text>
+          <Text style={styles.tdCuota}>+{mod303.cuota4.toFixed(2)} €</Text>
+        </View>
+      </View>
+      <View style={styles.totalBox}>
+        <Text style={styles.totalLabel}>Suma de Cuotas Devengadas:</Text>
+        <Text style={styles.totalValue}>+{mod303.totalCuotaDevengada.toFixed(2)} €</Text>
+      </View>
+
+      {/* IVA DEDUCIBLE */}
+      <Text style={styles.sectionTitle}>II. IVA Deducible (Tus Gastos)</Text>
+      <View style={styles.table}>
+        <View style={styles.tableHeader}>
+          <Text style={styles.thConcepto}>CONCEPTO</Text>
+          <Text style={styles.thBase}>BASE IMPONIBLE</Text>
+          <Text style={styles.thTipo}></Text>
+          <Text style={styles.thCuota}>CUOTA DEDUCIBLE</Text>
+        </View>
+        <View style={styles.tableRow}>
+          <Text style={styles.tdConcepto}>Operaciones interiores corrientes</Text>
+          <Text style={styles.tdBase}>{mod303.baseDeducible.toFixed(2)} €</Text>
+          <Text style={styles.tdTipo}>-</Text>
+          <Text style={styles.tdCuotaGasto}>-{mod303.cuotaDeducible.toFixed(2)} €</Text>
+        </View>
+      </View>
+
+      {/* RESULTADO LIQUIDACIÓN */}
+      <View style={[styles.resultBox, mod303.resultado > 0 ? styles.resultBoxPagar : styles.resultBoxDevolver]}>
+        <View>
+          <Text style={styles.resultLabel}>Resultado Liquidación Final</Text>
+          <Text style={{fontSize: 9, color: '#64748b', marginTop: 4}}>Casilla [71] de la declaración</Text>
+        </View>
+        <Text style={mod303.resultado > 0 ? styles.resultValuePagar : styles.resultValueDevolver}>
+          {mod303.resultado > 0 ? 'A Pagar: ' : 'A Favor: '}
+          {Math.abs(mod303.resultado).toFixed(2)} €
+        </Text>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Generado por el motor financiero de TaxGuard AI</Text>
+        <Text style={styles.footerText}>Página 1 de 1</Text>
+      </View>
+    </Page>
+  </Document>
+);
 export default function ModelosTributarios() {
   const router = useRouter();
   const { isSignedIn, isLoaded } = useUser();
@@ -48,13 +195,12 @@ export default function ModelosTributarios() {
 
          setPlanActivo(planDetectado);
 
-         const listaEmpresas = ajustesGuardados.empresas || ["Alperez"];
+         const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
 
          if (activa) {
-           // 🚀 LLAMAMOS DIRECTAMENTE AL CEREBRO DE ACTIONS.TS
            obtenerDatosSupabase(activa).then(d => {
                 setData(d);
                 if (d.length > 0) {
@@ -82,7 +228,6 @@ export default function ModelosTributarios() {
       body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
     });
 
-    // 🚀 LLAMAMOS AL CEREBRO CENTRAL AL CAMBIAR DE EMPRESA
     obtenerDatosSupabase(nuevaEmpresa).then(d => {
           setData(d);
           if (d.length > 0) {
@@ -99,7 +244,6 @@ export default function ModelosTributarios() {
 
   const calcularModelo303 = () => {
     const datosTrimestre = data.filter(d => {
-      // 🚀 Controlamos que la fecha tenga el formato correcto (DD/MM/YYYY)
       if (!d.name || !d.name.includes('/')) return false;
 
       const [, mesStr, anioStr] = d.name.split('/');
@@ -137,17 +281,7 @@ export default function ModelosTributarios() {
 
   const mod303 = calcularModelo303();
 
-  const descargarInforme = () => {
-    const texto = `MODELO 303 - BORRADOR\nEmpresa: ${empresaId}\nPeriodo: ${trimestre} ${anio}\n\nIVA DEVENGADO (Ingresos)\n- Base 21%: ${mod303.base21.toFixed(2)} € | Cuota: ${mod303.cuota21.toFixed(2)} €\n- Base 10%: ${mod303.base10.toFixed(2)} € | Cuota: ${mod303.cuota10.toFixed(2)} €\n- Base 4%: ${mod303.base4.toFixed(2)} € | Cuota: ${mod303.cuota4.toFixed(2)} €\nTOTAL DEVENGADO: ${mod303.totalCuotaDevengada.toFixed(2)} €\n\nIVA DEDUCIBLE (Gastos)\n- Base: ${mod303.baseDeducible.toFixed(2)} € | Cuota: ${mod303.cuotaDeducible.toFixed(2)} €\n\nRESULTADO LIQUIDACIÓN: ${mod303.resultado.toFixed(2)} €`;
-    const blob = new Blob([texto], { type: 'text/plain' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Borrador_Mod303_${empresaId}_${trimestre}_${anio}.txt`;
-    link.click();
-  };
-
   if (!isMounted) return null;
-  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS Y LECTURAS LENTAS
   if (planActivo === 'loading' && isSignedIn) {
      return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
@@ -155,7 +289,6 @@ export default function ModelosTributarios() {
            <h2 className="text-xl font-black tracking-tight mb-2">Verificando nivel de acceso...</h2>
            <p className="text-sm font-medium text-slate-500 mb-6">Comprobando permisos del espacio de trabajo</p>
            
-           {/* 🚀 CORREO DE SOPORTE INTEGRADO EN LA CARGA */}
            <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
               <span className="text-xl">🛡️</span>
               <div>
@@ -262,7 +395,7 @@ export default function ModelosTributarios() {
                        <button 
                           key={t}
                           onClick={() => setTrimestre(t)}
-                          disabled={planActivo !== 'pro'} // Desactivado visualmente si no es PRO
+                          disabled={planActivo !== 'pro'}
                           className={`px-4 py-2 text-xs font-bold rounded-lg transition ${trimestre === t ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'} disabled:opacity-50`}
                        >
                           {t}
@@ -279,14 +412,30 @@ export default function ModelosTributarios() {
                    {aniosDisponibles.map(y => <option key={y} value={y}>{y}</option>)}
                  </select>
 
-                 <button onClick={descargarInforme} disabled={planActivo !== 'pro'} className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    Descargar Borrador
-                 </button>
+                 {/* 🚀 EL NUEVO BOTÓN QUE DESCARGA EL PDF EN LUGAR DEL TXT */}
+                 {planActivo === 'pro' && isMounted ? (
+                    <PDFDownloadLink 
+                       document={<Borrador303PDF mod303={mod303} empresaId={empresaId} trimestre={trimestre} anio={anio} />} 
+                       fileName={`Borrador_Mod303_${empresaId.replace(/\s+/g, '')}_${trimestre}_${anio}.pdf`}
+                    >
+                       {/* @ts-ignore */}
+                       {({ loading }) => (
+                          <button disabled={loading} className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50">
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                             {loading ? "Generando documento..." : "Descargar Borrador"}
+                          </button>
+                       )}
+                    </PDFDownloadLink>
+                 ) : (
+                    <button disabled className="w-full sm:w-auto bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 opacity-50">
+                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                       Descargar Borrador
+                    </button>
+                 )}
               </div>
             </header>
 
-            {/* 🚀 MURO DE PAGO PARA EL MODELO 303 (SOLO PLAN PRO) */}
+            {/* MURO DE PAGO PARA EL MODELO 303 (SOLO PLAN PRO) */}
             {planActivo !== 'pro' ? (
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden mt-8">
                    <div className="p-10 md:p-20 flex flex-col items-center justify-center text-center relative">
