@@ -148,7 +148,7 @@ export default function ModelosTributarios() {
 
   if (!isMounted) return null;
   // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS Y LECTURAS LENTAS
-  if (planActivo === 'loading') {
+  if (planActivo === 'loading' && isSignedIn) {
      return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
            <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
