@@ -396,7 +396,6 @@ export default function Home() {
     setData([]);
     setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
     
-    // 🚀 LECTURA DIRECTA DE PRISMA CON LA EMPRESA FILTRADA
     obtenerDatosSupabase(empresaId).then(d => {
       if (d && d.length > 0) setData(d);
       else setData([]);
@@ -502,7 +501,6 @@ export default function Home() {
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
       
-      // 🚀 SOLUCIÓN: INYECTAMOS LA ETIQUETA "empresaId" AL GUARDAR
       const res = await guardarDatoSupabase({ 
         month: fecha, 
         total: valorFinal, 
@@ -627,23 +625,37 @@ export default function Home() {
     }
   };
 
+  // 🚀 AQUÍ ESTÁ EL NUEVO EXPORTADOR CSV PERFECTO PARA ESPAÑA
   const exportarAExcel = () => {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
-    let csvContent = "Fecha,Categoría,Recurrencia,Tipo,Base Imponible (EUR),IVA (%)\n";
+    
+    // BOM para que Excel reconozca tildes en UTF-8 y separación por punto y coma (;)
+    let csvContent = "\uFEFFFecha;Categoría;Recurrencia;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
+    
     datosVisibles.forEach(row => {
-      const valorStr = Number(row.total);
-      const tipoTxt = valorStr >= 0 ? "Ingreso" : "Gasto";
+      const valorNum = Number(row.total);
+      const tipoTxt = valorNum >= 0 ? "Ingreso" : "Gasto";
       const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
-      csvContent += `${row.name},${row.categoria || "General"},${recTxt},${tipoTxt},${valorStr},${row.iva || 0}%\n`;
+      const ivaPorcentaje = Number(row.iva) || 0;
+      
+      const cuotaIva = valorNum * (ivaPorcentaje / 100);
+      const totalFinal = valorNum + cuotaIva;
+
+      // Forzamos 2 decimales y usamos la coma como separador decimal para España
+      const fNum = (num: number) => num.toFixed(2).replace('.', ',');
+
+      csvContent += `${row.name};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(valorNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
+    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `Balance_TaxGuardAI_${filtro}.csv`;
+    link.download = `Libro_Mayor_${empresaId || 'General'}_${filtro}.csv`;
     link.click();
   };
+
   if (!isMounted) return null;
-  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS
+  
   if (planActivo === 'loading' && isSignedIn) {
      return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
@@ -651,7 +663,6 @@ export default function Home() {
            <h2 className="text-xl font-black tracking-tight mb-2">Preparando entorno seguro...</h2>
            <p className="text-sm font-medium text-slate-500 mb-6">Comprobando credenciales y conexión cifrada</p>
            
-           {/* 🚀 CORREO DE SOPORTE INTEGRADO EN LA CARGA */}
            <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
               <span className="text-xl">🛡️</span>
               <div>
@@ -669,11 +680,10 @@ export default function Home() {
      );
   }
 
-  // Si entra a esta parte, significa que ya verificamos que es PRO o Autónomo.
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
           
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
@@ -733,7 +743,7 @@ export default function Home() {
                   Consola General
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis" onClick={() => setIsSidebarOpen(false)}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2h-2a2 2 0 01-2-2z"/></svg>
                   Análisis Avanzado
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/impuestos" onClick={() => setIsSidebarOpen(false)}>
