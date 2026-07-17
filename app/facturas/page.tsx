@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 
-// 🚀 IMPORTAMOS EL CEREBRO CENTRAL DE PRISMA
+// 🚀 CEREBRO CENTRAL
 import { obtenerDatosSupabase, guardarDatoSupabase } from '../actions';
 
 Font.register({
@@ -208,7 +208,8 @@ export default function GeneradorFacturas() {
 
          setPlanActivo(planDetectado);
          setAllSettings(data);
-         const listaEmpresas = data.empresas || ["Mi Primera Empresa"];
+         // 🚀 AQUÍ HEMOS ARREGLADO EL NOMBRE PARA QUE SEA IGUAL EN TODAS PARTES
+         const listaEmpresas = data.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
          const activa = data.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
@@ -228,9 +229,9 @@ export default function GeneradorFacturas() {
       }
   }, [empresaId, allSettings]);
 
-  // 🚀 LECTURA DIRECTA DEL CEREBRO DE PRISMA
   useEffect(() => {
     if (!empresaId) return;
+    // 🚀 LECTURA DIRECTA DEL CEREBRO CON LA EMPRESA FILTRADA
     obtenerDatosSupabase(empresaId).then(movimientos => {
          const anioFactura = fecha.split('-')[0] || new Date().getFullYear().toString();
          const ventas = movimientos.filter((m: any) => m.categoria === "Ventas" && Number(m.total) > 0);
@@ -300,6 +301,7 @@ export default function GeneradorFacturas() {
     clienteNombre, clienteNif, clienteDireccion,
     concepto, baseImponible: baseNum.toFixed(2), ivaSeleccionado, cuotaIva, totalFila, totalFinal
   };
+
   const guardarEnLibroMayor = async () => {
     if (!empresaId) return alert("⚠️ Por favor, selecciona un Espacio de Trabajo.");
     if (!concepto) return alert("⚠️ Rellena el concepto de la factura.");
@@ -311,7 +313,7 @@ export default function GeneradorFacturas() {
       const [y, m, d] = fecha.split('-');
       const fechaFormateada = `${d}/${m}/${y}`;
       
-      // 🚀 INYECCIÓN DIRECTA EN EL CEREBRO CENTRAL (Prisma)
+      // 🚀 INYECCIÓN DIRECTA DE LA FACTURA A PRISMA
       const res = await guardarDatoSupabase({
         month: fechaFormateada, 
         total: baseNum, 
@@ -357,7 +359,6 @@ export default function GeneradorFacturas() {
   const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS
   if (planActivo === 'loading') {
      return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">

@@ -2,7 +2,6 @@
 
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect, useRef } from "react";
-// 🚀 IMPORTAMOS useUser PARA UN MURO DE PAGO IMPENETRABLE
 import { useUser, UserButton, SignInButton, SignUpButton, Show } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
@@ -13,7 +12,7 @@ import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDa
 
 export default function Home() {
   const router = useRouter(); 
-  const { isSignedIn, isLoaded } = useUser(); // 🚀 Escáner de seguridad de Clerk
+  const { isSignedIn, isLoaded } = useUser(); 
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
@@ -25,7 +24,6 @@ export default function Home() {
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
 
-  // Empezamos en estado loading para que no haya parpadeos
   const [planActivo, setPlanActivo] = useState('loading');
 
   const [mes, setMes] = useState("");
@@ -104,7 +102,6 @@ export default function Home() {
   useEffect(() => { 
     setIsMounted(true); 
     
-    // 🚀 LÓGICA DE SEGURIDAD: Solo busca el plan si el usuario está conectado
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
@@ -113,7 +110,6 @@ export default function Home() {
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          
-         // EXPULSIÓN INMEDIATA SI NO HA PAGADO
          if (planDetectado === 'free') {
             router.push('/precios');
             return; 
@@ -400,12 +396,13 @@ export default function Home() {
     setData([]);
     setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
     
-    // 🚀 AHORA SÍ: Le pasamos la etiqueta de la empresa al leer
+    // 🚀 LECTURA DIRECTA DE PRISMA CON LA EMPRESA FILTRADA
     obtenerDatosSupabase(empresaId).then(d => {
       if (d && d.length > 0) setData(d);
       else setData([]);
     });
   }, [empresaId, planActivo]);
+
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -456,7 +453,6 @@ export default function Home() {
 
         if (res.ok && dataRes.success) {
           alert(`✅ ¡Éxito! Se han importado y clasificado automáticamente ${dataRes.count} movimientos bancarios.`);
-          // 🚀 REFRESCO VINCULADO AL ESPACIO DE TRABAJO
           const actualizadosBD = await obtenerDatosSupabase(empresaId);
           setData(actualizadosBD);
         } else {
@@ -506,7 +502,7 @@ export default function Home() {
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
       
-      // 🚀 MAGIA: AHORA SÍ LE ESTAMOS PASANDO LA ETIQUETA "empresaId" A PRISMA
+      // 🚀 SOLUCIÓN: INYECTAMOS LA ETIQUETA "empresaId" AL GUARDAR
       const res = await guardarDatoSupabase({ 
         month: fecha, 
         total: valorFinal, 
@@ -646,7 +642,6 @@ export default function Home() {
     link.download = `Balance_TaxGuardAI_${filtro}.csv`;
     link.click();
   };
-
   if (!isMounted) return null;
   // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS
   if (planActivo === 'loading') {
