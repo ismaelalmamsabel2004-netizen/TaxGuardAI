@@ -7,7 +7,6 @@ import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
-// 🚀 IMPORTAMOS EL NUEVO CEREBRO CENTRAL
 import { obtenerDatosSupabase } from '../actions';
 
 const COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#6366f1', '#14b8a6', '#64748b'];
@@ -63,8 +62,7 @@ export default function AnalisisAvanzado() {
          }
 
          if (activa) {
-           // 🚀 LLAMAMOS DIRECTAMENTE AL CEREBRO DE ACTIONS.TS
-           obtenerDatosSupabase(activa).then(d => setAllData(d));
+            obtenerDatosSupabase(activa).then(d => setAllData(d));
          }
       });
   }, [isLoaded, isSignedIn, router]);
@@ -87,7 +85,6 @@ export default function AnalisisAvanzado() {
        setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
     }
 
-    // 🚀 LLAMAMOS AL CEREBRO CENTRAL AL CAMBIAR DE EMPRESA
     obtenerDatosSupabase(nuevaEmpresa).then(d => setAllData(d));
   };
 
@@ -211,14 +208,12 @@ export default function AnalisisAvanzado() {
   };
 
   if (!isMounted) return null;
-  // 🚀 PANTALLA DE CARGA ELEGANTE PARA EVITAR PARPADEOS Y LECTURAS LENTAS
   if (planActivo === 'loading') {
      return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
            <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
            <h2 className="text-xl font-black tracking-tight mb-2">Verificando nivel de acceso...</h2>
            <p className="text-sm font-medium text-slate-500 mb-6">Comprobando permisos del espacio de trabajo</p>
-           
            <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
               <span className="text-xl">🛡️</span>
               <div>
@@ -226,7 +221,6 @@ export default function AnalisisAvanzado() {
                 <p className="text-sm font-bold text-blue-400">soporte.taxguard@gmail.com</p>
               </div>
            </div>
-
            <div className="flex gap-2">
               <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
               <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
@@ -240,7 +234,6 @@ export default function AnalisisAvanzado() {
     <>
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
-          
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
@@ -302,7 +295,6 @@ export default function AnalisisAvanzado() {
                   {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
                 </span>
               </Link>
-              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
@@ -313,13 +305,11 @@ export default function AnalisisAvanzado() {
           {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
-            
-            <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-8 gap-4">
+            <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-10 gap-6">
               <div>
-                <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Centro de Inteligencia</h1>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Centro de Inteligencia</h1>
                 <p className="text-sm font-medium text-slate-500 mt-1">Evaluación financiera completa para <span className="font-bold text-blue-600">{empresaId}</span>.</p>
               </div>
-              
               <div className="flex flex-wrap items-center gap-3">
                  <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
                      {[
@@ -338,14 +328,12 @@ export default function AnalisisAvanzado() {
                          </button>
                      ))}
                  </div>
-
                  <button onClick={generarAuditoria} disabled={isAnalyzing || planActivo !== 'pro'} className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2">
                    {isAnalyzing ? "⏳ Procesando en IA..." : "✨ Generar Auditoría Inteligente"}
                  </button>
               </div>
             </header>
 
-            {/* 🚀 MURO DE PAGO PARA EL AUTÓNOMO */}
             {planActivo !== 'pro' ? (
               <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden mt-8">
                  <div className="p-10 md:p-20 flex flex-col items-center justify-center text-center relative">
@@ -366,7 +354,6 @@ export default function AnalisisAvanzado() {
                  </div>
               </div>
             ) : (
-              /* 🚀 SI ES PRO, ENSEÑAMOS TODO EL CONTENIDO ORIGINAL */
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
@@ -403,6 +390,7 @@ export default function AnalisisAvanzado() {
                                   <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                                   <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={60} />
                                   <RechartsTooltip 
+                                     formatter={(value: any) => [`${Number(value).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, undefined]}
                                      cursor={{fill: '#f8fafc'}} 
                                      contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', padding: '12px' }}
                                      labelStyle={{ color: '#0f172a', fontWeight: '900', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px', marginBottom: '8px' }}
@@ -456,7 +444,7 @@ export default function AnalisisAvanzado() {
                                <div key={idx}>
                                   <div className="flex justify-between text-xs font-bold mb-1.5">
                                      <span className="text-slate-600 truncate mr-2">{gasto.name}</span>
-                                     <span className="text-slate-900">{gasto.value.toLocaleString('es-ES')} €</span>
+                                     <span className="text-slate-900">{gasto.value.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
                                   </div>
                                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                                      <div className="h-1.5 rounded-full" style={{ width: `${Math.min((gasto.value / kpis.gastos) * 100, 100)}%`, backgroundColor: COLORS[idx % COLORS.length] }}></div>
@@ -520,7 +508,6 @@ export default function AnalisisAvanzado() {
         </div>
       </Show>
 
-      {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
       <Show when="signed-out">
          <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center" translate="no">
             <div className="text-center">

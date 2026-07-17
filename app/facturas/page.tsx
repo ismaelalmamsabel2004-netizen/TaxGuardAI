@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 
-// 🚀 CEREBRO CENTRAL
-import { obtenerDatosSupabase, guardarDatoSupabase } from '../actions';
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase } from '../actions';
 
 Font.register({
   family: 'Roboto',
@@ -38,13 +37,15 @@ const styles = StyleSheet.create({
   infoText: { fontSize: 10, color: '#475569', marginBottom: 3, lineHeight: 1.4 },
   table: { width: '100%', marginBottom: 30 },
   tableHeader: { flexDirection: 'row', backgroundColor: '#f8fafc', borderTopWidth: 1, borderTopColor: '#e2e8f0', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  tableHeaderCell: { paddingVertical: 10, paddingHorizontal: 8, fontSize: 9, color: '#475569', fontWeight: 700, textTransform: 'uppercase' },
+  tableHeaderCell: { paddingVertical: 10, paddingHorizontal: 4, fontSize: 9, color: '#475569', fontWeight: 700, textTransform: 'uppercase' },
   tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  tableCell: { paddingVertical: 12, paddingHorizontal: 8, fontSize: 10, color: '#334155', lineHeight: 1.4 },
-  colConcepto: { width: '45%' },
-  colBase: { width: '20%', textAlign: 'right' },
-  colIva: { width: '15%', textAlign: 'right' },
-  colTotal: { width: '20%', textAlign: 'right' },
+  tableCell: { paddingVertical: 12, paddingHorizontal: 4, fontSize: 10, color: '#334155', lineHeight: 1.4 },
+  colCant: { width: '8%', textAlign: 'center' },
+  colConcepto: { width: '38%' },
+  colPrecio: { width: '15%', textAlign: 'right' },
+  colBase: { width: '15%', textAlign: 'right' },
+  colIva: { width: '9%', textAlign: 'right' },
+  colTotal: { width: '15%', textAlign: 'right' },
   bottomSection: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
   paymentWrapper: { width: '40%' },
   paymentBox: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#2563eb' },
@@ -101,17 +102,26 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
 
       <View style={styles.table}>
         <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderCell, styles.colConcepto]}>Descripción del Concepto</Text>
-          <Text style={[styles.tableHeaderCell, styles.colBase]}>Base Imp.</Text>
+          <Text style={[styles.tableHeaderCell, styles.colCant]}>CANT</Text>
+          <Text style={[styles.tableHeaderCell, styles.colConcepto]}>CONCEPTO</Text>
+          <Text style={[styles.tableHeaderCell, styles.colPrecio]}>PRECIO UN.</Text>
+          <Text style={[styles.tableHeaderCell, styles.colBase]}>BASE</Text>
           <Text style={[styles.tableHeaderCell, styles.colIva]}>IVA %</Text>
-          <Text style={[styles.tableHeaderCell, styles.colTotal]}>Importe Total</Text>
+          <Text style={[styles.tableHeaderCell, styles.colTotal]}>TOTAL</Text>
         </View>
-        <View style={styles.tableRow}>
-          <Text style={[styles.tableCell, styles.colConcepto]}>{datos.concepto}</Text>
-          <Text style={[styles.tableCell, styles.colBase]}>{datos.baseImponible} €</Text>
-          <Text style={[styles.tableCell, styles.colIva]}>{datos.ivaSeleccionado}%</Text>
-          <Text style={[styles.tableCell, styles.colTotal]}>{datos.totalFila.toFixed(2)} €</Text>
-        </View>
+        {datos.lineasFactura.map((linea: any, index: number) => {
+          const importe = Number(linea.cantidad) * Number(linea.precio);
+          return (
+            <View key={linea.id || index} style={styles.tableRow}>
+              <Text style={[styles.tableCell, styles.colCant]}>{linea.cantidad}</Text>
+              <Text style={[styles.tableCell, styles.colConcepto]}>{linea.concepto}</Text>
+              <Text style={[styles.tableCell, styles.colPrecio]}>{Number(linea.precio).toFixed(2)} €</Text>
+              <Text style={[styles.tableCell, styles.colBase]}>{importe.toFixed(2)} €</Text>
+              <Text style={[styles.tableCell, styles.colIva]}>{datos.ivaSeleccionado}%</Text>
+              <Text style={[styles.tableCell, styles.colTotal]}>{(importe * (1 + datos.ivaNum/100)).toFixed(2)} €</Text>
+            </View>
+          );
+        })}
       </View>
 
       <View style={styles.bottomSection}>
@@ -173,8 +183,7 @@ export default function GeneradorFacturas() {
   const [clienteNif, setClienteNif] = useState("");
   const [clienteDireccion, setClienteDireccion] = useState("");
   
-  const [concepto, setConcepto] = useState("");
-  const [baseImponible, setBaseImponible] = useState("");
+  const [lineasFactura, setLineasFactura] = useState([{ id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
   const [ivaSeleccionado, setIvaSeleccionado] = useState("21");
 
   const [isSaving, setIsSaving] = useState(false);
@@ -188,6 +197,9 @@ export default function GeneradorFacturas() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
+  const [editandoHistorialId, setEditandoHistorialId] = useState<number | null>(null);
+  const [editClientData, setEditClientData] = useState({ nombre: "", nif: "" });
+
   const [planActivo, setPlanActivo] = useState('loading');
 
   useEffect(() => {
@@ -208,7 +220,6 @@ export default function GeneradorFacturas() {
 
          setPlanActivo(planDetectado);
          setAllSettings(data);
-         // 🚀 AQUÍ HEMOS ARREGLADO EL NOMBRE PARA QUE SEA IGUAL EN TODAS PARTES
          const listaEmpresas = data.empresas || ["Alperez", "PetClean", "Techmovile"];
          setEmpresas(listaEmpresas);
          const activa = data.empresaActiva || listaEmpresas[0] || "";
@@ -231,7 +242,6 @@ export default function GeneradorFacturas() {
 
   useEffect(() => {
     if (!empresaId) return;
-    // 🚀 LECTURA DIRECTA DEL CEREBRO CON LA EMPRESA FILTRADA
     obtenerDatosSupabase(empresaId).then(movimientos => {
          const anioFactura = fecha.split('-')[0] || new Date().getFullYear().toString();
          const ventas = movimientos.filter((m: any) => m.categoria === "Ventas" && Number(m.total) > 0);
@@ -284,14 +294,16 @@ export default function GeneradorFacturas() {
       alert(`✅ Los datos fiscales y el logo de ${empresaId} se han guardado por defecto.`);
   };
 
-  if (!isMounted) return null;
+  const addLinea = () => setLineasFactura([...lineasFactura, { id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
+  const removeLinea = (id: number) => setLineasFactura(lineasFactura.filter(l => l.id !== id));
+  const updateLinea = (id: number, campo: string, valor: any) => {
+      setLineasFactura(lineasFactura.map(l => l.id === id ? { ...l, [campo]: valor } : l));
+  };
 
-  const textoLimpio = baseImponible.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
-  const baseNum = parseFloat(textoLimpio) || 0;
+  const baseNum = lineasFactura.reduce((acc, line) => acc + (Number(line.cantidad) * Number(line.precio)), 0);
   const ivaNum = Number(ivaSeleccionado) || 0;
   const cuotaIva = baseNum * (ivaNum / 100);
-  const totalFila = baseNum + cuotaIva;
-  const totalFinal = totalFila;
+  const totalFinal = baseNum + cuotaIva;
 
   const datosPDF = {
     miEmpresa: empresaId || "Mi Empresa", 
@@ -299,12 +311,12 @@ export default function GeneradorFacturas() {
     fecha: fecha.split('-').reverse().join('/'),
     miNif, miDireccion, logo, metodoPago, iban,
     clienteNombre, clienteNif, clienteDireccion,
-    concepto, baseImponible: baseNum.toFixed(2), ivaSeleccionado, cuotaIva, totalFila, totalFinal
+    lineasFactura, baseImponible: baseNum.toFixed(2), ivaSeleccionado, ivaNum, cuotaIva, totalFinal
   };
 
   const guardarEnLibroMayor = async () => {
     if (!empresaId) return alert("⚠️ Por favor, selecciona un Espacio de Trabajo.");
-    if (!concepto) return alert("⚠️ Rellena el concepto de la factura.");
+    if (lineasFactura.some(l => !l.concepto)) return alert("⚠️ Rellena la descripción de todos los conceptos de la factura.");
     if (baseNum <= 0) return alert("⚠️ Introduce un importe válido mayor a 0.");
     
     setIsSaving(true);
@@ -313,7 +325,8 @@ export default function GeneradorFacturas() {
       const [y, m, d] = fecha.split('-');
       const fechaFormateada = `${d}/${m}/${y}`;
       
-      // 🚀 INYECCIÓN DIRECTA DE LA FACTURA A PRISMA
+      const conceptoUnificado = lineasFactura.map(l => `${l.cantidad}x ${l.concepto}`).join(' | ');
+
       const res = await guardarDatoSupabase({
         month: fechaFormateada, 
         total: baseNum, 
@@ -324,7 +337,7 @@ export default function GeneradorFacturas() {
         numero_factura: numeroFactura,
         cliente_nombre: clienteNombre, 
         cliente_nif: clienteNif, 
-        concepto_detalle: concepto
+        concepto_detalle: conceptoUnificado
       });
 
       if (res.success) {
@@ -344,8 +357,34 @@ export default function GeneradorFacturas() {
   };
 
   const prepararNuevaFactura = () => {
-     setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); setConcepto(""); setBaseImponible("");
+     setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); 
+     setLineasFactura([{ id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
      setFacturaBloqueada(false); 
+  };
+
+  const iniciarEdicionCliente = (fac: any) => {
+     setEditandoHistorialId(fac.id);
+     setEditClientData({ nombre: fac.cliente_nombre || "", nif: fac.cliente_nif || "" });
+  };
+
+  const guardarEdicionHistorial = async (fac: any) => {
+      try {
+          const res = await editarDatoSupabase({
+              id: fac.id,
+              month: fac.name,
+              total: fac.total,
+              categoria: fac.categoria,
+              iva: fac.iva,
+              cliente_nombre: editClientData.nombre,
+              cliente_nif: editClientData.nif
+          });
+          if (res.success) {
+              setEditandoHistorialId(null);
+              setRefreshTrigger(prev => prev + 1);
+          }
+      } catch(e) {
+          alert("Error al actualizar");
+      }
   };
 
   const filteredHistorial = historialFacturas.filter((fac: any) => {
@@ -358,6 +397,8 @@ export default function GeneradorFacturas() {
 
   const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  if (!isMounted) return null;
 
   if (planActivo === 'loading') {
      return (
@@ -507,10 +548,10 @@ export default function GeneradorFacturas() {
               </div>
             )}
 
-            <div className={`bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-5xl mx-auto transition ${facturaBloqueada ? 'opacity-80' : ''}`}>
-              <div className="grid grid-cols-1 lg:grid-cols-2">
+            <div className={`bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-6xl mx-auto transition ${facturaBloqueada ? 'opacity-80' : ''}`}>
+              <div className="grid grid-cols-1 lg:grid-cols-12">
                 
-                <div className="p-5 md:p-8 border-b lg:border-b-0 lg:border-r border-slate-100 bg-white">
+                <div className="p-5 md:p-8 border-b lg:border-b-0 lg:border-r border-slate-100 bg-white lg:col-span-5">
                   <div className="flex items-center gap-2 mb-6">
                     <span className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse"></span>
                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Datos del Documento</h3>
@@ -539,7 +580,7 @@ export default function GeneradorFacturas() {
                         <input type="text" placeholder="Tu NIF/CIF..." disabled={facturaBloqueada} value={miNif} onChange={e => setMiNif(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
                         <input type="text" placeholder="Tu Dirección Legal..." disabled={facturaBloqueada} value={miDireccion} onChange={e => setMiDireccion(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition disabled:opacity-70 disabled:cursor-not-allowed" />
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4">
                          <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Logo de Empresa</label>
                             <input type="file" accept="image/*" disabled={facturaBloqueada} onChange={handleLogoUpload} className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50" />
@@ -573,42 +614,57 @@ export default function GeneradorFacturas() {
                   </div>
                 </div>
 
-                <div className="p-5 md:p-8 bg-slate-50/50 flex flex-col justify-between">
+                <div className="p-5 md:p-8 bg-slate-50/50 flex flex-col justify-between lg:col-span-7">
                   <div>
                     <div className="flex items-center gap-2 mb-6">
                       <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
                       <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Conceptos y Cantidades</h3>
                     </div>
 
-                    <div className="space-y-5">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Descripción del Servicio</label>
-                        <input type="text" placeholder="Ej: Consultoría web y marketing..." disabled={facturaBloqueada} value={concepto} onChange={e => setConcepto(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed" />
-                      </div>
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                       {lineasFactura.map((linea, idx) => (
+                          <div key={linea.id} className="flex flex-wrap md:flex-nowrap gap-3 items-end bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative group transition">
+                             <div className="w-20 md:w-20">
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Cant.</label>
+                                <input type="number" min="1" value={linea.cantidad} disabled={facturaBloqueada} onChange={e => updateLinea(linea.id, 'cantidad', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:bg-white focus:border-emerald-400 transition" />
+                             </div>
+                             <div className="w-full md:flex-1">
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Descripción</label>
+                                <input type="text" placeholder="Ej: Alquiler altavoz principal..." value={linea.concepto} disabled={facturaBloqueada} onChange={e => updateLinea(linea.id, 'concepto', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:bg-white focus:border-emerald-400 transition" />
+                             </div>
+                             <div className="w-full md:w-32">
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Precio Ud. (€)</label>
+                                <input type="text" inputMode="decimal" placeholder="0.00" value={linea.precio || ''} disabled={facturaBloqueada} onChange={e => updateLinea(linea.id, 'precio', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-black text-slate-900 outline-none focus:bg-white focus:border-emerald-400 transition" />
+                             </div>
+                             {lineasFactura.length > 1 && !facturaBloqueada && (
+                                <button onClick={() => removeLinea(linea.id)} className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md hover:bg-rose-600 transition md:opacity-0 group-hover:opacity-100">✕</button>
+                             )}
+                          </div>
+                       ))}
+                       
+                       {!facturaBloqueada && (
+                          <button onClick={addLinea} className="mt-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 hover:bg-emerald-100 transition shadow-sm w-full md:w-auto">
+                             + Añadir Línea de Servicio
+                          </button>
+                       )}
+                    </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
-                          <input type="text" inputMode="decimal" placeholder="0.00" disabled={facturaBloqueada} value={baseImponible} onChange={e => setBaseImponible(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Impuesto Aplicado</label>
-                          <select value={ivaSeleccionado} disabled={facturaBloqueada} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed">
-                              <option value="21">IVA General (21%)</option>
-                              <option value="10">IVA Reducido (10%)</option>
-                              <option value="4">IVA Superreducido (4%)</option>
-                              <option value="0">Exento de IVA (0%)</option>
-                          </select>
-                        </div>
-                      </div>
+                    <div className="mt-8 border-t border-slate-200 pt-6">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Impuesto Global Aplicado a la Factura</label>
+                        <select value={ivaSeleccionado} disabled={facturaBloqueada} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full md:w-1/2 p-3 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm transition disabled:bg-slate-50 disabled:opacity-70 disabled:cursor-not-allowed">
+                            <option value="21">IVA General (21%)</option>
+                            <option value="10">IVA Reducido (10%)</option>
+                            <option value="4">IVA Superreducido (4%)</option>
+                            <option value="0">Exento de IVA (0%)</option>
+                        </select>
                     </div>
                   </div>
 
-                  <div className="mt-10 bg-white p-6 rounded-2xl border border-slate-200 shadow-md relative overflow-hidden">
+                  <div className="mt-8 bg-white p-6 rounded-2xl border border-slate-200 shadow-md relative overflow-hidden">
                      <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                      <div className="space-y-3 mb-5">
                         <div className="flex justify-between items-center text-sm">
-                           <span className="text-slate-500 font-medium">Subtotal (Base Imponible)</span>
+                           <span className="text-slate-500 font-medium">Subtotal (Suma Bases)</span>
                            <span className="font-bold text-slate-700">{baseNum.toFixed(2)} €</span>
                         </div>
                         <div className="flex justify-between items-center text-sm">
@@ -625,7 +681,7 @@ export default function GeneradorFacturas() {
               </div>
             </div>
 
-            <div className="max-w-5xl mx-auto mt-12 mb-10">
+            <div className="max-w-6xl mx-auto mt-12 mb-10">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4">
                   <h2 className="text-lg font-black text-slate-900">Historial de Ingresos ({empresaId})</h2>
                   <input
@@ -644,7 +700,7 @@ export default function GeneradorFacturas() {
                           <tr className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200">
                              <th className="p-4 md:p-5">Nº / Fecha</th>
                              <th className="p-4 md:p-5">Cliente</th>
-                             <th className="p-4 md:p-5">Concepto</th>
+                             <th className="p-4 md:p-5">Concepto Principal</th>
                              <th className="p-4 md:p-5 text-right">Base</th>
                              <th className="p-4 md:p-5 text-right">IVA</th>
                              <th className="p-4 md:p-5 text-right">Total</th>
@@ -654,32 +710,65 @@ export default function GeneradorFacturas() {
                           {currentItems.length === 0 ? (
                              <tr><td colSpan={6} className="p-8 text-center text-sm font-medium text-slate-400">No hay facturas que coincidan con la búsqueda.</td></tr>
                           ) : (
-                             currentItems.map((fac, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50 transition">
-                                   <td className="p-4 md:p-5">
-                                      <div className="flex flex-col">
-                                         <span className="text-sm font-bold text-slate-800">{fac.numero_factura || 'Manual'}</span>
-                                         <span className="text-xs text-slate-400 font-medium">{fac.name}</span>
-                                      </div>
-                                   </td>
-                                   <td className="p-4 md:p-5">
-                                      <div className="flex flex-col">
-                                         <span className="text-sm font-bold text-slate-700">{fac.cliente_nombre || 'Sin cliente'}</span>
-                                         <span className="text-[10px] text-slate-400 font-medium">{fac.cliente_nif || '-'}</span>
-                                      </div>
-                                   </td>
-                                   <td className="p-4 md:p-5">
-                                      <div className="text-sm text-slate-600 truncate max-w-[200px]" title={fac.concepto_detalle}>
-                                         {fac.concepto_detalle || 'Ingreso General'}
-                                      </div>
-                                   </td>
-                                   <td className="p-4 md:p-5 text-sm font-bold text-slate-700 text-right">{Number(fac.total).toFixed(2)} €</td>
-                                   <td className="p-4 md:p-5 text-sm font-bold text-slate-500 text-right">{fac.iva}%</td>
-                                   <td className="p-4 md:p-5 text-sm font-black text-emerald-600 text-right">
-                                      {(Number(fac.total) * (1 + Number(fac.iva) / 100)).toFixed(2)} €
-                                   </td>
-                                </tr>
-                             ))
+                             currentItems.map((fac, idx) => {
+                                if (editandoHistorialId === fac.id) {
+                                   return (
+                                      <tr key={fac.id} className="bg-blue-50/40 transition">
+                                         <td className="p-4 md:p-5">
+                                            <div className="flex flex-col">
+                                               <span className="text-sm font-bold text-slate-800">{fac.numero_factura || 'Manual'}</span>
+                                               <span className="text-xs text-slate-400 font-medium">{fac.name}</span>
+                                            </div>
+                                         </td>
+                                         <td className="p-4 md:p-5 flex flex-col gap-2">
+                                            <input type="text" value={editClientData.nombre} onChange={e => setEditClientData({...editClientData, nombre: e.target.value})} placeholder="Nombre Cliente" className="p-1.5 border border-blue-200 rounded bg-white text-xs font-bold outline-none" />
+                                            <input type="text" value={editClientData.nif} onChange={e => setEditClientData({...editClientData, nif: e.target.value})} placeholder="NIF/CIF" className="p-1.5 border border-blue-200 rounded bg-white text-[10px] outline-none" />
+                                         </td>
+                                         <td className="p-4 md:p-5">
+                                            <div className="text-sm text-slate-600 truncate max-w-[200px]" title={fac.concepto_detalle}>
+                                               {fac.concepto_detalle || 'Ingreso General'}
+                                            </div>
+                                         </td>
+                                         <td className="p-4 md:p-5 text-sm font-bold text-slate-700 text-right">{Number(fac.total).toFixed(2)} €</td>
+                                         <td className="p-4 md:p-5 text-sm font-bold text-slate-500 text-right">{fac.iva}%</td>
+                                         <td className="p-4 md:p-5 text-right space-x-2">
+                                            <button onClick={() => guardarEdicionHistorial(fac)} className="text-emerald-600 font-bold text-xs hover:underline bg-emerald-50 px-2 py-1 rounded">Guardar</button>
+                                            <button onClick={() => setEditandoHistorialId(null)} className="text-slate-500 font-bold text-xs hover:underline">X</button>
+                                         </td>
+                                      </tr>
+                                   );
+                                }
+
+                                return (
+                                   <tr key={idx} className="hover:bg-slate-50 transition group">
+                                      <td className="p-4 md:p-5">
+                                         <div className="flex flex-col">
+                                            <span className="text-sm font-bold text-slate-800">{fac.numero_factura || 'Manual'}</span>
+                                            <span className="text-xs text-slate-400 font-medium">{fac.name}</span>
+                                         </div>
+                                      </td>
+                                      <td className="p-4 md:p-5">
+                                         <div className="flex flex-col">
+                                            <span className="text-sm font-bold text-slate-700">{fac.cliente_nombre || 'Sin cliente'}</span>
+                                            <span className="text-[10px] text-slate-400 font-medium">{fac.cliente_nif || '-'}</span>
+                                         </div>
+                                      </td>
+                                      <td className="p-4 md:p-5">
+                                         <div className="text-sm text-slate-600 truncate max-w-[200px]" title={fac.concepto_detalle}>
+                                            {fac.concepto_detalle || 'Ingreso General'}
+                                         </div>
+                                      </td>
+                                      <td className="p-4 md:p-5 text-sm font-bold text-slate-700 text-right">{Number(fac.total).toFixed(2)} €</td>
+                                      <td className="p-4 md:p-5 text-sm font-bold text-slate-500 text-right">{fac.iva}%</td>
+                                      <td className="p-4 md:p-5 flex justify-end items-center gap-3">
+                                         <span className="text-sm font-black text-emerald-600 text-right">
+                                            {(Number(fac.total) * (1 + Number(fac.iva) / 100)).toFixed(2)} €
+                                         </span>
+                                         <button onClick={() => iniciarEdicionCliente(fac)} className="text-blue-500 hover:text-blue-700 bg-blue-50 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition" title="Editar Cliente (CSV)">✏️</button>
+                                      </td>
+                                   </tr>
+                                )
+                             })
                           )}
                        </tbody>
                     </table>
@@ -714,49 +803,18 @@ export default function GeneradorFacturas() {
         </div>
       </Show>
 
+      {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
       <Show when="signed-out">
-        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
-            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain" />
-                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
-              </div>
-              <div className="flex items-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5">
-                    Acceso a Clientes
-                  </button>
-                </SignInButton>
-              </div>
+         <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center" translate="no">
+            <div className="text-center">
+               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 mx-auto mb-6 shadow-2xl shadow-blue-500/20" />
+               <h2 className="text-2xl font-black mb-4">Acceso Restringido</h2>
+               <p className="text-slate-400 mb-8 max-w-sm">Esta es una zona privada para clientes de TaxGuard AI. Inicia sesión para continuar.</p>
+               <Link href="/" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition">
+                  Ir al Inicio
+               </Link>
             </div>
-          </nav>
-
-          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden text-center">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
-            <div className="max-w-7xl mx-auto px-6 relative z-10">
-              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
-                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
-              </h1>
-              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium">
-                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-blue-400/20">
-                    Iniciar Sesión
-                  </button>
-                </SignInButton>
-                <Link href="/precios" className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700">
-                  Ver Planes y Precios
-                </Link>
-              </div>
-            </div>
-          </div>
-          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
-            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
-          </footer>
-        </div>
+         </div>
       </Show>
     </>
   );

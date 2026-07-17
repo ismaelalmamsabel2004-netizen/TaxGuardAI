@@ -673,7 +673,7 @@ export default function Home() {
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
@@ -760,8 +760,8 @@ export default function Home() {
                 </span>
               </Link>
               
-              <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-800">
-                <span className="text-xs font-semibold text-slate-400">Perfil y Sesión</span>
+              <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
+                <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
               </div>
             </div>
@@ -990,12 +990,16 @@ export default function Home() {
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                         <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={40} />
+                        
+                        {/* 🚀 EL FIX PARA QUE EL TOOLTIP NO ENLOQUEZCA CON LOS DECIMALES DEL CSV */}
                         <Tooltip 
+                           formatter={(value: any) => [`${Number(value).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, undefined]}
                            cursor={{fill: '#f1f5f9'}} 
                            isAnimationActive={false}
                            contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
                            labelStyle={{ color: '#0f172a', fontWeight: '900', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px', fontSize: '14px' }}
                         />
+
                         <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }} />
                         <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
                         <Bar dataKey="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
@@ -1265,160 +1269,18 @@ export default function Home() {
         )}
       </Show>
 
-      {/* 🚀 LANDING PAGE PÚBLICA (CON LA NUEVA SECCIÓN DE PLANES Y RENTABILIDAD) */}
+      {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
       <Show when="signed-out">
-        <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          
-          <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
-            <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-10 h-10 bg-white rounded-xl p-1 object-contain shadow-lg shadow-blue-500/20" />
-                <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
-              </div>
-              <div className="flex items-center gap-3 sm:gap-4">
-                <SignInButton mode="modal">
-                  <button className="hidden sm:block text-sm font-bold text-slate-400 hover:text-white transition">
-                    Iniciar Sesión
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm">
-                    Crear Cuenta
-                  </button>
-                </SignUpButton>
-              </div>
+         <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center" translate="no">
+            <div className="text-center">
+               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 mx-auto mb-6 shadow-2xl shadow-blue-500/20" />
+               <h2 className="text-2xl font-black mb-4">Acceso Restringido</h2>
+               <p className="text-slate-400 mb-8 max-w-sm">Esta es una zona privada para clientes de TaxGuard AI. Inicia sesión para continuar.</p>
+               <Link href="/" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition">
+                  Ir al Inicio
+               </Link>
             </div>
-          </nav>
-
-          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden border-b border-white/5">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
-            <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
-            
-            <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest mb-8">
-                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                SaaS Financiero B2B
-              </div>
-              
-              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
-                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
-              </h1>
-              
-              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
-                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros. El control total de tu rentabilidad, en tiempo real.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <SignUpButton mode="modal">
-                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">
-                    Crear Cuenta Gratis
-                  </button>
-                </SignUpButton>
-
-                <SignInButton mode="modal">
-                  <button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700">
-                    Iniciar Sesión
-                  </button>
-                </SignInButton>
-              </div>
-            </div>
-          </div>
-
-          {/* 🚀 NUEVA SECCIÓN DE PLANES Y COMPARATIVA PARA VENDER EL PRODUCTO */}
-          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-black text-white mb-4">La Inversión que se paga sola</h2>
-              <p className="text-slate-400 max-w-2xl mx-auto text-lg">
-                No contrates un software. Contrata tiempo. TaxGuard AI está diseñado para ahorrarte más de <span className="text-blue-400 font-bold">30 horas al mes</span> en gestión administrativa y cientos de euros en errores fiscales.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-              
-              {/* TARJETA AUTÓNOMO */}
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 hover:border-slate-600 transition flex flex-col relative">
-                <div className="mb-6">
-                   <h3 className="text-2xl font-bold text-white mb-2">Plan Autónomo</h3>
-                   <p className="text-slate-400 text-sm">El reemplazo perfecto a la gestoría tradicional de picar datos.</p>
-                </div>
-                <div className="mb-8 pb-8 border-b border-white/10">
-                   <span className="text-5xl font-black text-white">49€</span><span className="text-slate-500 font-medium">/mes</span>
-                </div>
-                <ul className="space-y-4 mb-8 flex-1">
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Escáner OCR Ilimitado con Inteligencia Artificial. Sube tickets y olvídate.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Cálculo Automático del Modelo 303 (IVA). Listo para copiar y pegar en Hacienda.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Generador de Facturas en PDF oficiales y personalizadas con tu logo.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Libro Mayor y Escudo Fiscal (Soporte ante auditorías).</span>
-                   </li>
-                </ul>
-                <SignUpButton mode="modal">
-                  <button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition">
-                    Empezar como Autónomo
-                  </button>
-                </SignUpButton>
-              </div>
-
-              {/* TARJETA EMPRESA PRO */}
-              <div className="bg-slate-900 p-8 rounded-3xl border-2 border-blue-500 shadow-2xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg">
-                  MÁS RECOMENDADO
-                </div>
-                <div className="mb-6">
-                   <h3 className="text-2xl font-bold text-white mb-2">Plan Empresa Pro</h3>
-                   <p className="text-blue-300 text-sm font-medium">Un departamento financiero entero dentro de tu pantalla.</p>
-                </div>
-                <div className="mb-8 pb-8 border-b border-white/10">
-                   <span className="text-5xl font-black text-blue-400">89€</span><span className="text-slate-500 font-medium">/mes</span>
-                </div>
-                <ul className="space-y-4 mb-8 flex-1">
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-white text-sm font-bold">Todo lo incluido en el Plan Autónomo.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">CFO Virtual 24/7:</strong> Un asistente que responde dudas sobre rentabilidad y estrategias.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Auditorías Avanzadas:</strong> Reportes ejecutivos generados por IA identificando fugas de capital.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Gráficos P&L:</strong> Visualiza márgenes operativos y evolución mensual interactiva.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Soporte Técnico VIP Prioritario.</span>
-                   </li>
-                </ul>
-                <SignUpButton mode="modal">
-                  <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition">
-                    Dominar mis finanzas por 89€
-                  </button>
-                </SignUpButton>
-              </div>
-
-            </div>
-          </div>
-
-          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
-            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
-            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs.</p>
-            <p className="mt-6 text-xs text-slate-600">Contacto: soporte.taxguard@gmail.com</p>
-          </footer>
-        </div>
+         </div>
       </Show>
     </>
   );

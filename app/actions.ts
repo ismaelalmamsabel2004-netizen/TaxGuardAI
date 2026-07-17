@@ -92,6 +92,8 @@ export async function editarDatoSupabase(datos: any) {
   if (datos.month && datos.month.includes('/')) {
      const [d, m, y] = datos.month.split('/');
      fechaObj = new Date(Number(y), Number(m) - 1, Number(d));
+  } else if (datos.fecha) {
+     fechaObj = new Date(datos.fecha);
   }
 
   try {
@@ -103,6 +105,9 @@ export async function editarDatoSupabase(datos: any) {
         tipo: Number(datos.total) >= 0 ? 'INGRESO' : 'GASTO',
         baseImponible: Math.abs(Number(datos.total)),
         iva: Number(datos.iva) || 0,
+        // 🚀 AHORA PERMITE EDITAR EL CLIENTE DESDE LA TABLA DE FACTURAS
+        ...(datos.cliente_nombre !== undefined && { cliente_nombre: datos.cliente_nombre }),
+        ...(datos.cliente_nif !== undefined && { cliente_nif: datos.cliente_nif })
       }
     });
     return { success: true };
