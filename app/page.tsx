@@ -41,6 +41,9 @@ export default function Home() {
   const [frecuencia, setFrecuencia] = useState("Mensual");
   const [ivaSeleccionado, setIvaSeleccionado] = useState("21");
 
+  // 🚀 NUEVA VARIABLE: ESCUDO PARA VEHÍCULOS
+  const [isVehiculo, setIsVehiculo] = useState(false);
+
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
 
@@ -134,6 +137,8 @@ export default function Home() {
 
   useEffect(() => {
     setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
+    // Resetear el checkbox de vehículo si cambiamos a ingreso
+    if (tipoTransaccion === 'ingreso') setIsVehiculo(false);
   }, [tipoTransaccion, categoriasIngreso, categoriasGasto]);
 
   const agregarEmpresa = async () => {
@@ -499,16 +504,25 @@ export default function Home() {
          return;
       }
 
+      // 🚀 MAGIA DEL VEHÍCULO: Si es gasto y está marcado, dividimos el IVA introducido entre 2
+      let ivaFinal = ivaSeleccionado;
+      if (tipoTransaccion === 'gasto' && isVehiculo) {
+         ivaFinal = (Number(ivaSeleccionado) / 2).toString();
+      }
+
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
+      // Añadimos una marca al detalle si se aplicó el escudo del 50%
+      const detalleAdicional = (tipoTransaccion === 'gasto' && isVehiculo) ? " (Gasto Vehículo: IVA 50% deducible)" : "";
       
       const res = await guardarDatoSupabase({ 
         month: fecha, 
         total: valorFinal, 
-        categoria, 
-        iva: ivaSeleccionado,
+        categoria: categoria, 
+        iva: ivaFinal,
         empresaId: empresaId,
         isRecurrent: isRecurrent,
-        frecuencia: isRecurrent ? frecuencia : null
+        frecuencia: isRecurrent ? frecuencia : null,
+        concepto_detalle: detalleAdicional
       });
 
       if (res.success) {
@@ -516,6 +530,7 @@ export default function Home() {
         setData(actualizadosBD);
         setIngreso('');
         setIsRecurrent(false);
+        setIsVehiculo(false); // Reiniciamos el escudo
         setFrecuencia('Mensual');
         setIvaSeleccionado("21"); 
       } else {
@@ -625,7 +640,6 @@ export default function Home() {
     }
   };
 
-  // 🚀 AQUÍ ESTÁ EL NUEVO EXPORTADOR CSV PERFECTO PARA ESPAÑA
   const exportarAExcel = () => {
     if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
     
@@ -638,13 +652,13 @@ export default function Home() {
       const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
       const ivaPorcentaje = Number(row.iva) || 0;
       
-      const cuotaIva = valorNum * (ivaPorcentaje / 100);
-      const totalFinal = valorNum + cuotaIva;
+      const cuotaIva = Math.abs(valorNum) * (ivaPorcentaje / 100);
+      const totalFinal = Math.abs(valorNum) + cuotaIva;
 
       // Forzamos 2 decimales y usamos la coma como separador decimal para España
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
 
-      csvContent += `${row.name};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(valorNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
+      csvContent += `${row.name};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(Math.abs(valorNum))};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -738,7 +752,7 @@ export default function Home() {
               </div>
               
               <nav className="space-y-1">
-                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm" href="/" onClick={() => setIsSidebarOpen(false)}>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-medium transition shadow-sm shadow-blue-600/20" href="/" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
                   Consola General
                 </Link>
@@ -959,6 +973,22 @@ export default function Home() {
                       <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     
+                    {/* 🚀 NUEVA CASILLA PARA VEHÍCULOS (SOLO APARECE SI ES GASTO) */}
+                    {tipoTransaccion === 'gasto' && (
+                        <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+                            <input 
+                                type="checkbox" 
+                                id="vehiculo" 
+                                checked={isVehiculo} 
+                                onChange={(e) => setIsVehiculo(e.target.checked)} 
+                                className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" 
+                            />
+                            <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
+                                🚘 Gasto de Vehículo (Deducir solo 50% IVA)
+                            </label>
+                        </div>
+                    )}
+
                     <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2 gap-3">
                       <label className="text-xs font-bold text-slate-600 flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" checked={isRecurrent} onChange={(e) => setIsRecurrent(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
@@ -1001,7 +1031,6 @@ export default function Home() {
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
                         <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={40} />
                         
-                        {/* 🚀 EL FIX PARA QUE EL TOOLTIP NO ENLOQUEZCA CON LOS DECIMALES DEL CSV */}
                         <Tooltip 
                            formatter={(value: any) => [`${Number(value).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, undefined]}
                            cursor={{fill: '#f1f5f9'}} 
@@ -1092,6 +1121,12 @@ export default function Home() {
                               <span className="ml-2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1" title={`Gasto fijo: ${item.frecuencia}`}>
                                 🔄 <span className="hidden lg:inline">{item.frecuencia}</span>
                               </span>
+                            )}
+                            {/* 🚀 INDICADOR VISUAL SI APLICÓ EL ESCUDO DEL VEHÍCULO */}
+                            {item.concepto_detalle && item.concepto_detalle.includes("Vehículo") && (
+                                <span className="ml-2 text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1 border border-orange-200" title="Solo 50% del IVA deducido por ley">
+                                   🚘 50%
+                                </span>
                             )}
                           </td>
                           <td className={`px-4 md:px-6 py-3.5 font-bold ${Number(item.total) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{Number(item.total) >= 0 ? '+' : '-'} {Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
@@ -1224,7 +1259,7 @@ export default function Home() {
                   {papelera.length > 0 && (
                     <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl">
                         <h4 className="text-sm font-bold text-rose-800 mb-1 flex items-center gap-2">
-                           🗑️ Papelera de Reciclaje
+                            🗑️ Papelera de Reciclaje
                         </h4>
                         <p className="text-xs text-rose-600 font-medium mb-3">Estos espacios fueron borrados recientemente. Puedes restaurarlos.</p>
                         <div className="space-y-2">
