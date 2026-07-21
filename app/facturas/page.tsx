@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#2563eb', marginBottom: 40 },
   logoSection: { flexDirection: 'column', maxWidth: '60%' },
   logoImage: { width: 140, height: 60, objectFit: 'contain', marginBottom: 8 },
-  logoText: { fontSize: 28, fontWeight: 700, color: '#0f172a', letterSpacing: -0.5, marginBottom: 4 },
+  logoText: { fontSize: 24, fontWeight: 700, color: '#0f172a', letterSpacing: -0.5, marginBottom: 4 },
   logoSub: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 },
   invoiceInfoBox: { alignItems: 'flex-end' },
   invoiceBadge: { backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
@@ -69,12 +69,11 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
     <Page size="A4" style={styles.page}>
       <View style={styles.headerContainer}>
         <View style={styles.logoSection}>
-          {/* 🚀 FIX: Forzamos la lectura de Base64 o URL directa */}
-          {datos.logo ? (
+          {/* 🚀 FIX: AHORA MUESTRA EL LOGO Y EL TEXTO DE LA EMPRESA SIMULTÁNEAMENTE */}
+          {datos.logo && (
              <Image src={{ uri: datos.logo, method: 'GET', headers: { 'Cache-Control': 'no-cache' }, body: '' }} style={styles.logoImage} />
-          ) : (
-             <Text style={styles.logoText}>{datos.miEmpresa.toUpperCase()}</Text>
           )}
+          <Text style={styles.logoText}>{datos.miEmpresa.toUpperCase()}</Text>
           <Text style={styles.logoSub}>Facturación Electrónica</Text>
         </View>
         <View style={styles.invoiceInfoBox}>
@@ -203,12 +202,16 @@ export default function GeneradorFacturas() {
 
   const [planActivo, setPlanActivo] = useState('loading');
 
-  // 🚀 VARIABLES DEL CRM
+  // 🚀 VARIABLES DEL CRM AVANZADO
   const [clientesCRM, setClientesCRM] = useState<{nombre: string, nif: string, direccion: string}[]>([]);
   const [showCRM, setShowCRM] = useState(false);
   const [showCRMModal, setShowCRMModal] = useState(false);
   const [editandoClienteIndex, setEditandoClienteIndex] = useState<number | null>(null);
   const [editCRMData, setEditCRMData] = useState({ nombre: "", nif: "", direccion: "" });
+  
+  // Para añadir clientes sin hacer factura
+  const [showNuevoCliente, setShowNuevoCliente] = useState(false);
+  const [nuevoClienteData, setNuevoClienteData] = useState({ nombre: "", nif: "", direccion: "" });
 
   useEffect(() => {
     setIsMounted(true);
@@ -298,7 +301,7 @@ export default function GeneradorFacturas() {
       await fetch('/api/settings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
       });
-      alert(`✅ Los datos fiscales y el logo de ${empresaId} se han guardado por defecto.`);
+      alert(`✅ Los datos fiscales y el logo de ${empresaId} se han guardado por defecto. Aparecerán solos en la próxima factura.`);
   };
 
   const addLinea = () => setLineasFactura([...lineasFactura, { id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
@@ -378,6 +381,21 @@ export default function GeneradorFacturas() {
   };
 
   // 🚀 FUNCIONES DEL GESTOR CRM
+  const guardarNuevoClienteCRM = async () => {
+      if (!nuevoClienteData.nombre) return alert("El nombre del cliente es obligatorio.");
+      const newSettings = { ...allSettings };
+      if (!newSettings.crm) newSettings.crm = {};
+      if (!newSettings.crm[empresaId]) newSettings.crm[empresaId] = [];
+
+      newSettings.crm[empresaId].push(nuevoClienteData);
+      setAllSettings(newSettings);
+      setClientesCRM(newSettings.crm[empresaId]);
+      await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+      
+      setShowNuevoCliente(false);
+      setNuevoClienteData({ nombre: "", nif: "", direccion: "" });
+  };
+
   const guardarCRMEditado = async () => {
       const newSettings = { ...allSettings };
       if (!newSettings.crm) newSettings.crm = {};
@@ -431,6 +449,33 @@ export default function GeneradorFacturas() {
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const clientesFiltrados = clientesCRM.filter(c => c.nombre.toLowerCase().includes(clienteNombre.toLowerCase()));
+  if (!isMounted) return null;
+
+  // 🚀 PANTALLA DE CARGA ELEGANTE
+  if (planActivo === 'loading' && isSignedIn) {
+     return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
+           <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
+           <h2 className="text-xl font-black tracking-tight mb-2">Preparando entorno de facturación...</h2>
+           <p className="text-sm font-medium text-slate-500 mb-6">Comprobando permisos del espacio de trabajo</p>
+           
+           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
+              <span className="text-xl">🛡️</span>
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Soporte Técnico VIP</p>
+                <p className="text-sm font-bold text-blue-400">soporte.taxguard@gmail.com</p>
+              </div>
+           </div>
+
+           <div className="flex gap-2">
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
+              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></span>
+           </div>
+        </div>
+     );
+  }
+
   return (
     <>
       <Show when="signed-in">
@@ -471,7 +516,7 @@ export default function GeneradorFacturas() {
                   Consola General
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis" onClick={() => setIsSidebarOpen(false)}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2h-2a2 2 0 01-2-2z"/></svg>
                   Análisis Avanzado
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/impuestos" onClick={() => setIsSidebarOpen(false)}>
@@ -613,7 +658,7 @@ export default function GeneradorFacturas() {
                                 {clientesFiltrados.map((c, idx) => (
                                     <div 
                                         key={idx} 
-                                        className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 transition"
+                                        className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 transition flex justify-between items-center"
                                         onClick={() => {
                                             setClienteNombre(c.nombre);
                                             setClienteNif(c.nif);
@@ -621,8 +666,10 @@ export default function GeneradorFacturas() {
                                             setShowCRM(false);
                                         }}
                                     >
-                                        <div className="text-xs font-bold text-slate-800">{c.nombre}</div>
-                                        <div className="text-[10px] text-slate-500 mt-0.5">NIF: {c.nif}</div>
+                                        <div>
+                                           <div className="text-xs font-bold text-slate-800">{c.nombre}</div>
+                                           <div className="text-[10px] text-slate-500 mt-0.5">NIF: {c.nif}</div>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -852,7 +899,7 @@ export default function GeneradorFacturas() {
           </main>
         </div>
 
-        {/* 🚀 MODAL DEL GESTOR CRM */}
+        {/* 🚀 MODAL DEL GESTOR CRM SUPER-MEJORADO */}
         {showCRMModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
@@ -863,17 +910,47 @@ export default function GeneradorFacturas() {
                        </h3>
                        <p className="text-xs text-slate-500 mt-1">Directorio de {empresaId}. Los clientes se añaden automáticamente al facturar.</p>
                    </div>
-                   <button onClick={() => setShowCRMModal(false)} className="text-slate-400 hover:text-rose-500 transition p-2 bg-white rounded-xl shadow-sm border border-slate-200">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                   </button>
+                   <div className="flex items-center gap-3">
+                       <button onClick={() => setShowNuevoCliente(!showNuevoCliente)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm">
+                           {showNuevoCliente ? "Cancelar" : "+ Nuevo Cliente"}
+                       </button>
+                       <button onClick={() => setShowCRMModal(false)} className="text-slate-400 hover:text-rose-500 transition p-2 bg-white rounded-xl shadow-sm border border-slate-200">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                       </button>
+                   </div>
                 </div>
                 
                 <div className="p-6 overflow-y-auto space-y-4 bg-slate-50/50">
-                   {clientesCRM.length === 0 ? (
+                   
+                   {/* FORMULARIO PARA AÑADIR CLIENTE MANUALMENTE */}
+                   {showNuevoCliente && (
+                       <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-200 mb-6 shadow-inner">
+                           <h4 className="text-xs font-black text-blue-800 uppercase tracking-widest mb-4">Añadir Contacto Manual</h4>
+                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                               <div>
+                                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Nombre</label>
+                                  <input type="text" value={nuevoClienteData.nombre} onChange={e => setNuevoClienteData({...nuevoClienteData, nombre: e.target.value})} placeholder="Ej: Mercadona SA" className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                               </div>
+                               <div>
+                                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">NIF / CIF</label>
+                                  <input type="text" value={nuevoClienteData.nif} onChange={e => setNuevoClienteData({...nuevoClienteData, nif: e.target.value})} placeholder="A12345678" className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                               </div>
+                               <div>
+                                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Dirección</label>
+                                  <input type="text" value={nuevoClienteData.direccion} onChange={e => setNuevoClienteData({...nuevoClienteData, direccion: e.target.value})} placeholder="Calle Principal 1" className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                               </div>
+                           </div>
+                           <button onClick={guardarNuevoClienteCRM} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm hover:bg-blue-700 w-full sm:w-auto">
+                               Guardar en Agenda
+                           </button>
+                       </div>
+                   )}
+
+                   {clientesCRM.length === 0 && !showNuevoCliente ? (
                       <div className="text-center py-12">
                          <span className="text-4xl block mb-4">📇</span>
                          <p className="text-sm font-bold text-slate-600 mb-1">Tu agenda está vacía</p>
-                         <p className="text-xs text-slate-400">Rellena los datos de un cliente y pulsa "Registrar en Libro Mayor" para guardarlo.</p>
+                         <p className="text-xs text-slate-400">Rellena los datos de un cliente y pulsa "Registrar en Libro Mayor" para guardarlo automáticamente, o pulsa "+ Nuevo Cliente".</p>
                       </div>
                    ) : (
                       clientesCRM.map((c, index) => (
@@ -911,11 +988,17 @@ export default function GeneradorFacturas() {
                                         newList[index] = editCRMData;
                                         setClientesCRM(newList);
                                         guardarCRMEditado();
-                                     }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Guardar</button>
+                                     }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Guardar</button>
                                      <button onClick={() => setEditandoClienteIndex(null)} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200">Cancelar</button>
                                   </>
                                 ) : (
                                   <>
+                                     <button onClick={() => {
+                                         setClienteNombre(c.nombre);
+                                         setClienteNif(c.nif);
+                                         setClienteDireccion(c.direccion);
+                                         setShowCRMModal(false);
+                                     }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Usar en Factura</button>
                                      <button onClick={() => { setEditandoClienteIndex(index); setEditCRMData(c); }} className="bg-slate-50 hover:bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200 hover:border-blue-200">Editar</button>
                                      <button onClick={() => eliminarClienteCRM(index)} className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-rose-100">Borrar</button>
                                   </>
