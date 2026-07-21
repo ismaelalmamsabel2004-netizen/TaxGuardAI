@@ -69,8 +69,9 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
     <Page size="A4" style={styles.page}>
       <View style={styles.headerContainer}>
         <View style={styles.logoSection}>
+          {/* 🚀 FIX: Forzamos la lectura de Base64 o URL directa */}
           {datos.logo ? (
-             <Image src={datos.logo} style={styles.logoImage} />
+             <Image src={{ uri: datos.logo, method: 'GET', headers: { 'Cache-Control': 'no-cache' }, body: '' }} style={styles.logoImage} />
           ) : (
              <Text style={styles.logoText}>{datos.miEmpresa.toUpperCase()}</Text>
           )}
@@ -202,9 +203,12 @@ export default function GeneradorFacturas() {
 
   const [planActivo, setPlanActivo] = useState('loading');
 
-  // 🚀 VARIABLES DEL NUEVO MINI-CRM
+  // 🚀 VARIABLES DEL CRM
   const [clientesCRM, setClientesCRM] = useState<{nombre: string, nif: string, direccion: string}[]>([]);
   const [showCRM, setShowCRM] = useState(false);
+  const [showCRMModal, setShowCRMModal] = useState(false);
+  const [editandoClienteIndex, setEditandoClienteIndex] = useState<number | null>(null);
+  const [editCRMData, setEditCRMData] = useState({ nombre: "", nif: "", direccion: "" });
 
   useEffect(() => {
     setIsMounted(true);
@@ -216,25 +220,17 @@ export default function GeneradorFacturas() {
       .then(res => res.ok ? res.json() : {})
       .then((data: any) => {
          const planDetectado = data.planSuscripcion || 'free';
-         
-         if (planDetectado === 'free') {
-            router.push('/precios');
-            return; 
-         }
+         if (planDetectado === 'free') { router.push('/precios'); return; }
 
          setPlanActivo(planDetectado);
          setAllSettings(data);
-         const listaEmpresas = data.empresas || ["Alperez", "PetClean", "Techmovile"];
+         const listaEmpresas = data.empresas || ["Alperez"];
          setEmpresas(listaEmpresas);
          const activa = data.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
 
-         // 🚀 Cargar clientes del CRM
-         if (data.crm && data.crm[activa]) {
-             setClientesCRM(data.crm[activa]);
-         } else {
-             setClientesCRM([]);
-         }
+         if (data.crm && data.crm[activa]) setClientesCRM(data.crm[activa]);
+         else setClientesCRM([]);
       });
   }, [isLoaded, isSignedIn, router]);
 
@@ -274,17 +270,11 @@ export default function GeneradorFacturas() {
     const newSettings = { ...allSettings, empresaActiva: nuevaEmpresa };
     setAllSettings(newSettings);
     
-    // 🚀 Cambiar el CRM activo
-    if (newSettings.crm && newSettings.crm[nuevaEmpresa]) {
-        setClientesCRM(newSettings.crm[nuevaEmpresa]);
-    } else {
-        setClientesCRM([]);
-    }
+    if (newSettings.crm && newSettings.crm[nuevaEmpresa]) setClientesCRM(newSettings.crm[nuevaEmpresa]);
+    else setClientesCRM([]);
 
     await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSettings)
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
     });
   };
 
@@ -306,9 +296,7 @@ export default function GeneradorFacturas() {
       };
       setAllSettings(newSettings);
       await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newSettings)
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
       });
       alert(`✅ Los datos fiscales y el logo de ${empresaId} se han guardado por defecto.`);
   };
@@ -346,20 +334,12 @@ export default function GeneradorFacturas() {
       const conceptoUnificado = lineasFactura.map(l => `${l.cantidad}x ${l.concepto}`).join(' | ');
 
       const res = await guardarDatoSupabase({
-        month: fechaFormateada, 
-        total: baseNum, 
-        empresaId: empresaId, 
-        categoria: "Ventas", 
-        isRecurrent: false, 
-        iva: ivaSeleccionado, 
-        numero_factura: numeroFactura,
-        cliente_nombre: clienteNombre, 
-        cliente_nif: clienteNif, 
-        concepto_detalle: conceptoUnificado
+        month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: "Ventas", 
+        isRecurrent: false, iva: ivaSeleccionado, numero_factura: numeroFactura,
+        cliente_nombre: clienteNombre, cliente_nif: clienteNif, concepto_detalle: conceptoUnificado
       });
 
       if (res.success) {
-        // 🚀 GUARDAR EN EL MINI-CRM AL EMITIR FACTURA
         if (clienteNombre) {
             const newSettings = { ...allSettings };
             if (!newSettings.crm) newSettings.crm = {};
@@ -385,7 +365,6 @@ export default function GeneradorFacturas() {
         alert("⚠️ Error al guardar en el Libro Mayor.");
       }
     } catch (error) {
-      console.error(error);
       alert("⚠️ Error de conexión al guardar.");
     } finally {
       setIsSaving(false);
@@ -398,6 +377,30 @@ export default function GeneradorFacturas() {
      setFacturaBloqueada(false); 
   };
 
+  // 🚀 FUNCIONES DEL GESTOR CRM
+  const guardarCRMEditado = async () => {
+      const newSettings = { ...allSettings };
+      if (!newSettings.crm) newSettings.crm = {};
+      newSettings.crm[empresaId] = [...clientesCRM];
+      
+      setAllSettings(newSettings);
+      await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+      setEditandoClienteIndex(null);
+  };
+
+  const eliminarClienteCRM = async (index: number) => {
+      if(!window.confirm("¿Seguro que deseas borrar este cliente de tu agenda?")) return;
+      const newList = clientesCRM.filter((_, i) => i !== index);
+      setClientesCRM(newList);
+      
+      const newSettings = { ...allSettings };
+      if (!newSettings.crm) newSettings.crm = {};
+      newSettings.crm[empresaId] = newList;
+      
+      setAllSettings(newSettings);
+      await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+  };
+
   const iniciarEdicionCliente = (fac: any) => {
      setEditandoHistorialId(fac.id);
      setEditClientData({ nombre: fac.cliente_nombre || "", nif: fac.cliente_nif || "" });
@@ -406,21 +409,14 @@ export default function GeneradorFacturas() {
   const guardarEdicionHistorial = async (fac: any) => {
       try {
           const res = await editarDatoSupabase({
-              id: fac.id,
-              month: fac.name,
-              total: fac.total,
-              categoria: fac.categoria,
-              iva: fac.iva,
-              cliente_nombre: editClientData.nombre,
-              cliente_nif: editClientData.nif
+              id: fac.id, month: fac.name, total: fac.total, categoria: fac.categoria, iva: fac.iva,
+              cliente_nombre: editClientData.nombre, cliente_nif: editClientData.nif
           });
           if (res.success) {
               setEditandoHistorialId(null);
               setRefreshTrigger(prev => prev + 1);
           }
-      } catch(e) {
-          alert("Error al actualizar");
-      }
+      } catch(e) { alert("Error al actualizar"); }
   };
 
   const filteredHistorial = historialFacturas.filter((fac: any) => {
@@ -435,33 +431,6 @@ export default function GeneradorFacturas() {
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const clientesFiltrados = clientesCRM.filter(c => c.nombre.toLowerCase().includes(clienteNombre.toLowerCase()));
-  if (!isMounted) return null;
-
-  // 🚀 PANTALLA DE CARGA ELEGANTE
-  if (planActivo === 'loading' && isSignedIn) {
-     return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
-           <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-16 h-16 bg-white rounded-2xl p-2 object-contain shadow-2xl shadow-blue-500/20 mb-6 animate-pulse" />
-           <h2 className="text-xl font-black tracking-tight mb-2">Preparando entorno de facturación...</h2>
-           <p className="text-sm font-medium text-slate-500 mb-6">Comprobando permisos del espacio de trabajo</p>
-           
-           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
-              <span className="text-xl">🛡️</span>
-              <div>
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Soporte Técnico VIP</p>
-                <p className="text-sm font-bold text-blue-400">soporte.taxguard@gmail.com</p>
-              </div>
-           </div>
-
-           <div className="flex gap-2">
-              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
-              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
-              <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></span>
-           </div>
-        </div>
-     );
-  }
-
   return (
     <>
       <Show when="signed-in">
@@ -608,9 +577,16 @@ export default function GeneradorFacturas() {
 
                 {/* 🚀 DATOS DEL CLIENTE CON MINI-CRM */}
                 <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
-                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 mb-6">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> 2. Facturar a (Cliente)
-                   </h3>
+                   <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                         <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> 2. Facturar a (Cliente)
+                      </h3>
+                      {/* 🚀 BOTÓN GESTOR CRM */}
+                      <button onClick={() => setShowCRMModal(true)} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md transition border border-slate-200 flex items-center gap-1">
+                         👥 Gestor de Clientes ({clientesCRM.length})
+                      </button>
+                   </div>
+                   
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       
                       <div className="relative">
@@ -627,7 +603,7 @@ export default function GeneradorFacturas() {
                            className="w-full p-2.5 bg-emerald-50/30 border border-emerald-200 text-slate-900 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" 
                            placeholder="Ej: Zona Alpha S.L."
                         />
-                        {/* 🚀 DESPLEGABLE MINI-CRM */}
+                        {/* 🚀 DESPLEGABLE MINI-CRM RÁPIDO */}
                         {showCRM && clientesFiltrados.length > 0 && (
                             <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 shadow-xl rounded-xl z-50 max-h-48 overflow-y-auto">
                                 <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
@@ -875,6 +851,83 @@ export default function GeneradorFacturas() {
             <div className="h-20"></div>
           </main>
         </div>
+
+        {/* 🚀 MODAL DEL GESTOR CRM */}
+        {showCRMModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                   <div>
+                       <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                           👥 Gestor de Clientes (CRM)
+                       </h3>
+                       <p className="text-xs text-slate-500 mt-1">Directorio de {empresaId}. Los clientes se añaden automáticamente al facturar.</p>
+                   </div>
+                   <button onClick={() => setShowCRMModal(false)} className="text-slate-400 hover:text-rose-500 transition p-2 bg-white rounded-xl shadow-sm border border-slate-200">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                   </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto space-y-4 bg-slate-50/50">
+                   {clientesCRM.length === 0 ? (
+                      <div className="text-center py-12">
+                         <span className="text-4xl block mb-4">📇</span>
+                         <p className="text-sm font-bold text-slate-600 mb-1">Tu agenda está vacía</p>
+                         <p className="text-xs text-slate-400">Rellena los datos de un cliente y pulsa "Registrar en Libro Mayor" para guardarlo.</p>
+                      </div>
+                   ) : (
+                      clientesCRM.map((c, index) => (
+                         <div key={index} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between md:items-center gap-4 transition hover:border-blue-200 hover:shadow-md">
+                            {editandoClienteIndex === index ? (
+                               <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div>
+                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Nombre</label>
+                                     <input type="text" value={editCRMData.nombre} onChange={e => setEditCRMData({...editCRMData, nombre: e.target.value})} className="w-full p-2.5 border border-blue-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                  </div>
+                                  <div>
+                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">NIF / CIF</label>
+                                     <input type="text" value={editCRMData.nif} onChange={e => setEditCRMData({...editCRMData, nif: e.target.value})} className="w-full p-2.5 border border-blue-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                  </div>
+                                  <div>
+                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Dirección</label>
+                                     <input type="text" value={editCRMData.direccion} onChange={e => setEditCRMData({...editCRMData, direccion: e.target.value})} className="w-full p-2.5 border border-blue-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                  </div>
+                               </div>
+                            ) : (
+                               <div className="flex-1">
+                                  <h4 className="text-sm font-black text-slate-900">{c.nombre}</h4>
+                                  <p className="text-[11px] font-medium text-slate-500 mt-1">
+                                     <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold mr-2">NIF: {c.nif}</span>
+                                     📍 {c.direccion}
+                                  </p>
+                               </div>
+                            )}
+                            
+                            <div className="flex items-center gap-2 border-t border-slate-100 pt-3 md:border-0 md:pt-0">
+                               {editandoClienteIndex === index ? (
+                                  <>
+                                     <button onClick={() => {
+                                        const newList = [...clientesCRM];
+                                        newList[index] = editCRMData;
+                                        setClientesCRM(newList);
+                                        guardarCRMEditado();
+                                     }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Guardar</button>
+                                     <button onClick={() => setEditandoClienteIndex(null)} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200">Cancelar</button>
+                                  </>
+                                ) : (
+                                  <>
+                                     <button onClick={() => { setEditandoClienteIndex(index); setEditCRMData(c); }} className="bg-slate-50 hover:bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200 hover:border-blue-200">Editar</button>
+                                     <button onClick={() => eliminarClienteCRM(index)} className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-rose-100">Borrar</button>
+                                  </>
+                               )}
+                            </div>
+                         </div>
+                      ))
+                   )}
+                </div>
+             </div>
+          </div>
+        )}
       </Show>
 
       {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
