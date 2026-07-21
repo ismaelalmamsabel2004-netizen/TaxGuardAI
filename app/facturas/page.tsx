@@ -143,6 +143,15 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
                <Text style={styles.totalLabel}>Impuestos (IVA {datos.ivaSeleccionado}%):</Text>
                <Text style={styles.totalValue}>{datos.cuotaIva.toFixed(2)} €</Text>
              </View>
+             
+             {/* 🚀 FIX: AÑADIDA LÍNEA DE RETENCIÓN IRPF SI ES MAYOR QUE 0 */}
+             {datos.cuotaIrpf > 0 && (
+                 <View style={styles.totalRow}>
+                   <Text style={styles.totalLabel}>Retención IRPF (-{datos.irpfSeleccionado}%):</Text>
+                   <Text style={{...styles.totalValue, color: '#ef4444'}}>-{datos.cuotaIrpf.toFixed(2)} €</Text>
+                 </View>
+             )}
+
              <View style={styles.grandTotalRow}>
                <Text style={styles.grandTotalLabel}>Total a Pagar</Text>
                <Text style={styles.grandTotalValue}>{datos.totalFinal.toFixed(2)} €</Text>
@@ -183,7 +192,10 @@ export default function GeneradorFacturas() {
   const [clienteDireccion, setClienteDireccion] = useState("");
   
   const [lineasFactura, setLineasFactura] = useState([{ id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
+  
+  // 🚀 VARIABLES DE IMPUESTOS (IVA e IRPF)
   const [ivaSeleccionado, setIvaSeleccionado] = useState("21");
+  const [irpfSeleccionado, setIrpfSeleccionado] = useState("0");
 
   const [isSaving, setIsSaving] = useState(false);
   const [facturaGuardada, setFacturaGuardada] = useState(false);
@@ -278,7 +290,6 @@ export default function GeneradorFacturas() {
     });
   };
 
-  // 🚀 LOGO AUTO-GUARDADO INTELIGENTE
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -300,7 +311,6 @@ export default function GeneradorFacturas() {
       reader.readAsDataURL(file);
   };
 
-  // 🚀 BOTÓN PARA QUITAR EL LOGO
   const quitarLogo = async () => {
       setLogo(null);
       const newSettings = { ...allSettings };
@@ -336,10 +346,16 @@ export default function GeneradorFacturas() {
       setLineasFactura(lineasFactura.map(l => l.id === id ? { ...l, [campo]: valor } : l));
   };
 
+  // 🚀 LÓGICA MATEMÁTICA CON IRPF
   const baseNum = lineasFactura.reduce((acc, line) => acc + (Number(line.cantidad) * Number(line.precio)), 0);
   const ivaNum = Number(ivaSeleccionado) || 0;
   const cuotaIva = baseNum * (ivaNum / 100);
-  const totalFinal = baseNum + cuotaIva;
+  
+  const irpfNum = Number(irpfSeleccionado) || 0;
+  const cuotaIrpf = baseNum * (irpfNum / 100);
+  
+  // Total a Pagar = Base + IVA - IRPF
+  const totalFinal = baseNum + cuotaIva - cuotaIrpf;
 
   const datosPDF = {
     miEmpresa: empresaId || "Mi Empresa", 
@@ -347,7 +363,10 @@ export default function GeneradorFacturas() {
     fecha: fecha.split('-').reverse().join('/'),
     miNif, miDireccion, logo, metodoPago, iban,
     clienteNombre, clienteNif, clienteDireccion,
-    lineasFactura, baseImponible: baseNum.toFixed(2), ivaSeleccionado, ivaNum, cuotaIva, totalFinal
+    lineasFactura, baseImponible: baseNum.toFixed(2), 
+    ivaSeleccionado, ivaNum, cuotaIva, 
+    irpfSeleccionado, cuotaIrpf, 
+    totalFinal
   };
 
   const guardarEnLibroMayor = async () => {
@@ -360,7 +379,8 @@ export default function GeneradorFacturas() {
     try {
       const [y, m, d] = fecha.split('-');
       const fechaFormateada = `${d}/${m}/${y}`;
-      const conceptoUnificado = lineasFactura.map(l => `${l.cantidad}x ${l.concepto}`).join(' | ');
+      // Guardamos la información del IRPF en el detalle para que quede constancia
+      const conceptoUnificado = lineasFactura.map(l => `${l.cantidad}x ${l.concepto}`).join(' | ') + (irpfNum > 0 ? ` (Retención IRPF: -${irpfNum}%)` : "");
 
       const res = await guardarDatoSupabase({
         month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: "Ventas", 
@@ -638,7 +658,6 @@ export default function GeneradorFacturas() {
                             </div>
                             <div>
                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Logo Empresa (Opcional)</label>
-                               {/* 🚀 FIX: Miniatura del Logo */}
                                {logo ? (
                                    <div className="flex items-center gap-2 mt-1">
                                       <img src={logo} alt="Logo Empresa" className="h-8 object-contain rounded border border-slate-200 p-0.5 bg-white" />
@@ -661,7 +680,6 @@ export default function GeneradorFacturas() {
                       <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> 2. Facturar a (Cliente)
                       </h3>
-                      {/* 🚀 BOTÓN GESTOR CRM */}
                       <button onClick={() => setShowCRMModal(true)} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md transition border border-slate-200 flex items-center gap-1">
                          👥 Gestor de Clientes ({clientesCRM.length})
                       </button>
@@ -683,7 +701,6 @@ export default function GeneradorFacturas() {
                            className="w-full p-2.5 bg-emerald-50/30 border border-emerald-200 text-slate-900 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" 
                            placeholder="Ej: Zona Alpha S.L."
                         />
-                        {/* 🚀 DESPLEGABLE MINI-CRM RÁPIDO */}
                         {showCRM && clientesFiltrados.length > 0 && (
                             <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 shadow-xl rounded-xl z-50 max-h-48 overflow-y-auto">
                                 <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
@@ -785,6 +802,24 @@ export default function GeneradorFacturas() {
                           </div>
                           <span className="text-base font-bold text-slate-300">+{cuotaIva.toFixed(2)} €</span>
                        </div>
+
+                       {/* 🚀 NUEVA SECCIÓN DE RETENCIÓN IRPF */}
+                       <div className="flex justify-between items-center pt-2">
+                          <div className="flex flex-col">
+                             <span className="text-sm text-slate-400 font-medium">Retención IRPF</span>
+                             <select value={irpfSeleccionado} onChange={(e) => setIrpfSeleccionado(e.target.value)} className="mt-1 bg-slate-800 text-xs text-white border border-slate-700 rounded p-1 outline-none">
+                                <option value="0">Sin retención (0%)</option>
+                                <option value="7">Nuevos autónomos (7%)</option>
+                                <option value="15">Profesionales (15%)</option>
+                             </select>
+                          </div>
+                          {cuotaIrpf > 0 ? (
+                              <span className="text-base font-bold text-rose-500">-{cuotaIrpf.toFixed(2)} €</span>
+                          ) : (
+                              <span className="text-base font-bold text-slate-500">0.00 €</span>
+                          )}
+                       </div>
+
                     </div>
                     
                     <div className="border-t border-slate-700 pt-6">
@@ -793,7 +828,6 @@ export default function GeneradorFacturas() {
                     </div>
 
                     <div className="mt-8 space-y-3">
-                       {/* 🚀 BOTÓN DESCARGAR PDF */}
                        {isMounted && (
                            <PDFDownloadLink 
                                document={<FacturaPDF datos={datosPDF} />} 
@@ -809,7 +843,6 @@ export default function GeneradorFacturas() {
                            </PDFDownloadLink>
                        )}
                        
-                       {/* 🚀 BOTÓN GUARDAR EN CEREBRO */}
                        <button 
                           onClick={guardarEnLibroMayor} 
                           disabled={isSaving || facturaBloqueada}
@@ -934,7 +967,7 @@ export default function GeneradorFacturas() {
           </main>
         </div>
 
-        {/* 🚀 MODAL DEL GESTOR CRM SUPER-MEJORADO */}
+        {/* 🚀 MODAL DEL GESTOR CRM */}
         {showCRMModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
@@ -957,7 +990,6 @@ export default function GeneradorFacturas() {
                 
                 <div className="p-6 overflow-y-auto space-y-4 bg-slate-50/50">
                    
-                   {/* FORMULARIO PARA AÑADIR CLIENTE MANUALMENTE */}
                    {showNuevoCliente && (
                        <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-200 mb-6 shadow-inner">
                            <h4 className="text-xs font-black text-blue-800 uppercase tracking-widest mb-4">Añadir Contacto Manual</h4>
