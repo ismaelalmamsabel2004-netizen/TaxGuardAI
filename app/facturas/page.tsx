@@ -69,7 +69,6 @@ const FacturaPDF = ({ datos }: { datos: any }) => (
     <Page size="A4" style={styles.page}>
       <View style={styles.headerContainer}>
         <View style={styles.logoSection}>
-          {/* 🚀 FIX: AHORA MUESTRA EL LOGO Y EL TEXTO DE LA EMPRESA SIMULTÁNEAMENTE */}
           {datos.logo && (
              <Image src={{ uri: datos.logo, method: 'GET', headers: { 'Cache-Control': 'no-cache' }, body: '' }} style={styles.logoImage} />
           )}
@@ -202,14 +201,12 @@ export default function GeneradorFacturas() {
 
   const [planActivo, setPlanActivo] = useState('loading');
 
-  // 🚀 VARIABLES DEL CRM AVANZADO
   const [clientesCRM, setClientesCRM] = useState<{nombre: string, nif: string, direccion: string}[]>([]);
   const [showCRM, setShowCRM] = useState(false);
   const [showCRMModal, setShowCRMModal] = useState(false);
   const [editandoClienteIndex, setEditandoClienteIndex] = useState<number | null>(null);
   const [editCRMData, setEditCRMData] = useState({ nombre: "", nif: "", direccion: "" });
   
-  // Para añadir clientes sin hacer factura
   const [showNuevoCliente, setShowNuevoCliente] = useState(false);
   const [nuevoClienteData, setNuevoClienteData] = useState({ nombre: "", nif: "", direccion: "" });
 
@@ -281,27 +278,56 @@ export default function GeneradorFacturas() {
     });
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 🚀 LOGO AUTO-GUARDADO INTELIGENTE
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (event) => {
-          setLogo(event.target?.result as string);
+      reader.onload = async (event) => {
+          const base64Logo = event.target?.result as string;
+          setLogo(base64Logo);
+          
+          const newSettings = { ...allSettings };
+          if (!newSettings.datosFacturacion) newSettings.datosFacturacion = {};
+          if (!newSettings.datosFacturacion[empresaId]) newSettings.datosFacturacion[empresaId] = {};
+          newSettings.datosFacturacion[empresaId].logo = base64Logo;
+          
+          setAllSettings(newSettings);
+          await fetch('/api/settings', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
+          });
       };
       reader.readAsDataURL(file);
+  };
+
+  // 🚀 BOTÓN PARA QUITAR EL LOGO
+  const quitarLogo = async () => {
+      setLogo(null);
+      const newSettings = { ...allSettings };
+      if (newSettings.datosFacturacion && newSettings.datosFacturacion[empresaId]) {
+          newSettings.datosFacturacion[empresaId].logo = null;
+      }
+      setAllSettings(newSettings);
+      await fetch('/api/settings', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
+      });
   };
 
   const guardarDatosEmisor = async () => {
       const newSettings = { ...allSettings };
       if (!newSettings.datosFacturacion) newSettings.datosFacturacion = {};
+      if (!newSettings.datosFacturacion[empresaId]) newSettings.datosFacturacion[empresaId] = {};
+      
       newSettings.datosFacturacion[empresaId] = {
-          nif: miNif, direccion: miDireccion, logo: logo, metodoPago: metodoPago, iban: iban
+          ...newSettings.datosFacturacion[empresaId],
+          nif: miNif, direccion: miDireccion, metodoPago: metodoPago, iban: iban
       };
+      
       setAllSettings(newSettings);
       await fetch('/api/settings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
       });
-      alert(`✅ Los datos fiscales y el logo de ${empresaId} se han guardado por defecto. Aparecerán solos en la próxima factura.`);
+      alert(`✅ Los datos fiscales de ${empresaId} se han guardado por defecto.`);
   };
 
   const addLinea = () => setLineasFactura([...lineasFactura, { id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
@@ -380,7 +406,6 @@ export default function GeneradorFacturas() {
      setFacturaBloqueada(false); 
   };
 
-  // 🚀 FUNCIONES DEL GESTOR CRM
   const guardarNuevoClienteCRM = async () => {
       if (!nuevoClienteData.nombre) return alert("El nombre del cliente es obligatorio.");
       const newSettings = { ...allSettings };
@@ -613,7 +638,17 @@ export default function GeneradorFacturas() {
                             </div>
                             <div>
                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Logo Empresa (Opcional)</label>
-                               <input type="file" accept="image/*" onChange={handleLogoUpload} className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                               {/* 🚀 FIX: Miniatura del Logo */}
+                               {logo ? (
+                                   <div className="flex items-center gap-2 mt-1">
+                                      <img src={logo} alt="Logo Empresa" className="h-8 object-contain rounded border border-slate-200 p-0.5 bg-white" />
+                                      <button onClick={quitarLogo} className="text-[9px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded border border-rose-100 hover:bg-rose-100 transition">
+                                          Quitar Logo
+                                      </button>
+                                   </div>
+                               ) : (
+                                   <input type="file" accept="image/*" onChange={handleLogoUpload} className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                               )}
                             </div>
                          </div>
                       </div>
