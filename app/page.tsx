@@ -11,7 +11,6 @@ import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@
 // LAS TUBERÍAS DE SUPABASE Y GEMINI
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA } from './actions';
 
-// CONFIGURACIÓN DE FUENTES PARA EL PDF DEL LIBRO MAYOR
 Font.register({
   family: 'Roboto',
   fonts: [
@@ -45,31 +44,25 @@ const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
         <Text style={pdfStyles.subtitle}>Extracto de operaciones. Filtro aplicado: {filtro}</Text>
         <Text style={{ fontSize: 8, color: '#94a3b8', marginTop: 4 }}>Fecha de emisión: {new Date().toLocaleDateString('es-ES')}</Text>
       </View>
-
       <View style={pdfStyles.tableHeader}>
         <Text style={pdfStyles.colFecha}>FECHA</Text>
         <Text style={pdfStyles.colCat}>CATEGORÍA / DOC.</Text>
         <Text style={pdfStyles.colImporte}>BASE IMPONIBLE</Text>
         <Text style={pdfStyles.colIva}>IMPUESTOS</Text>
       </View>
-
       {datos.map((item: any, i: number) => {
          const isGasto = Number(item.total) < 0;
          const importeText = `${isGasto ? '-' : '+'}${Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2})} €`;
          const colorImporte = isGasto ? '#e11d48' : '#10b981';
-
          return (
           <View key={i} style={pdfStyles.tableRow}>
             <Text style={pdfStyles.colFecha}>{item.name}</Text>
-            <Text style={pdfStyles.colCat}>
-               {item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}
-            </Text>
+            <Text style={pdfStyles.colCat}>{item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}</Text>
             <Text style={[pdfStyles.colImporte, { color: colorImporte }]}>{importeText}</Text>
             <Text style={pdfStyles.colIva}>{item.iva === 0 || item.iva === "0" ? "Exento" : `IVA ${item.iva}%`}</Text>
           </View>
          );
       })}
-
       <View style={pdfStyles.footer}>
         <Text style={pdfStyles.footerText}>Generado mediante TaxGuard AI</Text>
         <Text style={pdfStyles.footerText}>SaaS Financiero B2B</Text>
@@ -120,10 +113,7 @@ export default function Home() {
   const itemsPerPage = 10;
 
   const etiquetasFiltro: Record<string, string> = {
-    all: "Histórico Completo",
-    month: "Último Mes",
-    quarter: "Último Trimestre",
-    year: "Último Año"
+    all: "Histórico Completo", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
   };
 
   const [metaMensual, setMetaMensual] = useState(5000);
@@ -133,7 +123,6 @@ export default function Home() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   
-  // 🚀 ESTADOS DEL NUEVO SOPORTE VIP
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [faqSearch, setFaqSearch] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -169,9 +158,7 @@ export default function Home() {
     }
   };
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
 
   useEffect(() => { 
     setIsMounted(true); 
@@ -183,10 +170,9 @@ export default function Home() {
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          if (planDetectado === 'free') { router.push('/precios'); return; }
-
          setPlanActivo(planDetectado);
 
-         const listaEmpresas = ajustesGuardados.empresas || ["Alperez"];
+         const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa"];
          setEmpresas(listaEmpresas);
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
@@ -196,9 +182,7 @@ export default function Home() {
   }, [isLoaded, isSignedIn, router]);
 
   useEffect(() => {
-    setChartFilter(null);
-    setCurrentPage(1);
-    setSearchTerm("");
+    setChartFilter(null); setCurrentPage(1); setSearchTerm("");
   }, [filtro, empresaId]);
 
   useEffect(() => {
@@ -212,7 +196,6 @@ export default function Home() {
       setEmpresas(lista);
       setEmpresaId(nuevaEmpresa);
       setNuevaEmpresa("");
-      
       const res = await fetch('/api/settings');
       const actuales: any = await res.json();
       await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaEmpresa });
@@ -222,16 +205,12 @@ export default function Home() {
   const eliminarEmpresa = async (nombre: string) => {
     const confirmacion = window.confirm(`⚠️ ATENCIÓN: ¿Estás seguro de que deseas borrar el espacio de trabajo "${nombre}"?\n\nLos datos se guardarán en la papelera de reciclaje durante 7 días antes de su eliminación definitiva.`);
     if (!confirmacion) return;
-
     const nuevaPapelera = [...papelera, { nombre, fecha: Date.now() }];
     setPapelera(nuevaPapelera);
-
     const lista = empresas.filter(e => e !== nombre);
     setEmpresas(lista);
-    
     const nuevaActiva = empresaId === nombre ? (lista[0] || "") : empresaId;
     setEmpresaId(nuevaActiva);
-
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
     await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaActiva, papelera: nuevaPapelera });
@@ -240,11 +219,9 @@ export default function Home() {
   const recuperarDePapelera = async (nombre: string) => {
     const lista = [...empresas, nombre];
     setEmpresas(lista);
-
     const nuevaPapelera = papelera.filter(item => item.nombre !== nombre);
     setPapelera(nuevaPapelera);
     setEmpresaId(nombre);
-
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
     await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nombre, papelera: nuevaPapelera });
@@ -253,7 +230,6 @@ export default function Home() {
 
   useEffect(() => {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
-
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
@@ -261,33 +237,25 @@ export default function Home() {
            setMetaMensual(ajustesGuardados.metas[empresaId]);
            setInputMeta(ajustesGuardados.metas[empresaId].toString());
          } else {
-           setMetaMensual(5000);
-           setInputMeta("5000");
+           setMetaMensual(5000); setInputMeta("5000");
          }
-
          if (ajustesGuardados.perfiles && ajustesGuardados.perfiles[empresaId]) {
            setPerfilEmpresa(ajustesGuardados.perfiles[empresaId]);
            setSectorInput(ajustesGuardados.perfiles[empresaId].sector);
            setObjetivoInput(ajustesGuardados.perfiles[empresaId].objetivo);
          } else {
-           setPerfilEmpresa({ sector: "", objetivo: "" });
-           setSectorInput("");
-           setObjetivoInput("");
+           setPerfilEmpresa({ sector: "", objetivo: "" }); setSectorInput(""); setObjetivoInput("");
          }
-
          if (ajustesGuardados.categorias && ajustesGuardados.categorias[empresaId]) {
            setCategoriasIngreso(ajustesGuardados.categorias[empresaId].ingreso);
            setCategoriasGasto(ajustesGuardados.categorias[empresaId].gasto);
            setCatsIngresoInput(ajustesGuardados.categorias[empresaId].ingreso.join(", "));
            setCatsGastoInput(ajustesGuardados.categorias[empresaId].gasto.join(", "));
          } else {
-           setCategoriasIngreso(defaultIngresos);
-           setCategoriasGasto(defaultGastos);
-           setCatsIngresoInput(defaultIngresos.join(", "));
-           setCatsGastoInput(defaultGastos.join(", "));
+           setCategoriasIngreso(defaultIngresos); setCategoriasGasto(defaultGastos);
+           setCatsIngresoInput(defaultIngresos.join(", ")); setCatsGastoInput(defaultGastos.join(", "));
          }
       });
-
     setChatMessages([]);
   }, [empresaId, planActivo]);
 
@@ -307,34 +275,20 @@ export default function Home() {
   const guardarPerfil = async () => {
     const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
     setPerfilEmpresa(nuevoPerfil);
-    
     const nuevasIngreso = catsIngresoInput.split(',').map(c => c.trim()).filter(c => c);
     const nuevasGasto = catsGastoInput.split(',').map(c => c.trim()).filter(c => c);
-    
-    const catA_Guardar = {
-       ingreso: nuevasIngreso.length > 0 ? nuevasIngreso : defaultIngresos,
-       gasto: nuevasGasto.length > 0 ? nuevasGasto : defaultGastos
-    };
-    
-    setCategoriasIngreso(catA_Guardar.ingreso);
-    setCategoriasGasto(catA_Guardar.gasto);
-
+    const catA_Guardar = { ingreso: nuevasIngreso.length > 0 ? nuevasIngreso : defaultIngresos, gasto: nuevasGasto.length > 0 ? nuevasGasto : defaultGastos };
+    setCategoriasIngreso(catA_Guardar.ingreso); setCategoriasGasto(catA_Guardar.gasto);
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
-    const perfilesObj = actuales.perfiles || {};
-    perfilesObj[empresaId] = nuevoPerfil;
-    const categoriasObj = actuales.categorias || {};
-    categoriasObj[empresaId] = catA_Guardar;
-    
+    const perfilesObj = actuales.perfiles || {}; perfilesObj[empresaId] = nuevoPerfil;
+    const categoriasObj = actuales.categorias || {}; categoriasObj[empresaId] = catA_Guardar;
     await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj });
     setShowConfig(false);
   };
 
   const determinarRangoDias = (tipoFiltro: string) => {
-    if (tipoFiltro === 'month') return 30;
-    if (tipoFiltro === 'quarter') return 90;
-    if (tipoFiltro === 'year') return 365;
-    return Infinity;
+    if (tipoFiltro === 'month') return 30; if (tipoFiltro === 'quarter') return 90; if (tipoFiltro === 'year') return 365; return Infinity;
   };
 
   const datosVisibles = data.filter(item => {
@@ -352,40 +306,29 @@ export default function Home() {
   });
 
   const datosCronologicos = [...datosFinancieros].sort((a, b) => {
-    const pA = a.name.split('/');
-    const pB = b.name.split('/');
+    const pA = a.name.split('/'); const pB = b.name.split('/');
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
   const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
     const [d, m, y] = curr.name.split('/');
     let clave = curr.name; 
-    
     if (filtro === 'year' || filtro === 'all') {
       const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
       clave = `${nombresMeses[Number(m) - 1]} ${y}`; 
     }
-
     const existente = acc.find((item: any) => item.name === clave);
     const valorNum = Number(curr.total); 
-    
     if (existente) {
-      if (valorNum > 0) existente.Ingresos += valorNum;
-      else existente.Gastos += Math.abs(valorNum);
+      if (valorNum > 0) existente.Ingresos += valorNum; else existente.Gastos += Math.abs(valorNum);
     } else {
-      acc.push({ 
-        name: clave, 
-        rawDate: curr.name,
-        Ingresos: valorNum > 0 ? valorNum : 0, 
-        Gastos: valorNum < 0 ? Math.abs(valorNum) : 0 
-      });
+      acc.push({ name: clave, rawDate: curr.name, Ingresos: valorNum > 0 ? valorNum : 0, Gastos: valorNum < 0 ? Math.abs(valorNum) : 0 });
     }
     return acc;
   }, []);
 
   const datosTabla = [...datosVisibles].sort((a, b) => {
-    const pA = a.name.split('/');
-    const pB = b.name.split('/');
+    const pA = a.name.split('/'); const pB = b.name.split('/');
     return new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime() - new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
   });
 
@@ -394,8 +337,7 @@ export default function Home() {
       const [d, m, y] = item.name.split('/');
       if (filtro === 'year' || filtro === 'all') {
          const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-         const mesGrafica = `${nombresMeses[Number(m) - 1]} ${y}`;
-         if (mesGrafica !== chartFilter) return false;
+         if (`${nombresMeses[Number(m) - 1]} ${y}` !== chartFilter) return false;
       } else {
          if (item.name !== chartFilter) return false;
       }
@@ -418,7 +360,6 @@ export default function Home() {
     if (filtroDoc === 'gastos' && !isGasto) return false;
     if (filtroDoc === 'presupuestos' && !isPresupuesto) return false;
     if (filtroDoc === 'abonos' && !isAbono) return false;
-
     return true;
   });
 
@@ -426,16 +367,12 @@ export default function Home() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
-  const gastosPorCategoria = datosFinancieros
-    .filter(d => Number(d.total) < 0)
-    .reduce((acc: {name: string, value: number}[], curr: any) => {
+  const gastosPorCategoria = datosFinancieros.filter(d => Number(d.total) < 0).reduce((acc: {name: string, value: number}[], curr: any) => {
       const cat = curr.categoria || 'General';
       const existente = acc.find((item: any) => item.name === cat);
-      if (existente) existente.value += Math.abs(Number(curr.total));
-      else acc.push({ name: cat, value: Math.abs(Number(curr.total)) });
+      if (existente) existente.value += Math.abs(Number(curr.total)); else acc.push({ name: cat, value: Math.abs(Number(curr.total)) });
       return acc;
-    }, [])
-    .sort((a, b) => b.value - a.value);
+  }, []).sort((a, b) => b.value - a.value);
 
   const ingresosTotales = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + Number(item.total), 0);
   const gastosTotales = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + Math.abs(Number(item.total)), 0);
@@ -449,30 +386,15 @@ export default function Home() {
   const generarAlertas = () => {
     const alertas: { tipo: string, titulo: string, texto: string }[] = [];
     if (datosFinancieros.length === 0) return alertas;
-
-    if (beneficioNeto < 0) {
-      alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €. Riesgo de liquidez.` });
-    } 
-    else if (ingresosTotales > 0 && gastosTotales > (ingresosTotales * 0.75)) {
-      alertas.push({ tipo: 'advertencia', titulo: '⚠️ Alerta de Márgenes', texto: `El margen es estrecho. Los costes consumen más del 75% de lo facturado.` });
-    }
-
+    if (beneficioNeto < 0) alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €. Riesgo de liquidez.` });
+    else if (ingresosTotales > 0 && gastosTotales > (ingresosTotales * 0.75)) alertas.push({ tipo: 'advertencia', titulo: '⚠️ Alerta de Márgenes', texto: `El margen es estrecho. Los costes consumen más del 75% de lo facturado.` });
     if (gastosPorCategoria.length > 0 && gastosTotales > 0) {
       const gastoPrincipal = gastosPorCategoria[0];
       const porcentaje = Math.round((gastoPrincipal.value / gastosTotales) * 100);
-      if (porcentaje >= 50) {
-        alertas.push({ tipo: 'info', titulo: '📊 Desviación de Costes', texto: `La categoría '${gastoPrincipal.name}' representa un ${porcentaje}% de los gastos.` });
-      }
+      if (porcentaje >= 50) alertas.push({ tipo: 'info', titulo: '📊 Desviación de Costes', texto: `La categoría '${gastoPrincipal.name}' representa un ${porcentaje}% de los gastos.` });
     }
-
-    if (porcentajeMeta >= 100) {
-      alertas.push({ tipo: 'exito', titulo: '🏆 Objetivo Superado', texto: `¡Enhorabuena! Has superado los ${metaMensual.toLocaleString()} € de ingresos.` });
-    }
-    
-    if (liquidacionIva > 3000) {
-      alertas.push({ tipo: 'advertencia', titulo: '🏛️ Provisión de Impuestos', texto: `Recuerda apartar liquidez. Tienes una estimación de ${liquidacionIva.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € a devolver a Hacienda por IVA.` });
-    }
-
+    if (porcentajeMeta >= 100) alertas.push({ tipo: 'exito', titulo: '🏆 Objetivo Superado', texto: `¡Enhorabuena! Has superado los ${metaMensual.toLocaleString()} € de ingresos.` });
+    if (liquidacionIva > 3000) alertas.push({ tipo: 'advertencia', titulo: '🏛️ Provisión de Impuestos', texto: `Recuerda apartar liquidez. Tienes una estimación de ${liquidacionIva.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € a devolver a Hacienda por IVA.` });
     return alertas;
   };
 
@@ -480,285 +402,136 @@ export default function Home() {
 
   useEffect(() => {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
-
-    setData([]);
-    setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
-    
-    obtenerDatosSupabase(empresaId).then(d => {
-      if (d && d.length > 0) setData(d);
-      else setData([]);
-    });
+    setData([]); setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
+    obtenerDatosSupabase(empresaId).then(d => { if (d && d.length > 0) setData(d); else setData([]); });
   }, [empresaId, planActivo]);
 
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+    const file = e.target.files?.[0]; if (!file) return;
     setIsScanning(true);
-    
-    const formData = new FormData();
-    formData.append('factura', file);
-    formData.append('categorias', categoriasGasto.join(', '));
-    
+    const formData = new FormData(); formData.append('factura', file); formData.append('categorias', categoriasGasto.join(', '));
     try {
       const res = await escanearFacturaIA(formData);
-
       if (res.success && res.data) {
         setTipoTransaccion('gasto'); 
         if (res.data.fecha) setMes(res.data.fecha);
         if (res.data.base_imponible) setIngreso(res.data.base_imponible.toString());
         if (res.data.iva !== undefined) setIvaSeleccionado(res.data.iva.toString());
         if (res.data.categoria && categoriasGasto.includes(res.data.categoria)) setCategoria(res.data.categoria);
-      } else {
-        alert("Error de la IA: " + (res.error || "Fallo desconocido"));
-      }
-    } catch (err) {
-      alert("Error de conexión al escanear.");
-    } finally {
-      setIsScanning(false);
-      if (fileInputRef.current) fileInputRef.current.value = ''; 
-    }
+      } else alert("Error de la IA: " + (res.error || "Fallo desconocido"));
+    } catch (err) { alert("Error de conexión al escanear."); } 
+    finally { setIsScanning(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   const manejarImportarCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsImporting(true);
-    const reader = new FileReader();
-    
+    const file = e.target.files?.[0]; if (!file) return;
+    setIsImporting(true); const reader = new FileReader();
     reader.onload = async (event) => {
       const text = event.target?.result as string;
       try {
-        const res = await fetch('/api/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ csvText: text, empresaId })
-        });
-
+        const res = await fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csvText: text, empresaId }) });
         const dataRes = await res.json();
-
         if (res.ok && dataRes.success) {
           alert(`✅ ¡Éxito! Se han importado y clasificado automáticamente ${dataRes.count} movimientos bancarios.`);
-          const actualizadosBD = await obtenerDatosSupabase(empresaId);
-          setData(actualizadosBD);
-        } else {
-          alert("Error del servidor al importar: " + (dataRes.error || "Fallo desconocido"));
-        }
-      } catch (err) {
-        alert("Error de conexión al procesar el archivo bancario.");
-      } finally {
-        setIsImporting(false);
-        if (fileInputCsvRef.current) fileInputCsvRef.current.value = '';
-      }
+          const actualizadosBD = await obtenerDatosSupabase(empresaId); setData(actualizadosBD);
+        } else alert("Error del servidor al importar: " + (dataRes.error || "Fallo desconocido"));
+      } catch (err) { alert("Error de conexión al procesar el archivo bancario."); } 
+      finally { setIsImporting(false); if (fileInputCsvRef.current) fileInputCsvRef.current.value = ''; }
     };
-    
     reader.readAsText(file);
   };
 
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault(); 
-    
-    if (!empresaId) {
-       alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
-       return;
-    }
-    if (!mes) {
-       alert("⚠️ Por favor, selecciona una fecha operativa.");
-       return;
-    }
-    if (!ingreso) {
-       alert("⚠️ Por favor, introduce un importe en Base Imponible.");
-       return;
-    }
-
+    if (!empresaId) return alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
+    if (!mes) return alert("⚠️ Por favor, selecciona una fecha operativa.");
+    if (!ingreso) return alert("⚠️ Por favor, introduce un importe en Base Imponible.");
     setIsSaving(true);
-    
     try {
-      const [y, m, d] = mes.split('-');
-      const fecha = `${d}/${m}/${y}`;
-      
-      const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
-      const numeroLimpio = parseFloat(textoLimpio);
-
-      if (isNaN(numeroLimpio)) {
-         setIsSaving(false);
-         alert("⚠️ El importe introducido no es válido. Usa solo números y comas/puntos.");
-         return;
-      }
-
+      const [y, m, d] = mes.split('-'); const fecha = `${d}/${m}/${y}`;
+      const numeroLimpio = parseFloat(ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+      if (isNaN(numeroLimpio)) { setIsSaving(false); return alert("⚠️ El importe introducido no es válido. Usa solo números y comas/puntos."); }
       let ivaFinal = ivaSeleccionado;
-      if (tipoTransaccion === 'gasto' && isVehiculo) {
-         ivaFinal = (Number(ivaSeleccionado) / 2).toString();
-      }
-
+      if (tipoTransaccion === 'gasto' && isVehiculo) ivaFinal = (Number(ivaSeleccionado) / 2).toString();
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
       const detalleAdicional = (tipoTransaccion === 'gasto' && isVehiculo) ? " (Gasto Vehículo: IVA 50% deducible)" : "";
       
       const res = await guardarDatoSupabase({ 
-        month: fecha, 
-        total: valorFinal, 
-        categoria: categoria, 
-        iva: ivaFinal,
-        empresaId: empresaId,
-        isRecurrent: isRecurrent,
-        frecuencia: isRecurrent ? frecuencia : null,
-        concepto_detalle: detalleAdicional
+        month: fecha, total: valorFinal, categoria: categoria, iva: ivaFinal, empresaId: empresaId, isRecurrent: isRecurrent, frecuencia: isRecurrent ? frecuencia : null, concepto_detalle: detalleAdicional
       });
-
       if (res.success) {
-        const actualizadosBD = await obtenerDatosSupabase(empresaId);
-        setData(actualizadosBD);
-        setIngreso('');
-        setIsRecurrent(false);
-        setIsVehiculo(false);
-        setFrecuencia('Mensual');
-        setIvaSeleccionado("21"); 
-      } else {
-        alert("⚠️ Fallo en el servidor de la nube. Inténtalo de nuevo.");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("⚠️ Error de conexión a internet al intentar guardar.");
-    } finally {
-      setIsSaving(false);
-    }
+        const actualizadosBD = await obtenerDatosSupabase(empresaId); setData(actualizadosBD);
+        setIngreso(''); setIsRecurrent(false); setIsVehiculo(false); setFrecuencia('Mensual'); setIvaSeleccionado("21"); 
+      } else alert("⚠️ Fallo en el servidor de la nube. Inténtalo de nuevo.");
+    } catch (error) { alert("⚠️ Error de conexión a internet al intentar guardar."); } 
+    finally { setIsSaving(false); }
   };
 
   const eliminarDato = async (id: any) => {
     const confirmacion = window.confirm("¿Seguro que deseas eliminar esta transacción?");
     if (!confirmacion) return;
-
     const res = await borrarDatoSupabase(id.toString());
-    if (res.success) {
-      const restantes = data.filter(item => item.id !== id);
-      setData(restantes);
-    }
+    if (res.success) { const restantes = data.filter(item => item.id !== id); setData(restantes); }
   };
 
   const iniciarEdicion = (item: any) => {
-    setEditingId(item.id);
-    const [d, m, y] = item.name.split('/');
-    setEditFormData({
-      tipo: Number(item.total) >= 0 ? 'ingreso' : 'gasto',
-      mes: `${y}-${m}-${d}`,
-      ingreso: Math.abs(Number(item.total)).toString(),
-      categoria: item.categoria || 'General',
-      ivaSeleccionado: item.iva?.toString() || '0'
-    });
+    setEditingId(item.id); const [d, m, y] = item.name.split('/');
+    setEditFormData({ tipo: Number(item.total) >= 0 ? 'ingreso' : 'gasto', mes: `${y}-${m}-${d}`, ingreso: Math.abs(Number(item.total)).toString(), categoria: item.categoria || 'General', ivaSeleccionado: item.iva?.toString() || '0' });
   };
 
   const guardarEdicion = async (id: any) => {
     try {
-      const [y, m, d] = editFormData.mes.split('-');
-      const fecha = `${d}/${m}/${y}`;
+      const [y, m, d] = editFormData.mes.split('-'); const fecha = `${d}/${m}/${y}`;
       const numeroLimpio = parseFloat(editFormData.ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
-      
       if (isNaN(numeroLimpio)) return alert("⚠️ El importe introducido no es válido.");
-
       const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
-
-      const res = await editarDatoSupabase({ 
-        id: id, 
-        month: fecha, 
-        total: valorFinal, 
-        categoria: editFormData.categoria, 
-        iva: editFormData.ivaSeleccionado 
-      });
-
+      const res = await editarDatoSupabase({ id: id, month: fecha, total: valorFinal, categoria: editFormData.categoria, iva: editFormData.ivaSeleccionado });
       if (res.success) {
-        const actualizadosBD = await obtenerDatosSupabase(empresaId);
-        setData(actualizadosBD);
-        setEditingId(null);
+        const actualizadosBD = await obtenerDatosSupabase(empresaId); setData(actualizadosBD); setEditingId(null);
       }
-    } catch (error) {
-      alert("⚠️ Error al actualizar el dato");
-    }
+    } catch (error) { alert("⚠️ Error al actualizar el dato"); }
   };
 
   const enviarMensajeChat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentMessage.trim()) return;
-
-    const nuevoMensaje = { role: 'user', content: currentMessage };
-    const historial = [...chatMessages, nuevoMensaje];
-    
-    setChatMessages(historial);
-    setCurrentMessage("");
-    setIsChatLoading(true);
-
+    e.preventDefault(); if (!currentMessage.trim()) return;
+    const nuevoMensaje = { role: 'user', content: currentMessage }; const historial = [...chatMessages, nuevoMensaje];
+    setChatMessages(historial); setCurrentMessage(""); setIsChatLoading(true);
     const datosContexto = datosFinancieros.map(d => ({ 
-      fecha: d.name, 
-      categoria: d.categoria, 
-      importe: d.total, 
-      cliente: d.cliente_nombre || d.cliente || 'Desconocido', 
-      concepto: d.concepto_detalle || d.concepto || 'General', 
-      factura: d.numero_factura || d.factura || 'Manual' 
+      fecha: d.name, categoria: d.categoria, importe: d.total, cliente: d.cliente_nombre || d.cliente || 'Desconocido', concepto: d.concepto_detalle || d.concepto || 'General', factura: d.numero_factura || d.factura || 'Manual' 
     }));
-
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: historial,
-          contextoFinanciero: datosContexto,
-          empresaId: empresaId,
-          perfil: perfilEmpresa
-        })
-      });
-
-      if (res.ok) {
-        const resData = await res.json();
-        setChatMessages([...historial, { role: 'ai', content: resData.reply }]);
-      } else {
-        setChatMessages([...historial, { role: 'ai', content: "⚠️ No pude conectar con el servidor." }]);
-      }
-    } catch (error) {
-      setChatMessages([...historial, { role: 'ai', content: "⚠️ Error de red." }]);
-    } finally {
-      setIsChatLoading(false);
-    }
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: historial, contextoFinanciero: datosContexto, empresaId: empresaId, perfil: perfilEmpresa }) });
+      if (res.ok) { const resData = await res.json(); setChatMessages([...historial, { role: 'ai', content: resData.reply }]); } 
+      else setChatMessages([...historial, { role: 'ai', content: "⚠️ No pude conectar con el servidor." }]);
+    } catch (error) { setChatMessages([...historial, { role: 'ai', content: "⚠️ Error de red." }]); } 
+    finally { setIsChatLoading(false); }
   };
 
   const exportarAExcel = () => {
     if (datosTablaFiltrados.length === 0) return alert("No hay datos para exportar.");
-    
     let csvContent = "\uFEFFFecha;Nº Documento;Categoría;Recurrencia;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
-    
     datosTablaFiltrados.forEach(row => {
       const isPresupuesto = row.categoria === 'Presupuestos' || row.numero_factura?.startsWith('P-');
       const isAbono = row.numero_factura?.startsWith('R-');
       const valorNum = Number(row.total);
-      
-      let tipoTxt = "Ingreso";
-      if (isPresupuesto) tipoTxt = "PRESUPUESTO";
-      else if (isAbono) tipoTxt = "ABONO";
-      else if (valorNum < 0) tipoTxt = "Gasto";
-
+      let tipoTxt = "Ingreso"; if (isPresupuesto) tipoTxt = "PRESUPUESTO"; else if (isAbono) tipoTxt = "ABONO"; else if (valorNum < 0) tipoTxt = "Gasto";
       const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
       const ivaPorcentaje = Number(row.iva) || 0;
-      
       const cuotaIva = Math.abs(valorNum) * (ivaPorcentaje / 100);
       const totalFinal = Math.abs(valorNum) + cuotaIva;
-
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
-
       csvContent += `${row.name};${row.numero_factura || 'S/N'};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(Math.abs(valorNum))};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
-    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Libro_Mayor_${empresaId || 'General'}_${filtroDoc}.csv`;
-    link.click();
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `Libro_Mayor_${empresaId || 'General'}_${filtroDoc}.csv`; link.click();
   };
 
-  // 🚀 LÓGICA DEL NUEVO SOPORTE VIP
+  // 🚀 LÓGICA DEL NUEVO SOPORTE VIP (INTEGRACIÓN DIRECTA CON GMAIL WEB)
   const abrirGmailWeb = (tipo: string) => {
       const email = "soporte.taxguard@gmail.com";
       const subject = tipo === "ayuda" ? `Asistencia Técnica TaxGuard AI - ${empresaId}` : `Sugerencia de Mejora - TaxGuard AI - ${empresaId}`;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${encodeURIComponent(subject)}`;
+      const body = `Hola equipo de TaxGuard AI,%0A%0AEscribe aquí tu ${tipo === 'ayuda' ? 'consulta o problema' : 'idea para mejorar la plataforma'}:%0A%0A`;
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${subject}&body=${body}`;
       window.open(gmailUrl, '_blank');
   };
 
@@ -767,16 +540,48 @@ export default function Home() {
       alert("✅ ¡Correo de soporte (soporte.taxguard@gmail.com) copiado al portapapeles!");
   };
 
+  // 🚀 BIBLIA DE PREGUNTAS FRECUENTES (SUPER EXPANDIDA)
   const faqs = [
-      { q: "¿Cómo creo mi primera factura oficial?", a: "Ve a la pestaña 'Facturación PDF' en el menú izquierdo. Rellena los datos fiscales de tu cliente, añade los conceptos con su precio, y haz clic en 'Registrar en Libro Mayor'. Esto creará la factura en el sistema y te permitirá descargar el PDF oficial listo para enviar." },
-      { q: "¿Cómo funciona el escáner de facturas con Inteligencia Artificial (OCR)?", a: "En la 'Consola General', haz clic en el botón '📸 Factura OCR'. Sube una foto, captura o PDF de tu ticket de compra o factura de proveedor. Nuestra IA leerá automáticamente la fecha, la base imponible y el IVA para rellenar el formulario por ti." },
-      { q: "¿Qué diferencia hay entre un Presupuesto y una Factura?", a: "Un presupuesto es una estimación comercial sin validez fiscal. No suma en tus gráficas de ingresos ni paga impuestos. Cuando el cliente acepta el presupuesto, ve al Historial de Documentos y pulsa el botón mágico '🪄 Convertir' para transformarlo en una Factura Oficial al instante." },
-      { q: "¿Cómo aplico el 50% de IVA en los gastos de mi vehículo (Gasolina, Taller)?", a: "Por ley, gastos como la gasolina de un coche no comercial solo permiten deducir el 50% del IVA. Al añadir un gasto en la Consola General, marca la casilla '🚘 Gasto Vehículo (Deducir 50% IVA)' y el sistema dividirá el impuesto automáticamente en tus modelos tributarios para evitarte multas." },
-      { q: "¿Cómo anulo o modifico una factura que ya he emitido?", a: "La normativa prohíbe borrar una factura ya registrada y enviada. Debes ir al Libro Mayor de la sección Facturas, buscar la factura errónea y pulsar el botón rojo 'Rectificar'. Esto creará automáticamente una Factura Rectificativa (Abono) en negativo que anulará el error legalmente ante Hacienda." },
-      { q: "¿Cómo descargo mis modelos para presentarlos a Hacienda (303, 130, 390)?", a: "Ve a la sección 'Modelos Tributarios'. Selecciona el trimestre actual (o el año para el 390) y pulsa descargar. Obtendrás un borrador PDF idéntico al oficial de la Agencia Tributaria. Solo tienes que abrir la web de Hacienda y copiar los valores de cada casilla [XX] del PDF en su respectivo recuadro." },
-      { q: "¿Para qué sirve el CFO Virtual y el Análisis Avanzado?", a: "Es un panel exclusivo del Plan Pro que utiliza Inteligencia Artificial para auditar tus finanzas. Entra en 'Análisis Avanzado' y usa los simuladores (Ej: 'Detectar Fugas' o 'Simular Subida de Precios') para que la IA cruce tus datos, proyecte tendencias y te sugiera estrategias para maximizar tu rentabilidad." },
-      { q: "¿Puedo importar un Excel o los movimientos de mi banco de golpe?", a: "Sí. Descarga un archivo CSV desde la web de tu banco y usa el botón '📊 Banco (CSV)' en la Consola General. El sistema importará y clasificará masivamente todos tus movimientos en segundos." },
-      { q: "¿Cómo añado nuevas categorías o edito los datos de mi empresa?", a: "Haz clic en el icono de engranaje (⚙️) que hay junto al nombre de tu Espacio de Trabajo en el menú lateral de la izquierda. Podrás cambiar tu sector y escribir tus propias categorías separadas por comas. El Escáner OCR aprenderá a usarlas automáticamente en el futuro." }
+      { 
+        q: "🚀 ¿Cómo empiezo a usar TaxGuard AI por primera vez?", 
+        a: "¡Es muy fácil! 1. Arriba a la izquierda, en 'Espacio de Trabajo', crea el nombre de tu empresa. 2. Pulsa en la rueda dentada (⚙️) y añade las categorías de ingresos y gastos de tu sector. 3. Empieza a registrar tus movimientos diarios en la Consola General o importa el Excel de tu banco." 
+      },
+      { 
+        q: "🏦 ¿Cómo conecto mi banco de forma segura?", 
+        a: "Para máxima seguridad, no te pedimos claves bancarias. Ve a la web de tu banco, descarga tus movimientos en formato CSV o Excel, y en nuestra Consola General haz clic en el botón '📊 Banco (CSV)'. Nuestro sistema lo leerá y clasificará todo en segundos." 
+      },
+      { 
+        q: "📸 ¿Cómo funciona el escáner de facturas con IA (OCR)?", 
+        a: "En la Consola General, haz clic en '📸 Factura OCR'. Sube una foto hecha con el móvil o un PDF de tu ticket de compra. Nuestra Inteligencia Artificial leerá automáticamente la base imponible, el IVA, la fecha y adivinará la categoría correcta por ti. ¡Magia pura!" 
+      },
+      { 
+        q: "🚘 ¿Qué es la casilla 'Gasto Vehículo' y el escudo del 50%?", 
+        a: "Por ley (Agencia Tributaria), la gasolina, peajes y reparaciones de un vehículo que no es 100% comercial (como tu coche personal usado para trabajar) solo permiten deducir el 50% del IVA. Al marcar esta casilla al subir un gasto, TaxGuard AI dividirá el IVA a la mitad automáticamente para que Hacienda no te multe." 
+      },
+      { 
+        q: "📝 ¿Cómo creo y envío una factura oficial a mi cliente?", 
+        a: "Ve a la pestaña 'Facturación PDF' en el menú izquierdo. Rellena tus datos fiscales (pulsa 'Guardar como predeterminado' para no tener que repetirlos nunca más). Pon los datos del cliente, el concepto y el precio. Dale a 'Registrar en Libro Mayor' y luego descarga el PDF oficial para enviarlo." 
+      },
+      { 
+        q: "🪄 ¿Qué diferencia hay entre Presupuesto y Factura?", 
+        a: "Un Presupuesto es una propuesta. Puedes crearlos en 'Facturación PDF'. No suman en tus ingresos y son 'invisibles' para los impuestos. Cuando tu cliente lo acepte, ve a la tabla de abajo, búscalo (estará en naranja) y pulsa el botón '🪄 Convertir'. Se transformará en factura oficial al instante." 
+      },
+      { 
+        q: "❌ Me he equivocado en una factura ya emitida. ¿La borro?", 
+        a: "¡Cuidado! La ley prohíbe borrar o saltarse la numeración de facturas ya emitidas. Ve al Historial de Documentos (en la pestaña de Facturación), busca la factura con el error y pulsa el botón rojo 'Rectificar'. El sistema creará un 'Abono' (Factura Rectificativa R-XXX) en negativo para anularla legalmente." 
+      },
+      { 
+        q: "🏛️ ¿Cómo presento mis impuestos (Modelo 303, 130 y 390)?", 
+        a: "¡Nosotros hacemos las mates! Ve a 'Modelos Tributarios'. Selecciona tu trimestre (o año) y descarga el Borrador PDF. Obtendrás un documento con el formato idéntico al de Hacienda. Abre la Sede Electrónica de la AEAT en otra pantalla y simplemente copia los números de nuestras casillas (ej. [27], [71]) en las suyas." 
+      },
+      { 
+        q: "🧠 ¿Para qué sirve el Centro de Inteligencia (Análisis Avanzado)?", 
+        a: "Es tu Director Financiero Privado (Solo Plan Pro). Entra ahí y pulsa los botones de arriba ('Detectar Fugas', 'Simular Precios'). La Inteligencia Artificial analizará todos tus movimientos y te dará un informe ejecutivo diciéndote dónde estás perdiendo dinero y cómo mejorar tu margen de beneficio real." 
+      },
+      { 
+        q: "🔄 ¿Cómo gestiono suscripciones y cobros mensuales (Recurrentes)?", 
+        a: "Si pagas Netflix o cobras una iguala a un cliente cada mes, al registrar el dato en la Consola General, marca la casilla 'Hacer recurrente' y elige 'Mensual'. Te ahorrará tener que escribirlo cada 30 días." 
+      }
   ];
 
   const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
@@ -841,6 +646,7 @@ export default function Home() {
                       onChange={async (e) => {
                         const newId = e.target.value;
                         setEmpresaId(newId);
+                        
                         const res = await fetch('/api/settings');
                         const actuales: any = await res.json(); 
                         await syncSettingsToCloud({ ...actuales, empresaActiva: newId });
@@ -902,6 +708,7 @@ export default function Home() {
                   {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
                 </span>
               </Link>
+              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
@@ -1407,6 +1214,7 @@ export default function Home() {
           </button>
         </div>
 
+        {/* 🚀 MODAL DE CONFIGURACIÓN DE ESPACIO */}
         {showConfig && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
@@ -1489,6 +1297,7 @@ export default function Home() {
                 
                 <div className="p-6 space-y-8 overflow-y-auto bg-slate-50/30">
                    
+                   {/* BOTONES RÁPIDOS DE CORREO */}
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                        <button onClick={() => abrirGmailWeb('ayuda')} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left shadow-sm">
                            <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">📨</span>
@@ -1509,6 +1318,7 @@ export default function Home() {
                        </button>
                    </div>
 
+                   {/* MINI FAQ INCORPORADO CON ACORDEÓN */}
                    <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                           <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
@@ -1606,6 +1416,31 @@ export default function Home() {
                     Iniciar Sesión
                   </button>
                 </SignInButton>
+              </div>
+            </div>
+          </div>
+
+          {/* 🚀 NUEVA SECCIÓN "CÓMO FUNCIONA" */}
+          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10 border-b border-white/5">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-4">¿Cómo TaxGuard AI multiplica tu rentabilidad?</h2>
+              <p className="text-slate-400 max-w-2xl mx-auto text-lg">Un proceso diseñado para eliminar el error humano y maximizar tu tiempo operativo.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 text-center">
+                <div className="w-16 h-16 bg-blue-500/20 text-blue-400 flex items-center justify-center rounded-2xl text-2xl mx-auto mb-6">📸</div>
+                <h3 className="text-xl font-bold text-white mb-3">1. Sube tus Datos en Segundos</h3>
+                <p className="text-slate-400 text-sm">Sube una foto de tus tickets, conecta tu banco mediante CSV o emite facturas directamente desde nuestra plataforma.</p>
+              </div>
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 text-center">
+                <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 flex items-center justify-center rounded-2xl text-2xl mx-auto mb-6">🧠</div>
+                <h3 className="text-xl font-bold text-white mb-3">2. La IA Audita tu Negocio</h3>
+                <p className="text-slate-400 text-sm">Nuestro CFO Virtual analiza cada céntimo. Detecta fugas de capital, evalúa tu margen operativo y clasifica gastos automáticamente.</p>
+              </div>
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 text-center">
+                <div className="w-16 h-16 bg-purple-500/20 text-purple-400 flex items-center justify-center rounded-2xl text-2xl mx-auto mb-6">🏛️</div>
+                <h3 className="text-xl font-bold text-white mb-3">3. Presenta Impuestos Sin Miedo</h3>
+                <p className="text-slate-400 text-sm">Genera borradores exactos del Modelo 303, 130 y 390 con un clic. Copia las casillas en la AEAT sabiendo que todo cuadra al milímetro.</p>
               </div>
             </div>
           </div>
