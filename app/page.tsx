@@ -1554,7 +1554,7 @@ export default function Home() {
                              placeholder="Buscar en preguntas frecuentes..." 
                              value={faqSearch}
                              onChange={(e) => setFaqSearch(e.target.value)}
-                             className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-64"
+                             className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-64"
                           />
                       </div>
                       <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
