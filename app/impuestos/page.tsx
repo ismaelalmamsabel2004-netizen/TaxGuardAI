@@ -20,12 +20,10 @@ Font.register({
 
 const styles = StyleSheet.create({
   page: { backgroundColor: '#ffffff', padding: 40, fontFamily: 'Roboto' },
-  headerBox: { borderBottomWidth: 2, borderBottomColor: '#2563eb', paddingBottom: 15, marginBottom: 25, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  headerBox130: { borderBottomWidth: 2, borderBottomColor: '#10b981', paddingBottom: 15, marginBottom: 25, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  headerBox: { borderBottomWidth: 2, paddingBottom: 15, marginBottom: 25, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   titleBox: { flexDirection: 'column' },
   title: { fontSize: 26, fontWeight: 700, color: '#0f172a' },
-  subtitle: { fontSize: 10, color: '#2563eb', fontWeight: 700, textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
-  subtitle130: { fontSize: 10, color: '#10b981', fontWeight: 700, textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
+  subtitle: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
   aeatBox: { backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 4 },
   aeatText: { fontSize: 9, fontWeight: 700, color: '#475569' },
   
@@ -34,8 +32,7 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 8, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 },
   infoValue: { fontSize: 11, fontWeight: 700, color: '#0f172a' },
   
-  sectionTitle: { fontSize: 12, fontWeight: 700, color: '#ffffff', backgroundColor: '#334155', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 10 },
-  sectionTitle130: { fontSize: 12, fontWeight: 700, color: '#ffffff', backgroundColor: '#064e3b', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 10 },
+  sectionTitle: { fontSize: 12, fontWeight: 700, color: '#ffffff', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 10 },
   
   rowItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingVertical: 8, paddingHorizontal: 5 },
   rowLabel: { fontSize: 10, color: '#334155', width: '60%' },
@@ -48,51 +45,34 @@ const styles = StyleSheet.create({
   totalDevengado: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#f8fafc', padding: 10, marginTop: 5, marginBottom: 20 },
   totalLabel: { fontSize: 10, fontWeight: 700, color: '#0f172a' },
   
-  resultBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#eff6ff', borderLeftWidth: 4, borderLeftColor: '#2563eb', marginTop: 30 },
-  resultBox130: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#ecfdf5', borderLeftWidth: 4, borderLeftColor: '#10b981', marginTop: 30 },
-  resultLabel: { fontSize: 12, fontWeight: 700, color: '#1e3a8a', textTransform: 'uppercase' },
-  resultLabel130: { fontSize: 12, fontWeight: 700, color: '#065f46', textTransform: 'uppercase' },
-  resultValue: { fontSize: 18, fontWeight: 700, color: '#1d4ed8' },
-  resultValue130: { fontSize: 18, fontWeight: 700, color: '#047857' },
+  resultBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, marginTop: 30, borderLeftWidth: 4 },
+  resultLabel: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase' },
+  resultValue: { fontSize: 18, fontWeight: 700 },
   
   footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
   footerText: { fontSize: 7, color: '#94a3b8' },
 });
 
-// PDF DEL MODELO 303 (IVA)
+// PDF DEL MODELO 303 (IVA Trimestral)
 const Borrador303PDF = ({ mod303, empresaId, trimestre, anio }: any) => (
   <Document>
     <Page size="A4" style={styles.page}>
-      <View style={styles.headerBox}>
+      <View style={{ ...styles.headerBox, borderBottomColor: '#2563eb' }}>
         <View style={styles.titleBox}>
           <Text style={styles.title}>Modelo 303</Text>
-          <Text style={styles.subtitle}>Impuesto sobre el Valor Añadido</Text>
+          <Text style={{ ...styles.subtitle, color: '#2563eb' }}>Impuesto sobre el Valor Añadido</Text>
         </View>
-        <View style={styles.aeatBox}>
-          <Text style={styles.aeatText}>Agencia Tributaria - Borrador</Text>
-        </View>
+        <View style={styles.aeatBox}><Text style={styles.aeatText}>Agencia Tributaria - Borrador</Text></View>
       </View>
 
       <View style={styles.infoGrid}>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Sujeto Pasivo</Text>
-          <Text style={styles.infoValue}>{empresaId}</Text>
-        </View>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Ejercicio</Text>
-          <Text style={styles.infoValue}>{anio}</Text>
-        </View>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Periodo</Text>
-          <Text style={styles.infoValue}>{trimestre}</Text>
-        </View>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Fecha Generación</Text>
-          <Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text>
-        </View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Sujeto Pasivo</Text><Text style={styles.infoValue}>{empresaId}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Ejercicio</Text><Text style={styles.infoValue}>{anio}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Periodo</Text><Text style={styles.infoValue}>{trimestre}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Fecha</Text><Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text></View>
       </View>
 
-      <Text style={styles.sectionTitle}>LIQUIDACIÓN - IVA DEVENGADO</Text>
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#334155' }}>LIQUIDACIÓN - IVA DEVENGADO</Text>
       
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>Régimen general (21%)</Text>
@@ -102,7 +82,6 @@ const Borrador303PDF = ({ mod303, empresaId, trimestre, anio }: any) => (
           <View style={styles.casillaBox}><Text style={styles.casillaNum}>[03]</Text><Text style={styles.casillaValue}>{mod303.cuota21.toFixed(2)}</Text></View>
         </View>
       </View>
-
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>Régimen reducido (10%)</Text>
         <View style={styles.boxGroup}>
@@ -111,7 +90,6 @@ const Borrador303PDF = ({ mod303, empresaId, trimestre, anio }: any) => (
           <View style={styles.casillaBox}><Text style={styles.casillaNum}>[06]</Text><Text style={styles.casillaValue}>{mod303.cuota10.toFixed(2)}</Text></View>
         </View>
       </View>
-
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>Régimen superreducido (4%)</Text>
         <View style={styles.boxGroup}>
@@ -123,14 +101,10 @@ const Borrador303PDF = ({ mod303, empresaId, trimestre, anio }: any) => (
 
       <View style={styles.totalDevengado}>
         <Text style={styles.totalLabel}>Total cuota devengada</Text>
-        <View style={styles.casillaBox}>
-             <Text style={styles.casillaNum}>[27]</Text>
-             <Text style={styles.casillaValue}>{mod303.totalCuotaDevengada.toFixed(2)}</Text>
-        </View>
+        <View style={styles.casillaBox}><Text style={styles.casillaNum}>[27]</Text><Text style={styles.casillaValue}>{mod303.totalCuotaDevengada.toFixed(2)}</Text></View>
       </View>
 
-      <Text style={styles.sectionTitle}>LIQUIDACIÓN - IVA DEDUCIBLE</Text>
-
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#334155' }}>LIQUIDACIÓN - IVA DEDUCIBLE</Text>
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>Por cuotas soportadas en op. interiores corrientes</Text>
         <View style={styles.boxGroup}>
@@ -140,120 +114,164 @@ const Borrador303PDF = ({ mod303, empresaId, trimestre, anio }: any) => (
         </View>
       </View>
 
-      <View style={styles.resultBox}>
+      <View style={{ ...styles.resultBox, backgroundColor: '#eff6ff', borderLeftColor: '#2563eb' }}>
         <View>
-          <Text style={styles.resultLabel}>Resultado de la Liquidación</Text>
+          <Text style={{ ...styles.resultLabel, color: '#1e3a8a' }}>Resultado de la Liquidación</Text>
           <Text style={{fontSize: 8, color: '#64748b', marginTop: 4}}>Si es positivo, a ingresar. Si es negativo, a compensar o devolver.</Text>
         </View>
         <View style={{flexDirection: 'row', alignItems: 'center'}}>
           <Text style={styles.casillaNum}>[71]</Text>
-          <Text style={styles.resultValue}>{mod303.resultado.toFixed(2)} €</Text>
+          <Text style={{ ...styles.resultValue, color: '#1d4ed8' }}>{mod303.resultado.toFixed(2)} €</Text>
         </View>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Borrador generado por TaxGuard AI. Este documento no es válido para su presentación oficial.</Text>
+        <Text style={styles.footerText}>Borrador generado por TaxGuard AI.</Text>
         <Text style={styles.footerText}>Página 1 de 1</Text>
       </View>
     </Page>
   </Document>
 );
 
-// NUEVO PDF DEL MODELO 130 (IRPF)
+// PDF DEL MODELO 130 (IRPF)
 const Borrador130PDF = ({ mod130, empresaId, trimestre, anio }: any) => (
   <Document>
     <Page size="A4" style={styles.page}>
-      <View style={styles.headerBox130}>
+      <View style={{ ...styles.headerBox, borderBottomColor: '#10b981' }}>
         <View style={styles.titleBox}>
           <Text style={styles.title}>Modelo 130</Text>
-          <Text style={styles.subtitle130}>IRPF - Pago Fraccionado de Empresarios</Text>
+          <Text style={{ ...styles.subtitle, color: '#10b981' }}>IRPF - Pago Fraccionado</Text>
         </View>
-        <View style={styles.aeatBox}>
-          <Text style={styles.aeatText}>Agencia Tributaria - Borrador</Text>
-        </View>
+        <View style={styles.aeatBox}><Text style={styles.aeatText}>Agencia Tributaria - Borrador</Text></View>
       </View>
 
       <View style={styles.infoGrid}>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Sujeto Pasivo</Text>
-          <Text style={styles.infoValue}>{empresaId}</Text>
-        </View>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Ejercicio</Text>
-          <Text style={styles.infoValue}>{anio}</Text>
-        </View>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Periodo (Acumulado)</Text>
-          <Text style={styles.infoValue}>{trimestre}</Text>
-        </View>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>Fecha Generación</Text>
-          <Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text>
-        </View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Sujeto Pasivo</Text><Text style={styles.infoValue}>{empresaId}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Ejercicio</Text><Text style={styles.infoValue}>{anio}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Periodo (Acum)</Text><Text style={styles.infoValue}>{trimestre}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Fecha</Text><Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text></View>
       </View>
 
-      <Text style={styles.sectionTitle130}>I. CÁLCULO DEL RENDIMIENTO (Acumulado del año)</Text>
-      
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#064e3b' }}>I. CÁLCULO DEL RENDIMIENTO (Acumulado del año)</Text>
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>Ingresos computables correspondientes al conjunto del periodo</Text>
-        <View style={styles.boxGroup}>
-          <View style={styles.casillaBox}>
-             <Text style={styles.casillaNum}>[01]</Text>
-             <Text style={styles.casillaValue}>{mod130.ingresosTotales.toFixed(2)}</Text>
-          </View>
-        </View>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[01]</Text><Text style={styles.casillaValue}>{mod130.ingresosTotales.toFixed(2)}</Text></View></View>
       </View>
-
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>Gastos fiscalmente deducibles correspondientes al periodo</Text>
-        <View style={styles.boxGroup}>
-          <View style={styles.casillaBox}>
-             <Text style={styles.casillaNum}>[02]</Text>
-             <Text style={styles.casillaValue}>{mod130.gastosTotales.toFixed(2)}</Text>
-          </View>
-        </View>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[02]</Text><Text style={styles.casillaValue}>{mod130.gastosTotales.toFixed(2)}</Text></View></View>
       </View>
-
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>Rendimiento neto ([01] - [02])</Text>
-        <View style={styles.boxGroup}>
-          <View style={styles.casillaBox}>
-             <Text style={styles.casillaNum}>[03]</Text>
-             <Text style={styles.casillaValue}>{mod130.rendimientoNeto.toFixed(2)}</Text>
-          </View>
-        </View>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[03]</Text><Text style={styles.casillaValue}>{mod130.rendimientoNeto.toFixed(2)}</Text></View></View>
       </View>
 
-      <Text style={{...styles.sectionTitle130, marginTop: 20}}>II. CÁLCULO DEL PAGO FRACCIONADO</Text>
-
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#064e3b', marginTop: 20 }}>II. CÁLCULO DEL PAGO FRACCIONADO</Text>
       <View style={styles.rowItem}>
         <Text style={styles.rowLabel}>20% del rendimiento neto (si la casilla [03] es positiva)</Text>
-        <View style={styles.boxGroup}>
-          <View style={styles.casillaBox}>
-             <Text style={styles.casillaNum}>[04]</Text>
-             <Text style={styles.casillaValue}>{mod130.pagoFraccionado.toFixed(2)}</Text>
-          </View>
-        </View>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[04]</Text><Text style={styles.casillaValue}>{mod130.pagoFraccionado.toFixed(2)}</Text></View></View>
       </View>
 
-      <View style={styles.resultBox130}>
+      <View style={{ ...styles.resultBox, backgroundColor: '#ecfdf5', borderLeftColor: '#10b981' }}>
         <View>
-          <Text style={styles.resultLabel130}>Resultado A Ingresar</Text>
+          <Text style={{ ...styles.resultLabel, color: '#065f46' }}>Resultado A Ingresar</Text>
           <Text style={{fontSize: 8, color: '#64748b', marginTop: 4}}>Importe del pago fraccionado a favor del Tesoro Público.</Text>
         </View>
         <View style={{flexDirection: 'row', alignItems: 'center'}}>
           <Text style={styles.casillaNum}>[07]</Text>
-          <Text style={styles.resultValue130}>{mod130.pagoFraccionado.toFixed(2)} €</Text>
+          <Text style={{ ...styles.resultValue, color: '#047857' }}>{mod130.pagoFraccionado.toFixed(2)} €</Text>
         </View>
       </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Borrador generado por TaxGuard AI. Este documento no es válido para su presentación oficial.</Text>
-        <Text style={styles.footerText}>Página 1 de 1</Text>
-      </View>
+      <View style={styles.footer}><Text style={styles.footerText}>Borrador generado por TaxGuard AI.</Text><Text style={styles.footerText}>Página 1 de 1</Text></View>
     </Page>
   </Document>
 );
+
+// 🚀 NUEVO: PDF DEL MODELO 390 (RESUMEN ANUAL IVA)
+const Borrador390PDF = ({ mod390, empresaId, anio }: any) => (
+  <Document>
+    <Page size="A4" style={styles.page}>
+      <View style={{ ...styles.headerBox, borderBottomColor: '#8b5cf6' }}>
+        <View style={styles.titleBox}>
+          <Text style={styles.title}>Modelo 390</Text>
+          <Text style={{ ...styles.subtitle, color: '#8b5cf6' }}>Declaración Resumen Anual - IVA</Text>
+        </View>
+        <View style={styles.aeatBox}><Text style={styles.aeatText}>Agencia Tributaria - Borrador</Text></View>
+      </View>
+
+      <View style={styles.infoGrid}>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Sujeto Pasivo</Text><Text style={styles.infoValue}>{empresaId}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Ejercicio</Text><Text style={styles.infoValue}>{anio}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Periodo</Text><Text style={styles.infoValue}>ANUAL (0A)</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Fecha Generación</Text><Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text></View>
+      </View>
+
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#4c1d95' }}>RESUMEN ANUAL - IVA DEVENGADO (INGRESOS)</Text>
+      
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Régimen general (21%)</Text>
+        <View style={styles.boxGroup}>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.base21.toFixed(2)}</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>21%</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.cuota21.toFixed(2)}</Text></View>
+        </View>
+      </View>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Régimen reducido (10%)</Text>
+        <View style={styles.boxGroup}>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.base10.toFixed(2)}</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>10%</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.cuota10.toFixed(2)}</Text></View>
+        </View>
+      </View>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Régimen superreducido (4%)</Text>
+        <View style={styles.boxGroup}>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.base4.toFixed(2)}</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>4%</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.cuota4.toFixed(2)}</Text></View>
+        </View>
+      </View>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Operaciones Exentas (0%) o No Sujetas</Text>
+        <View style={styles.boxGroup}>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.base0.toFixed(2)}</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>0%</Text></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>0.00</Text></View>
+        </View>
+      </View>
+
+      <View style={styles.totalDevengado}>
+        <Text style={styles.totalLabel}>Total Volumen de Operaciones (Ingresos Anuales)</Text>
+        <View style={styles.casillaBox}><Text style={styles.casillaNum}>[108]</Text><Text style={styles.casillaValue}>{mod390.totalIngresos.toFixed(2)}</Text></View>
+      </View>
+
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#4c1d95' }}>RESUMEN ANUAL - IVA DEDUCIBLE (GASTOS)</Text>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Por cuotas soportadas en op. interiores corrientes</Text>
+        <View style={styles.boxGroup}>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.baseGastos.toFixed(2)}</Text></View>
+          <View style={styles.casillaBox}></View>
+          <View style={styles.casillaBox}><Text style={styles.casillaValue}>{mod390.cuotaGastos.toFixed(2)}</Text></View>
+        </View>
+      </View>
+
+      <View style={{ ...styles.resultBox, backgroundColor: '#f5f3ff', borderLeftColor: '#8b5cf6' }}>
+        <View>
+          <Text style={{ ...styles.resultLabel, color: '#5b21b6' }}>Resultado Liquidación Anual</Text>
+          <Text style={{fontSize: 8, color: '#64748b', marginTop: 4}}>Total devengado anual menos total deducible anual.</Text>
+        </View>
+        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+          <Text style={styles.casillaNum}>[84]</Text>
+          <Text style={{ ...styles.resultValue, color: '#6d28d9' }}>{mod390.resultadoAnual.toFixed(2)} €</Text>
+        </View>
+      </View>
+
+      <View style={styles.footer}><Text style={styles.footerText}>Borrador generado por TaxGuard AI. Informativo, no válido para registro AEAT.</Text><Text style={styles.footerText}>Página 1 de 1</Text></View>
+    </Page>
+  </Document>
+);
+
 
 export default function ModelosTributarios() {
   const router = useRouter();
@@ -271,8 +289,8 @@ export default function ModelosTributarios() {
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
   const [aniosDisponibles, setAniosDisponibles] = useState<string[]>([new Date().getFullYear().toString()]);
   
-  // 🚀 ESTADO PARA LAS PESTAÑAS (TABS)
-  const [modeloActivo, setModeloActivo] = useState<"303" | "130">("303");
+  // 🚀 ACTUALIZADO: NUEVA PESTAÑA PARA EL 390
+  const [modeloActivo, setModeloActivo] = useState<"303" | "130" | "390">("303");
 
   useEffect(() => {
     setIsMounted(true);
@@ -338,9 +356,15 @@ export default function ModelosTributarios() {
     });
   };
 
-  // 🚀 MOTOR CÁLCULO IVA (TRIMESTRAL ESTRICTO)
+  // 🚀 LÓGICA DE FILTRADO (EXCLUYENDO PRESUPUESTOS)
+  const getDatosValidos = () => {
+      // Excluye transacciones cuya categoría sea "Presupuestos"
+      return data.filter(d => d.categoria !== "Presupuestos");
+  };
+
   const calcularModelo303 = () => {
-    const datosTrimestre = data.filter(d => {
+    const datosValidos = getDatosValidos();
+    const datosTrimestre = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, mesStr, anioStr] = d.name.split('/');
       if (anioStr !== anio) return false;
@@ -373,9 +397,9 @@ export default function ModelosTributarios() {
     return { base21, cuota21, base10, cuota10, base4, cuota4, totalCuotaDevengada, baseDeducible, cuotaDeducible, resultado: totalCuotaDevengada - cuotaDeducible };
   };
 
-  // 🚀 MOTOR CÁLCULO IRPF (ACUMULATIVO ANUAL)
   const calcularModelo130 = () => {
-    const datosAcumulados = data.filter(d => {
+    const datosValidos = getDatosValidos();
+    const datosAcumulados = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, mesStr, anioStr] = d.name.split('/');
       if (anioStr !== anio) return false;
@@ -386,7 +410,6 @@ export default function ModelosTributarios() {
       if (trimestre === '3T') maxMes = 9;
       if (trimestre === '4T') maxMes = 12;
 
-      // Coge desde Enero hasta el mes máximo del trimestre seleccionado
       return m >= 1 && m <= maxMes;
     });
 
@@ -395,19 +418,53 @@ export default function ModelosTributarios() {
 
     const rendimientoNeto = ingresosTotales - gastosTotales;
     let pagoFraccionado = 0;
-    
-    // Solo se paga IRPF si tienes beneficios (Rendimiento Neto positivo)
-    if (rendimientoNeto > 0) {
-        pagoFraccionado = rendimientoNeto * 0.20; // 20% del beneficio
-    }
+    if (rendimientoNeto > 0) pagoFraccionado = rendimientoNeto * 0.20; 
 
     return { ingresosTotales, gastosTotales, rendimientoNeto, pagoFraccionado };
   };
 
+  // 🚀 NUEVO: MOTOR CÁLCULO ANUAL (MODELO 390)
+  const calcularModelo390 = () => {
+    const datosValidos = getDatosValidos();
+    const datosAnio = datosValidos.filter(d => {
+      if (!d.name || !d.name.includes('/')) return false;
+      const [, , anioStr] = d.name.split('/');
+      return anioStr === anio;
+    });
+
+    const ingresos = datosAnio.filter(d => Number(d.total) > 0);
+    const gastos = datosAnio.filter(d => Number(d.total) < 0);
+
+    const base21 = ingresos.filter(i => Number(i.iva) === 21).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const cuota21 = base21 * 0.21;
+    const base10 = ingresos.filter(i => Number(i.iva) === 10).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const cuota10 = base10 * 0.10;
+    const base4 = ingresos.filter(i => Number(i.iva) === 4).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const cuota4 = base4 * 0.04;
+    const base0 = ingresos.filter(i => Number(i.iva) === 0).reduce((acc, curr) => acc + Number(curr.total), 0);
+    
+    const totalIngresos = base21 + base10 + base4 + base0;
+    const totalCuotaDevengada = cuota21 + cuota10 + cuota4;
+
+    const baseGastos = gastos.reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
+    const cuotaGastos = gastos.reduce((acc, curr) => {
+       const tipoIva = Number(curr.iva) || 0;
+       return acc + (Math.abs(Number(curr.total)) * (tipoIva / 100));
+    }, 0);
+
+    return { 
+        base21, cuota21, base10, cuota10, base4, cuota4, base0, 
+        totalIngresos, totalCuotaDevengada, 
+        baseGastos, cuotaGastos, 
+        resultadoAnual: totalCuotaDevengada - cuotaGastos 
+    };
+  };
+
   const mod303 = calcularModelo303();
   const mod130 = calcularModelo130();
+  const mod390 = calcularModelo390();
   if (!isMounted) return null;
-  
+
   if (planActivo === 'loading' && isSignedIn) {
      return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
@@ -472,7 +529,7 @@ export default function ModelosTributarios() {
                   Consola General
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis" onClick={() => setIsSidebarOpen(false)}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2h-2a2 2 0 01-2-2z"/></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                   Análisis Avanzado
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-medium shadow-md shadow-blue-600/20" href="/impuestos" onClick={() => setIsSidebarOpen(false)}>
@@ -512,22 +569,25 @@ export default function ModelosTributarios() {
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-8 gap-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Modelos Oficiales</h1>
-                <p className="text-sm font-medium text-slate-500 mt-1">Gestión fiscal inteligente lista para copiar y pegar en Hacienda.</p>
+                <p className="text-sm font-medium text-slate-500 mt-1">Gestión fiscal inteligente lista para presentar en Hacienda.</p>
               </div>
               
               <div className="flex flex-wrap items-center gap-3">
-                 <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
-                    {['1T', '2T', '3T', '4T'].map(t => (
-                       <button 
-                          key={t}
-                          onClick={() => setTrimestre(t)}
-                          disabled={planActivo !== 'pro'}
-                          className={`px-4 py-2 text-xs font-bold rounded-lg transition ${trimestre === t ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'} disabled:opacity-50`}
-                       >
-                          {t}
-                       </button>
-                    ))}
-                 </div>
+                 {/* Selector de trimestre solo relevante para 303 y 130 */}
+                 {modeloActivo !== '390' && (
+                   <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
+                      {['1T', '2T', '3T', '4T'].map(t => (
+                         <button 
+                            key={t}
+                            onClick={() => setTrimestre(t)}
+                            disabled={planActivo !== 'pro'}
+                            className={`px-4 py-2 text-xs font-bold rounded-lg transition ${trimestre === t ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'} disabled:opacity-50`}
+                         >
+                            {t}
+                         </button>
+                      ))}
+                   </div>
+                 )}
                  
                  <select 
                    value={anio} 
@@ -538,7 +598,7 @@ export default function ModelosTributarios() {
                    {aniosDisponibles.map(y => <option key={y} value={y}>{y}</option>)}
                  </select>
 
-                 {/* 🚀 BOTÓN DE DESCARGA DINÁMICO (Cambia según la pestaña) */}
+                 {/* 🚀 BOTÓN DE DESCARGA DINÁMICO SEGÚN PESTAÑA */}
                  {planActivo === 'pro' && isMounted ? (
                     modeloActivo === '303' ? (
                         <PDFDownloadLink 
@@ -553,7 +613,7 @@ export default function ModelosTributarios() {
                               </button>
                            )}
                         </PDFDownloadLink>
-                    ) : (
+                    ) : modeloActivo === '130' ? (
                         <PDFDownloadLink 
                            document={<Borrador130PDF mod130={mod130} empresaId={empresaId} trimestre={trimestre} anio={anio} />} 
                            fileName={`Modelo130_Borrador_${empresaId.replace(/\s+/g, '')}_${trimestre}_${anio}.pdf`}
@@ -563,6 +623,19 @@ export default function ModelosTributarios() {
                               <button disabled={loading} className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 disabled:opacity-50">
                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                  {loading ? "Generando PDF..." : "Descargar Mod. 130 (IRPF)"}
+                              </button>
+                           )}
+                        </PDFDownloadLink>
+                    ) : (
+                        <PDFDownloadLink 
+                           document={<Borrador390PDF mod390={mod390} empresaId={empresaId} anio={anio} />} 
+                           fileName={`Modelo390_Anual_Borrador_${empresaId.replace(/\s+/g, '')}_${anio}.pdf`}
+                        >
+                           {/* @ts-ignore */}
+                           {({ loading }) => (
+                              <button disabled={loading} className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 disabled:opacity-50">
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                 {loading ? "Generando PDF..." : "Descargar Mod. 390 (Anual)"}
                               </button>
                            )}
                         </PDFDownloadLink>
@@ -576,20 +649,26 @@ export default function ModelosTributarios() {
               </div>
             </header>
 
-            {/* 🚀 PESTAÑAS (TABS) */}
+            {/* 🚀 PESTAÑAS TRIBUTARIAS (303, 130, 390) */}
             {planActivo === 'pro' && (
                <div className="flex gap-6 mb-6 border-b border-slate-200">
                   <button 
                      onClick={() => setModeloActivo("303")} 
                      className={`pb-3 text-sm font-black transition border-b-2 ${modeloActivo === '303' ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                   >
-                     🏢 Modelo 303 (IVA)
+                     🏢 Modelo 303 (IVA Trimestral)
                   </button>
                   <button 
                      onClick={() => setModeloActivo("130")} 
                      className={`pb-3 text-sm font-black transition border-b-2 ${modeloActivo === '130' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                   >
                      👤 Modelo 130 (IRPF)
+                  </button>
+                  <button 
+                     onClick={() => setModeloActivo("390")} 
+                     className={`pb-3 text-sm font-black transition border-b-2 ${modeloActivo === '390' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                  >
+                     📅 Modelo 390 (Resumen Anual IVA)
                   </button>
                </div>
             )}
@@ -607,7 +686,7 @@ export default function ModelosTributarios() {
                       </div>
                       <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-4 tracking-tight">Cálculo Oficial Automático</h2>
                       <p className="text-base text-slate-500 max-w-lg mx-auto mb-10 leading-relaxed font-medium">
-                         La generación automática del Modelo 303 (IVA Trimestral) y el Modelo 130 (IRPF) cruzado con tus Libros Mayores está reservada para el Plan Empresa Pro. Olvídate de la calculadora.
+                         La generación automática del Modelo 303, Modelo 130 y el Resumen Anual Modelo 390 está reservada para el Plan Empresa Pro. Olvídate de la calculadora.
                       </p>
                       <Link href="/precios" className="bg-orange-500 text-white font-black px-8 py-4 rounded-2xl shadow-lg shadow-orange-500/30 hover:bg-orange-600 transition hover:-translate-y-1 flex items-center gap-2">
                          ⭐ Mejorar a Plan Empresa Pro
@@ -616,7 +695,7 @@ export default function ModelosTributarios() {
                 </div>
             ) : (
               <div className="max-w-4xl mx-auto">
-                 {/* VISTA DEL MODELO 303 */}
+                 {/* VISTA MODELO 303 */}
                  {modeloActivo === '303' && (
                     <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-300">
                        <div className="bg-orange-500 p-6 md:p-8 text-white">
@@ -722,7 +801,7 @@ export default function ModelosTributarios() {
                     </div>
                  )}
 
-                 {/* 🚀 VISTA DEL MODELO 130 */}
+                 {/* VISTA MODELO 130 */}
                  {modeloActivo === '130' && (
                     <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-300">
                        <div className="bg-emerald-600 p-6 md:p-8 text-white">
@@ -766,6 +845,90 @@ export default function ModelosTributarios() {
                                 <div className="text-left sm:text-right">
                                    <span className={`text-4xl md:text-5xl font-black tracking-tight ${mod130.pagoFraccionado > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
                                       {mod130.pagoFraccionado > 0 ? 'A Pagar:' : ''} {mod130.pagoFraccionado.toFixed(2)} €
+                                   </span>
+                                </div>
+                             </div>
+                          </section>
+                       </div>
+                    </div>
+                 )}
+
+                 {/* 🚀 VISTA MODELO 390 (RESUMEN ANUAL) */}
+                 {modeloActivo === '390' && (
+                    <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-300">
+                       <div className="bg-purple-600 p-6 md:p-8 text-white">
+                          <div className="flex justify-between items-start">
+                             <div>
+                                <h2 className="text-2xl font-black tracking-tight">Modelo 390 (Resumen Anual IVA)</h2>
+                                <p className="font-medium text-purple-100 mt-1">Consolidado del ejercicio <strong>{anio}</strong> para <strong>{empresaId}</strong></p>
+                             </div>
+                             <span className="bg-purple-500 text-white text-[10px] font-black uppercase px-3 py-1.5 rounded-full border border-purple-400">
+                                🔒 Informativo AEAT
+                             </span>
+                          </div>
+                       </div>
+
+                       <div className="p-6 md:p-10 space-y-10">
+                          {/* ESCUDO DE VERIFICACIÓN */}
+                          <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100 flex items-center gap-3">
+                             <span className="text-2xl">🛡️</span>
+                             <div>
+                                <h4 className="text-xs font-black text-purple-900 uppercase tracking-wide">Comprobación de Coherencia Fiscal</h4>
+                                <p className="text-xs text-purple-700 font-medium mt-0.5">
+                                   Los datos anuales han sido auditados con tu Libro Mayor. Este resumen consolida todas tus ventas reales y rectificativas eximiéndote de errores en el Modelo 390.
+                                </p>
+                             </div>
+                          </div>
+
+                          <section>
+                             <h3 className="text-sm font-black text-purple-600 uppercase tracking-widest mb-4">I. Volumen Total de Operaciones (Ingresos)</h3>
+                             <div className="space-y-3">
+                                <div className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                                   <span className="text-xs font-bold text-slate-700">Bases Imponibles al 21%</span>
+                                   <span className="text-sm font-black text-slate-900">{mod390.base21.toFixed(2)} €</span>
+                                </div>
+                                <div className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                                   <span className="text-xs font-bold text-slate-700">Bases Imponibles al 10%</span>
+                                   <span className="text-sm font-black text-slate-900">{mod390.base10.toFixed(2)} €</span>
+                                </div>
+                                <div className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                                   <span className="text-xs font-bold text-slate-700">Bases Imponibles al 4%</span>
+                                   <span className="text-sm font-black text-slate-900">{mod390.base4.toFixed(2)} €</span>
+                                </div>
+                                <div className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                                   <span className="text-xs font-bold text-slate-700">Operaciones Exentas (0%)</span>
+                                   <span className="text-sm font-black text-slate-900">{mod390.base0.toFixed(2)} €</span>
+                                </div>
+                                <div className="flex justify-between items-center p-4 bg-purple-50 rounded-2xl border border-purple-100 mt-2">
+                                   <span className="text-xs font-black text-purple-900 uppercase">Volumen Total Facturado [108]:</span>
+                                   <span className="text-lg font-black text-purple-600">+{mod390.totalIngresos.toFixed(2)} €</span>
+                                </div>
+                             </div>
+                          </section>
+
+                          <section>
+                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">II. Resumen de Cuotas Anuales</h3>
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                                   <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Total IVA Devengado (Cobrado)</span>
+                                   <span className="text-xl font-black text-emerald-600">+{mod390.totalCuotaDevengada.toFixed(2)} €</span>
+                                </div>
+                                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                                   <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Total IVA Deducible (Soportado)</span>
+                                   <span className="text-xl font-black text-rose-500">-{mod390.cuotaGastos.toFixed(2)} €</span>
+                                </div>
+                             </div>
+                          </section>
+
+                          <section className="pt-6 border-t border-slate-200">
+                             <div className="p-6 md:p-8 bg-purple-50 border border-purple-200 rounded-3xl flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                <div>
+                                   <span className="text-sm font-black text-purple-900 uppercase tracking-widest block">Resultado Anual Convalidado [84]</span>
+                                   <span className="text-xs text-purple-600 font-medium mt-1 block">Suma de las liquidaciones de los cuatro trimestres (1T a 4T).</span>
+                                </div>
+                                <div className="text-left sm:text-right">
+                                   <span className="text-4xl md:text-5xl font-black tracking-tight text-purple-700">
+                                      {mod390.resultadoAnual.toFixed(2)} €
                                    </span>
                                 </div>
                              </div>

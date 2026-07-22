@@ -20,14 +20,17 @@ Font.register({
 
 const styles = StyleSheet.create({
   page: { backgroundColor: '#ffffff', padding: 50, fontFamily: 'Roboto' },
-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, marginBottom: 40 },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#2563eb', marginBottom: 40 },
+  headerContainerPresupuesto: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#f59e0b', marginBottom: 40 },
   logoSection: { flexDirection: 'column', maxWidth: '60%' },
   logoImage: { width: 140, height: 60, objectFit: 'contain', marginBottom: 8 },
   logoText: { fontSize: 24, fontWeight: 700, color: '#0f172a', letterSpacing: -0.5, marginBottom: 4 },
   logoSub: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 },
   invoiceInfoBox: { alignItems: 'flex-end' },
-  invoiceBadge: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
-  invoiceBadgeText: { fontSize: 14, fontWeight: 700, letterSpacing: 1 },
+  invoiceBadge: { backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
+  presupuestoBadge: { backgroundColor: '#fffbeb', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
+  invoiceBadgeText: { color: '#2563eb', fontSize: 14, fontWeight: 700, letterSpacing: 1 },
+  presupuestoBadgeText: { color: '#d97706', fontSize: 14, fontWeight: 700, letterSpacing: 1 },
   invoiceDetailsText: { fontSize: 10, color: '#475569', marginBottom: 4 },
   invoiceDetailsBold: { fontWeight: 700, color: '#0f172a' },
   infoGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40 },
@@ -48,7 +51,8 @@ const styles = StyleSheet.create({
   colTotal: { width: '15%', textAlign: 'right' },
   bottomSection: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
   paymentWrapper: { width: '40%' },
-  paymentBox: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3 },
+  paymentBox: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#2563eb' },
+  paymentBoxPresupuesto: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#f59e0b' },
   paymentTitle: { fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 },
   paymentText: { fontSize: 10, color: '#0f172a', fontWeight: 500, marginBottom: 4 },
   totalsWrapper: { width: '55%' },
@@ -58,13 +62,13 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: 11, color: '#0f172a', fontWeight: 500 },
   grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#cbd5e1' },
   grandTotalLabel: { fontSize: 12, color: '#0f172a', fontWeight: 700, textTransform: 'uppercase' },
-  grandTotalValue: { fontSize: 16, fontWeight: 700 },
+  grandTotalValue: { fontSize: 16, color: '#2563eb', fontWeight: 700 },
+  grandTotalValuePresupuesto: { fontSize: 16, color: '#d97706', fontWeight: 700 },
   footer: { position: 'absolute', bottom: 40, left: 50, right: 50, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 15, flexDirection: 'row', justifyContent: 'space-between' },
   footerText: { fontSize: 8, color: '#94a3b8' },
   footerBrand: { fontSize: 8, color: '#3b82f6', fontWeight: 700 }
 });
 
-// 🚀 PDF INTELIGENTE: SE ADAPTA A FACTURAS, PRESUPUESTOS Y RECTIFICATIVAS
 const FacturaPDF = ({ datos }: { datos: any }) => {
   const isPresupuesto = datos.modo === 'presupuesto';
   const isRectificativa = datos.numeroDocumento && datos.numeroDocumento.startsWith('R-');
@@ -73,7 +77,6 @@ const FacturaPDF = ({ datos }: { datos: any }) => {
   const mainColor = isPresupuesto ? '#d97706' : (isRectificativa ? '#e11d48' : '#2563eb');
   const badgeBg = isPresupuesto ? '#fffbeb' : (isRectificativa ? '#ffe4e6' : '#eff6ff');
   
-  // Si es rectificativa, los valores deben mostrarse en negativo (o ya vienen en negativo si la base es < 0)
   const sign = isRectificativa ? -1 : 1;
 
   return (
@@ -197,6 +200,8 @@ export default function GeneradorFacturas() {
   const [empresas, setEmpresas] = useState<string[]>([]);
   
   const [modoActivo, setModoActivo] = useState<"factura" | "presupuesto">("factura");
+  // 🚀 NUEVO ESTADO: Filtro para la tabla
+  const [filtroHistorial, setFiltroHistorial] = useState<"todas" | "facturas" | "presupuestos" | "rectificativas">("todas");
   
   const [numeroFactura, setNumeroFactura] = useState(`F-${new Date().getFullYear()}-001`);
   const [numeroPresupuesto, setNumeroPresupuesto] = useState(`P-${new Date().getFullYear()}-001`);
@@ -280,22 +285,30 @@ export default function GeneradorFacturas() {
       }
   }, [empresaId, allSettings]);
 
+  // 🚀 OBTENER DATOS (FACTURAS, ABONOS Y AHORA PRESUPUESTOS)
   useEffect(() => {
     if (!empresaId) return;
     obtenerDatosSupabase(empresaId).then(movimientos => {
          const anioActual = fecha.split('-')[0] || new Date().getFullYear().toString();
          
-         const facturas = movimientos.filter((m: any) => m.numero_factura);
-         setHistorialFacturas(facturas.sort((a,b) => b.id - a.id)); 
+         const documentos = movimientos.filter((m: any) => m.numero_factura);
+         setHistorialFacturas(documentos.sort((a,b) => b.id - a.id)); 
 
          if (!facturaBloqueada) {
-            const facturasFDelAnio = facturas.filter((m: any) => {
+            const facturasF = documentos.filter((m: any) => {
                const [, , y] = m.name.split('/');
                return y === anioActual && m.numero_factura?.startsWith('F-');
             });
-            const siguienteNumero = facturasFDelAnio.length + 1;
-            setNumeroFactura(`F-${anioActual}-${String(siguienteNumero).padStart(3, '0')}`);
-            setNumeroPresupuesto(`P-${anioActual}-${String(Math.floor(Math.random() * 100) + 1).padStart(3, '0')}`);
+            const presupuestosP = documentos.filter((m: any) => {
+               const [, , y] = m.name.split('/');
+               return y === anioActual && m.numero_factura?.startsWith('P-');
+            });
+
+            const siguienteF = facturasF.length + 1;
+            const siguienteP = presupuestosP.length + 1;
+            
+            setNumeroFactura(`F-${anioActual}-${String(siguienteF).padStart(3, '0')}`);
+            setNumeroPresupuesto(`P-${anioActual}-${String(siguienteP).padStart(3, '0')}`);
          }
     });
   }, [empresaId, fecha, refreshTrigger, facturaBloqueada]);
@@ -389,9 +402,10 @@ export default function GeneradorFacturas() {
     totalFinal
   };
 
-  const guardarEnLibroMayor = async () => {
+  // 🚀 GUARDAR DOCUMENTO (FACTURA O PRESUPUESTO) EN BASE DE DATOS
+  const guardarDocumento = async () => {
     if (!empresaId) return alert("⚠️ Por favor, selecciona un Espacio de Trabajo.");
-    if (lineasFactura.some(l => !l.concepto)) return alert("⚠️ Rellena la descripción de todos los conceptos de la factura.");
+    if (lineasFactura.some(l => !l.concepto)) return alert("⚠️ Rellena la descripción de todos los conceptos.");
     if (baseNum <= 0) return alert("⚠️ Introduce un importe válido mayor a 0.");
     
     setIsSaving(true);
@@ -401,9 +415,13 @@ export default function GeneradorFacturas() {
       const fechaFormateada = `${d}/${m}/${y}`;
       const conceptoUnificado = lineasFactura.map(l => `${l.cantidad}x ${l.concepto}`).join(' | ') + (irpfNum > 0 ? ` (Retención IRPF: -${irpfNum}%)` : "");
 
+      const isPresupuesto = modoActivo === 'presupuesto';
+      const numDocumento = isPresupuesto ? numeroPresupuesto : numeroFactura;
+      const categoriaDoc = isPresupuesto ? "Presupuestos" : "Ventas";
+
       const res = await guardarDatoSupabase({
-        month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: "Ventas", 
-        isRecurrent: false, iva: ivaSeleccionado, numero_factura: numeroFactura,
+        month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: categoriaDoc, 
+        isRecurrent: false, iva: ivaSeleccionado, numero_factura: numDocumento,
         cliente_nombre: clienteNombre, cliente_nif: clienteNif, concepto_detalle: conceptoUnificado
       });
 
@@ -430,7 +448,7 @@ export default function GeneradorFacturas() {
         setRefreshTrigger(prev => prev + 1); 
         setTimeout(() => setFacturaGuardada(false), 4000);
       } else {
-        alert("⚠️ Error al guardar en el Libro Mayor.");
+        alert("⚠️ Error al guardar en la nube.");
       }
     } catch (error) {
       alert("⚠️ Error de conexión al guardar.");
@@ -483,8 +501,8 @@ export default function GeneradorFacturas() {
       }
   };
 
-  // 🚀 NUEVA FUNCIÓN: DUPLICAR FACTURA AL FORMULARIO
-  const duplicarFactura = (fac: any) => {
+  // 🚀 NUEVA FUNCIÓN: CARGAR DATOS PARA DUPLICAR O CONVERTIR
+  const duplicarFactura = (fac: any, aFactura: boolean = false) => {
       setClienteNombre(fac.cliente_nombre || "");
       setClienteNif(fac.cliente_nif || "");
       setIvaSeleccionado(fac.iva?.toString() || "21");
@@ -508,13 +526,18 @@ export default function GeneradorFacturas() {
           precio: Math.abs(Number(fac.total))
       }]);
 
-      setModoActivo("factura");
       setFacturaBloqueada(false);
+      
+      if (aFactura) {
+          setModoActivo("factura");
+          alert("🪄 ¡Presupuesto cargado! Revisa los datos y pulsa 'Registrar en Libro Mayor' para crear la Factura Oficial.");
+      } else {
+          setModoActivo(fac.numero_factura?.startsWith('P-') ? 'presupuesto' : 'factura');
+          alert("♻️ Datos copiados al formulario con éxito.");
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      alert("♻️ Datos de la factura anterior cargados en el formulario superior. Revisa los datos y pulsa 'Registrar en Libro Mayor' cuando estés listo.");
   };
 
-  // 🚀 NUEVA FUNCIÓN: RECONSTRUIR DATOS PARA EL PDF DEL HISTORIAL
   const getDatosPdfHistorico = (fac: any) => {
       let conceptoStr = fac.concepto_detalle || "Servicios prestados";
       let irpf = "0";
@@ -531,9 +554,10 @@ export default function GeneradorFacturas() {
       const cIrpf = base * (irpfN / 100);
 
       const clienteCrm = clientesCRM.find(c => c.nombre.toLowerCase() === (fac.cliente_nombre || "").toLowerCase());
+      const isPresupuesto = fac.numero_factura?.startsWith('P-');
 
       return {
-          modo: 'factura', 
+          modo: isPresupuesto ? 'presupuesto' : 'factura', 
           miEmpresa: empresaId || "Mi Empresa",
           numeroDocumento: fac.numero_factura || 'S/N',
           fecha: fac.name,
@@ -556,11 +580,6 @@ export default function GeneradorFacturas() {
      setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); 
      setLineasFactura([{ id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
      setFacturaBloqueada(false); 
-  };
-
-  const convertirPresupuestoAFactura = () => {
-      setModoActivo("factura");
-      alert("🪄 ¡Presupuesto convertido a Factura! Revisa los datos y pulsa 'Registrar en Libro Mayor' para oficializarla.");
   };
 
   const guardarNuevoClienteCRM = async () => {
@@ -619,12 +638,20 @@ export default function GeneradorFacturas() {
       } catch(e) { alert("Error al actualizar"); }
   };
 
+  // 🚀 LÓGICA DE FILTROS EN TABLA
   const filteredHistorial = historialFacturas.filter((fac: any) => {
      const search = searchTerm.toLowerCase();
      const numFac = fac.numero_factura?.toLowerCase() || "";
      const cliente = fac.cliente_nombre?.toLowerCase() || "";
      const conceptoStr = fac.concepto_detalle?.toLowerCase() || "";
-     return numFac.includes(search) || cliente.includes(search) || conceptoStr.includes(search);
+     const matchSearch = numFac.includes(search) || cliente.includes(search) || conceptoStr.includes(search);
+     if (!matchSearch) return false;
+
+     if (filtroHistorial === 'facturas' && !numFac.startsWith('f-')) return false;
+     if (filtroHistorial === 'presupuestos' && !numFac.startsWith('p-')) return false;
+     if (filtroHistorial === 'rectificativas' && !numFac.startsWith('r-')) return false;
+
+     return true;
   });
 
   const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
@@ -751,9 +778,9 @@ export default function GeneradorFacturas() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                     {modoActivo === 'factura' ? 'Nueva Factura' : 'Nuevo Presupuesto'}
                  </button>
-                 {facturaBloqueada && modoActivo === 'factura' && (
+                 {facturaBloqueada && (
                     <span className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm">
-                       ✅ Guardada en Libro Mayor
+                       ✅ Documento Guardado
                     </span>
                  )}
               </div>
@@ -1009,23 +1036,14 @@ export default function GeneradorFacturas() {
                            </PDFDownloadLink>
                        )}
                        
-                       {/* 🚀 BOTÓN MAGIA: CONVERTIR O GUARDAR */}
-                       {modoActivo === 'factura' ? (
-                           <button 
-                              onClick={guardarEnLibroMayor} 
-                              disabled={isSaving || facturaBloqueada}
-                              className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                           >
-                              {isSaving ? "Guardando..." : facturaGuardada ? "¡Factura Registrada!" : "Registrar en Libro Mayor"}
-                           </button>
-                       ) : (
-                           <button 
-                              onClick={convertirPresupuestoAFactura} 
-                              className="w-full bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold py-3.5 rounded-xl border border-amber-200 transition flex items-center justify-center gap-2"
-                           >
-                              🪄 Convertir a Factura Oficial
-                           </button>
-                       )}
+                       {/* 🚀 BOTÓN GUARDAR (Dinámico para Factura o Presupuesto) */}
+                       <button 
+                          onClick={guardarDocumento} 
+                          disabled={isSaving || facturaBloqueada}
+                          className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                       >
+                          {isSaving ? "Guardando..." : facturaGuardada ? "¡Guardado con éxito!" : modoActivo === 'factura' ? "Registrar en Libro Mayor" : "Guardar Presupuesto"}
+                       </button>
                     </div>
                  </div>
 
@@ -1054,27 +1072,37 @@ export default function GeneradorFacturas() {
               </div>
             </div>
 
-            {/* 🚀 TABLA DE HISTORIAL RÁPIDO CON BOTONES DE DESCARGA Y DUPLICAR */}
+            {/* 🚀 TABLA DE HISTORIAL RÁPIDO CON FILTROS */}
             <div className="mt-10 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                       <h3 className="text-md font-bold text-slate-900">Historial de Facturas Emitidas</h3>
-                       <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-black px-2 py-0.5 rounded-full">{historialFacturas.length}</span>
+                <div className="p-6 border-b border-slate-100">
+                    <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 mb-4">
+                       <div className="flex items-center gap-3">
+                          <h3 className="text-md font-bold text-slate-900">Historial de Documentos</h3>
+                          <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-black px-2 py-0.5 rounded-full">{filteredHistorial.length}</span>
+                       </div>
+                       <input 
+                         type="text" 
+                         placeholder="🔍 Buscar factura, presupuesto, cliente..." 
+                         value={searchTerm}
+                         onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
+                         className="w-full lg:w-64 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
+                       />
                     </div>
-                    <input 
-                      type="text" 
-                      placeholder="🔍 Buscar factura, cliente..." 
-                      value={searchTerm}
-                      onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
-                      className="w-48 sm:w-64 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
-                    />
+                    
+                    {/* BOTONES DE FILTRO RÁPIDO */}
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                       <button onClick={() => {setFiltroHistorial('todas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'todas' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas</button>
+                       <button onClick={() => {setFiltroHistorial('facturas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'facturas' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Solo Facturas</button>
+                       <button onClick={() => {setFiltroHistorial('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'presupuestos' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>Presupuestos</button>
+                       <button onClick={() => {setFiltroHistorial('rectificativas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'rectificativas' ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Abonos</button>
+                    </div>
                 </div>
                 
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-slate-100 text-left whitespace-nowrap">
                        <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                           <tr>
-                             <th className="px-6 py-4">Nº Factura</th>
+                             <th className="px-6 py-4">Nº Documento</th>
                              <th className="px-6 py-4">Fecha</th>
                              <th className="px-6 py-4">Cliente / NIF</th>
                              <th className="px-6 py-4">Total</th>
@@ -1085,11 +1113,12 @@ export default function GeneradorFacturas() {
                        <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
                           {currentItems.map((fac: any) => {
                              const isRectificativa = fac.numero_factura?.startsWith('R-');
+                             const isPresupuesto = fac.numero_factura?.startsWith('P-');
 
                              if (editandoHistorialId === fac.id) {
                                  return (
                                      <tr key={fac.id} className="bg-blue-50/30">
-                                         <td className={`px-6 py-3 font-bold ${isRectificativa ? 'text-rose-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
+                                         <td className={`px-6 py-3 font-bold ${isRectificativa ? 'text-rose-600' : isPresupuesto ? 'text-amber-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
                                          <td className="px-6 py-3">{fac.name}</td>
                                          <td className="px-6 py-3 space-y-1">
                                              <input type="text" value={editClientData.nombre} onChange={(e) => setEditClientData({...editClientData, nombre: e.target.value})} placeholder="Nombre Cliente" className="w-full p-1 border border-blue-300 rounded text-xs outline-none block" />
@@ -1107,18 +1136,20 @@ export default function GeneradorFacturas() {
 
                              return (
                                  <tr key={fac.id} className="hover:bg-slate-50/80 transition">
-                                     <td className={`px-6 py-4 font-bold ${isRectificativa ? 'text-rose-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
+                                     <td className={`px-6 py-4 font-bold ${isRectificativa ? 'text-rose-600' : isPresupuesto ? 'text-amber-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
                                      <td className="px-6 py-4 text-slate-500">{fac.name}</td>
                                      <td className="px-6 py-4">
                                         <div className="font-bold text-slate-800">{fac.cliente_nombre || 'Sin asignar'}</div>
                                         <div className="text-[10px] text-slate-400">NIF: {fac.cliente_nif || '-'}</div>
                                      </td>
-                                     <td className={`px-6 py-4 font-black ${Number(fac.total) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {Number(fac.total) > 0 ? '+' : ''}{Number(fac.total).toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                                     <td className={`px-6 py-4 font-black ${isRectificativa ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                        {Number(fac.total) > 0 && !isRectificativa ? '+' : ''}{Number(fac.total).toLocaleString('es-ES', {minimumFractionDigits: 2})} €
                                      </td>
                                      <td className="px-6 py-4">
                                         {isRectificativa ? (
                                            <span className="bg-rose-100 text-rose-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-rose-200">Abono</span>
+                                        ) : isPresupuesto ? (
+                                           <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-amber-200">Presupuesto</span>
                                         ) : (
                                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-emerald-200">Emitida</span>
                                         )}
@@ -1140,18 +1171,24 @@ export default function GeneradorFacturas() {
                                                  </PDFDownloadLink>
                                              )}
 
-                                             {/* 🚀 BOTÓN DUPLICAR */}
-                                             <button onClick={() => duplicarFactura(fac)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-md transition border border-blue-100" title="Copiar datos para nueva factura">
-                                                 Duplicar
-                                             </button>
+                                             {/* 🚀 BOTÓN CONVERTIR (Si es presupuesto) o DUPLICAR (Si es factura) */}
+                                             {isPresupuesto ? (
+                                                <button onClick={() => duplicarFactura(fac, true)} className="text-amber-600 hover:text-amber-700 font-bold text-[10px] uppercase tracking-wider bg-amber-50 px-2 py-1.5 rounded-md transition border border-amber-200 flex items-center gap-1" title="Convertir a Factura Oficial">
+                                                    🪄 Convertir
+                                                </button>
+                                             ) : (
+                                                <button onClick={() => duplicarFactura(fac, false)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-md transition border border-blue-100" title="Copiar datos para nueva factura">
+                                                    Duplicar
+                                                </button>
+                                             )}
 
                                              {/* EDITAR */}
                                              <button onClick={() => iniciarEdicionCliente(fac)} className="text-slate-500 hover:text-slate-700 font-bold text-[10px] uppercase tracking-wider bg-slate-50 px-2 py-1.5 rounded-md transition border border-slate-200" title="Editar cliente o NIF">
                                                  Editar
                                              </button>
                                              
-                                             {/* 🚀 BOTÓN RECTIFICAR */}
-                                             {!isRectificativa && (
+                                             {/* 🚀 BOTÓN RECTIFICAR (Solo en facturas normales) */}
+                                             {!isRectificativa && !isPresupuesto && (
                                                  <button 
                                                     onClick={() => generarFacturaRectificativa(fac)} 
                                                     className="text-rose-500 hover:text-rose-700 font-bold text-[10px] uppercase tracking-wider bg-rose-50 px-2 py-1.5 rounded-md transition border border-rose-100"
@@ -1166,7 +1203,7 @@ export default function GeneradorFacturas() {
                              );
                           })}
                           {filteredHistorial.length === 0 && (
-                             <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">No hay facturas registradas en este espacio de trabajo.</td></tr>
+                             <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">No hay documentos que coincidan con este filtro.</td></tr>
                           )}
                        </tbody>
                     </table>
@@ -1185,7 +1222,7 @@ export default function GeneradorFacturas() {
           </main>
         </div>
 
-        {/* 🚀 MODAL DEL GESTOR CRM */}
+        {/* MODAL DEL GESTOR CRM */}
         {showCRMModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
