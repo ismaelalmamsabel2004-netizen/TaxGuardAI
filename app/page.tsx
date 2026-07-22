@@ -37,7 +37,6 @@ const pdfStyles = StyleSheet.create({
   footerText: { fontSize: 7, color: '#94a3b8' },
 });
 
-// 🚀 NUEVO: COMPONENTE GENERADOR DE PDF PARA EL LIBRO MAYOR
 const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
   <Document>
     <Page size="A4" style={pdfStyles.page}>
@@ -66,7 +65,7 @@ const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
                {item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}
             </Text>
             <Text style={[pdfStyles.colImporte, { color: colorImporte }]}>{importeText}</Text>
-            <Text style={pdfStyles.colIva}>{item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}</Text>
+            <Text style={pdfStyles.colIva}>{item.iva === 0 || item.iva === "0" ? "Exento" : `IVA ${item.iva}%`}</Text>
           </View>
          );
       })}
@@ -109,13 +108,10 @@ export default function Home() {
   const [isRecurrent, setIsRecurrent] = useState(false);
   const [frecuencia, setFrecuencia] = useState("Mensual");
   const [ivaSeleccionado, setIvaSeleccionado] = useState("21");
-
-  // ESCUDO PARA VEHÍCULOS
   const [isVehiculo, setIsVehiculo] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
-  
   const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos">("all");
 
   const [chartFilter, setChartFilter] = useState<string | null>(null);
@@ -136,8 +132,11 @@ export default function Home() {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  // 🚀 ESTADO PARA EL NUEVO MODAL DE SOPORTE VIP
+  
+  // 🚀 ESTADOS DEL NUEVO SOPORTE VIP
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [faqSearch, setFaqSearch] = useState("");
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   const [sectorInput, setSectorInput] = useState("");
@@ -754,6 +753,33 @@ export default function Home() {
     link.download = `Libro_Mayor_${empresaId || 'General'}_${filtroDoc}.csv`;
     link.click();
   };
+
+  // 🚀 LÓGICA DEL NUEVO SOPORTE VIP
+  const abrirGmailWeb = (tipo: string) => {
+      const email = "soporte.taxguard@gmail.com";
+      const subject = tipo === "ayuda" ? `Asistencia Técnica TaxGuard AI - ${empresaId}` : `Sugerencia de Mejora - TaxGuard AI - ${empresaId}`;
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${encodeURIComponent(subject)}`;
+      window.open(gmailUrl, '_blank');
+  };
+
+  const copiarCorreoSoporte = () => {
+      navigator.clipboard.writeText("soporte.taxguard@gmail.com");
+      alert("✅ ¡Correo de soporte (soporte.taxguard@gmail.com) copiado al portapapeles!");
+  };
+
+  const faqs = [
+      { q: "¿Cómo creo mi primera factura oficial?", a: "Ve a la pestaña 'Facturación PDF' en el menú izquierdo. Rellena los datos fiscales de tu cliente, añade los conceptos con su precio, y haz clic en 'Registrar en Libro Mayor'. Esto creará la factura en el sistema y te permitirá descargar el PDF oficial listo para enviar." },
+      { q: "¿Cómo funciona el escáner de facturas con Inteligencia Artificial (OCR)?", a: "En la 'Consola General', haz clic en el botón '📸 Factura OCR'. Sube una foto, captura o PDF de tu ticket de compra o factura de proveedor. Nuestra IA leerá automáticamente la fecha, la base imponible y el IVA para rellenar el formulario por ti." },
+      { q: "¿Qué diferencia hay entre un Presupuesto y una Factura?", a: "Un presupuesto es una estimación comercial sin validez fiscal. No suma en tus gráficas de ingresos ni paga impuestos. Cuando el cliente acepta el presupuesto, ve al Historial de Documentos y pulsa el botón mágico '🪄 Convertir' para transformarlo en una Factura Oficial al instante." },
+      { q: "¿Cómo aplico el 50% de IVA en los gastos de mi vehículo (Gasolina, Taller)?", a: "Por ley, gastos como la gasolina de un coche no comercial solo permiten deducir el 50% del IVA. Al añadir un gasto en la Consola General, marca la casilla '🚘 Gasto Vehículo (Deducir 50% IVA)' y el sistema dividirá el impuesto automáticamente en tus modelos tributarios para evitarte multas." },
+      { q: "¿Cómo anulo o modifico una factura que ya he emitido?", a: "La normativa prohíbe borrar una factura ya registrada y enviada. Debes ir al Libro Mayor de la sección Facturas, buscar la factura errónea y pulsar el botón rojo 'Rectificar'. Esto creará automáticamente una Factura Rectificativa (Abono) en negativo que anulará el error legalmente ante Hacienda." },
+      { q: "¿Cómo descargo mis modelos para presentarlos a Hacienda (303, 130, 390)?", a: "Ve a la sección 'Modelos Tributarios'. Selecciona el trimestre actual (o el año para el 390) y pulsa descargar. Obtendrás un borrador PDF idéntico al oficial de la Agencia Tributaria. Solo tienes que abrir la web de Hacienda y copiar los valores de cada casilla [XX] del PDF en su respectivo recuadro." },
+      { q: "¿Para qué sirve el CFO Virtual y el Análisis Avanzado?", a: "Es un panel exclusivo del Plan Pro que utiliza Inteligencia Artificial para auditar tus finanzas. Entra en 'Análisis Avanzado' y usa los simuladores (Ej: 'Detectar Fugas' o 'Simular Subida de Precios') para que la IA cruce tus datos, proyecte tendencias y te sugiera estrategias para maximizar tu rentabilidad." },
+      { q: "¿Puedo importar un Excel o los movimientos de mi banco de golpe?", a: "Sí. Descarga un archivo CSV desde la web de tu banco y usa el botón '📊 Banco (CSV)' en la Consola General. El sistema importará y clasificará masivamente todos tus movimientos en segundos." },
+      { q: "¿Cómo añado nuevas categorías o edito los datos de mi empresa?", a: "Haz clic en el icono de engranaje (⚙️) que hay junto al nombre de tu Espacio de Trabajo en el menú lateral de la izquierda. Podrás cambiar tu sector y escribir tus propias categorías separadas por comas. El Escáner OCR aprenderá a usarlas automáticamente en el futuro." }
+  ];
+
+  const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
   if (!isMounted) return null;
   
   if (planActivo === 'loading' && isSignedIn) {
@@ -783,7 +809,7 @@ export default function Home() {
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
           
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
@@ -815,7 +841,6 @@ export default function Home() {
                       onChange={async (e) => {
                         const newId = e.target.value;
                         setEmpresaId(newId);
-                        
                         const res = await fetch('/api/settings');
                         const actuales: any = await res.json(); 
                         await syncSettingsToCloud({ ...actuales, empresaActiva: newId });
@@ -854,8 +879,8 @@ export default function Home() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Facturación PDF
                 </Link>
-                
-                {/* 🚀 NUEVO BOTÓN DE SOPORTE VIP */}
+
+                {/* 🚀 BOTÓN SOPORTE VIP */}
                 <div className="pt-4 mt-4 border-t border-slate-800">
                     <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
                       <span className="text-lg group-hover:scale-110 transition-transform">🎧</span>
@@ -877,7 +902,6 @@ export default function Home() {
                   {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
                 </span>
               </Link>
-              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
@@ -1161,10 +1185,9 @@ export default function Home() {
                       className="w-full sm:flex-1 sm:w-64 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
                    />
                    <div className="flex gap-2 w-full sm:w-auto">
-                       <button onClick={exportarAExcel} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2. rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
+                       <button onClick={exportarAExcel} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
                           ↓ CSV
                        </button>
-                       {/* 🚀 BOTÓN PARA EXPORTAR EL LIBRO MAYOR A PDF */}
                        {isMounted && (
                            <PDFDownloadLink 
                                document={<LibroMayorPDF datos={datosTablaFiltrados} empresaId={empresaId} filtro={etiquetasFiltro[filtro] || 'Todas las Fechas'} />} 
@@ -1322,6 +1345,7 @@ export default function Home() {
             <div className="h-24 md:h-10"></div>
           </main>
         </div>
+
         <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end" translate="no">
           {isChatOpen && (
             <div className="mb-4 w-[calc(100vw-3rem)] max-w-sm h-[400px] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in-up">
@@ -1383,7 +1407,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* 🚀 MODAL DE CONFIGURACIÓN DE ESPACIO */}
         {showConfig && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
@@ -1456,7 +1479,7 @@ export default function Home() {
         {/* 🚀 NUEVO MODAL DE SOPORTE VIP */}
         {showSupportModal && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                   <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">🎧 Centro de Soporte VIP</h3>
                   <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-rose-500 transition">
@@ -1464,38 +1487,60 @@ export default function Home() {
                   </button>
                 </div>
                 
-                <div className="p-6 space-y-6 overflow-y-auto">
+                <div className="p-6 space-y-8 overflow-y-auto bg-slate-50/30">
                    
-                   {/* BOTONES RÁPIDOS DE CORREO */}
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <a href={`mailto:soporte.taxguard@gmail.com?subject=Asistencia Técnica TaxGuard AI - ${empresaId}`} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left">
+                       <button onClick={() => abrirGmailWeb('ayuda')} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left shadow-sm">
                            <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">📨</span>
                            <h4 className="text-sm font-black text-blue-900 mb-1">Contactar a Soporte</h4>
-                           <p className="text-xs text-blue-700 font-medium">Resolvemos tus dudas fiscales o técnicas en menos de 24h laborables.</p>
-                       </a>
-                       <a href={`mailto:soporte.taxguard@gmail.com?subject=Sugerencia de Mejora - TaxGuard AI - ${empresaId}`} className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl hover:bg-emerald-100 transition group flex flex-col items-start text-left">
+                           <p className="text-xs text-blue-700 font-medium">Resolvemos tus dudas en menos de 24h laborables.</p>
+                       </button>
+                       <button onClick={() => abrirGmailWeb('sugerencia')} className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl hover:bg-emerald-100 transition group flex flex-col items-start text-left shadow-sm">
                            <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">💡</span>
                            <h4 className="text-sm font-black text-emerald-900 mb-1">Buzón de Sugerencias</h4>
-                           <p className="text-xs text-emerald-700 font-medium">¿Echas en falta alguna función? Escríbenos y nuestro equipo la evaluará.</p>
-                       </a>
+                           <p className="text-xs text-emerald-700 font-medium">¿Echas en falta alguna función? Escríbenos.</p>
+                       </button>
+                   </div>
+                   
+                   <div className="flex justify-center">
+                       <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                          Copiar correo (soporte.taxguard@gmail.com)
+                       </button>
                    </div>
 
-                   {/* MINI FAQ INCORPORADO */}
-                   <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl">
-                      <h4 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2">📚 Preguntas Frecuentes Rápidas</h4>
-                      <div className="space-y-4">
-                         <div>
-                            <p className="text-xs font-bold text-slate-700">¿Cómo elimino un presupuesto?</p>
-                            <p className="text-[11px] text-slate-500 mt-1">Ve al Libro Mayor Integrado, selecciona la pestaña "Presupuestos (Ocultos)" y pulsa el icono de la papelera en la fila que quieras borrar.</p>
-                         </div>
-                         <div>
-                            <p className="text-xs font-bold text-slate-700">¿Cómo funciona el escudo de vehículos?</p>
-                            <p className="text-[11px] text-slate-500 mt-1">Al registrar un gasto marcando la casilla "Gasto Vehículo", el sistema solo aplicará el 50% del IVA introducido como deducible en tus modelos AEAT, tal y como exige la normativa.</p>
-                         </div>
-                         <div>
-                            <p className="text-xs font-bold text-slate-700">¿Qué hago con los Modelos de Hacienda generados?</p>
-                            <p className="text-[11px] text-slate-500 mt-1">Nuestros PDF son una guía oficial exacta. Debes abrir la Sede Electrónica de la AEAT en otra pestaña y copiar el valor de cada casilla [XX] del PDF a su casilla correspondiente en la web.</p>
-                         </div>
+                   <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                          <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
+                          <input 
+                             type="text" 
+                             placeholder="Buscar en preguntas frecuentes..." 
+                             value={faqSearch}
+                             onChange={(e) => setFaqSearch(e.target.value)}
+                             className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-64"
+                          />
+                      </div>
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                         {faqsFiltradas.length === 0 ? (
+                             <p className="text-center text-xs text-slate-400 py-4">No se encontraron respuestas para tu búsqueda.</p>
+                         ) : (
+                             faqsFiltradas.map((faq, idx) => (
+                                <div key={idx} className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
+                                   <button 
+                                      onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
+                                      className="w-full text-left p-4 flex justify-between items-center hover:bg-slate-50 transition"
+                                   >
+                                      <span className="text-xs font-bold text-slate-700 pr-4">{faq.q}</span>
+                                      <span className={`text-slate-400 transition-transform ${openFaq === idx ? 'rotate-180' : ''}`}>▼</span>
+                                   </button>
+                                   {openFaq === idx && (
+                                      <div className="p-4 pt-0 text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 bg-white">
+                                         {faq.a}
+                                      </div>
+                                   )}
+                                </div>
+                             ))
+                         )}
                       </div>
                    </div>
                 </div>
@@ -1575,7 +1620,6 @@ export default function Home() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
               
-              {/* TARJETA AUTÓNOMO */}
               <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 hover:border-slate-600 transition flex flex-col relative">
                 <div className="mb-6">
                    <h3 className="text-2xl font-bold text-white mb-2">Plan Autónomo</h3>
@@ -1609,7 +1653,6 @@ export default function Home() {
                 </SignUpButton>
               </div>
 
-              {/* TARJETA EMPRESA PRO */}
               <div className="bg-slate-900 p-8 rounded-3xl border-2 border-blue-500 shadow-2xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg">
                   MÁS RECOMENDADO
