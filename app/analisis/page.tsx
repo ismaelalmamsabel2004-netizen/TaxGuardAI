@@ -23,12 +23,16 @@ export default function AnalisisAvanzado() {
   
   const [allData, setAllData] = useState<any[]>([]);
   const [filtroTiempo, setFiltroTiempo] = useState("year"); 
-  const [aiAnalysis, setAiAnalysis] = useState("## Análisis Preliminar\nPara iniciar la auditoría profunda, asegúrate de tener datos registrados en el Libro Mayor y pulsa el botón superior **Generar Nueva Auditoría**.");
+  const [aiAnalysis, setAiAnalysis] = useState("## Análisis Preliminar\nPara iniciar la auditoría profunda, asegúrate de tener datos registrados en el Libro Mayor y selecciona un escenario de simulación en los botones superiores.");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [simulacionActiva, setSimulacionActiva] = useState("General");
 
   const [chartDataEvolucion, setChartDataEvolucion] = useState<any[]>([]);
   const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
+  
+  // 🚀 KPIS Y TENDENCIAS
   const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
+  const [trends, setTrends] = useState({ ingresos: 0, gastos: 0, beneficio: 0 });
 
   const [planActivo, setPlanActivo] = useState('loading');
 
@@ -69,7 +73,7 @@ export default function AnalisisAvanzado() {
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
     setEmpresaId(nuevaEmpresa);
-    setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Pulsa **Generar Nueva Auditoría** para analizar este nuevo espacio de trabajo.");
+    setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Selecciona un escenario para analizar este nuevo espacio de trabajo.");
     
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
@@ -88,68 +92,68 @@ export default function AnalisisAvanzado() {
     obtenerDatosSupabase(nuevaEmpresa).then(d => setAllData(d));
   };
 
+  // 🚀 MOTOR MATEMÁTICO: CÁLCULO DE KPIS Y TENDENCIAS (COMPARATIVAS)
   useEffect(() => {
     if (!allData || allData.length === 0) {
-       setChartDataEvolucion([]); setChartDataGastos([]); setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
+       setChartDataEvolucion([]); setChartDataGastos([]); 
+       setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
+       setTrends({ ingresos: 0, gastos: 0, beneficio: 0 });
        return;
     }
 
     const ahora = new Date().getTime();
+    const diasFiltro = filtroTiempo === 'month' ? 30 : filtroTiempo === 'quarter' ? 90 : filtroTiempo === 'year' ? 365 : Infinity;
     
-    const datosFiltrados = allData.filter(item => {
-        if (filtroTiempo === 'all') return true;
-        if (!item.name || !item.name.includes('/')) return false;
+    let totalIngresos = 0; let totalGastos = 0;
+    let prevIngresos = 0; let prevGastos = 0;
+    
+    const mensualidades: Record<string, { Ingresos: number, Gastos: number, sortKey: number }> = {};
+    const categoriasGastos: Record<string, number> = {};
+
+    allData.forEach(item => {
+        // Ignoramos presupuestos para las analíticas reales
+        if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
+        if (!item.name || !item.name.includes('/')) return;
 
         const [d, m, y] = item.name.split('/');
         const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
         const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
         
-        if (filtroTiempo === 'month') return diffDias <= 30;
-        if (filtroTiempo === 'quarter') return diffDias <= 90;
-        if (filtroTiempo === 'year') return diffDias <= 365;
-        return true;
-    });
-
-    let totalIngresos = 0;
-    let totalGastos = 0;
-    const mensualidades: Record<string, { Ingresos: number, Gastos: number, sortKey: number }> = {};
-    const categoriasGastos: Record<string, number> = {};
-
-    datosFiltrados.forEach(item => {
         const valor = Number(item.total);
-        if (!item.name || !item.name.includes('/')) return;
+        const gastoAbsoluto = valor < 0 ? Math.abs(valor) : 0;
+        const ingresoAbsoluto = valor > 0 ? valor : 0;
 
-        const [dia, mes, anio] = item.name.split('/');
-        const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-        const mesLlave = `${nombresMeses[Number(mes) - 1]} ${anio}`;
-        const sortKey = Number(anio) * 100 + Number(mes); 
-
-        if (!mensualidades[mesLlave]) mensualidades[mesLlave] = { Ingresos: 0, Gastos: 0, sortKey };
-
-        if (valor > 0) {
-            totalIngresos += valor;
-            mensualidades[mesLlave].Ingresos += valor;
-        } else {
-            const gastoAbsoluto = Math.abs(valor);
+        // PERIODO ACTUAL
+        if (diffDias <= diasFiltro) {
+            totalIngresos += ingresoAbsoluto;
             totalGastos += gastoAbsoluto;
-            mensualidades[mesLlave].Gastos += gastoAbsoluto;
-            const cat = item.categoria || 'General';
-            categoriasGastos[cat] = (categoriasGastos[cat] || 0) + gastoAbsoluto;
+
+            const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            const mesLlave = `${nombresMeses[Number(m) - 1]} ${y}`;
+            const sortKey = Number(y) * 100 + Number(m); 
+
+            if (!mensualidades[mesLlave]) mensualidades[mesLlave] = { Ingresos: 0, Gastos: 0, sortKey };
+            if (valor > 0) mensualidades[mesLlave].Ingresos += valor;
+            else mensualidades[mesLlave].Gastos += gastoAbsoluto;
+
+            if (valor < 0) {
+                const cat = item.categoria || 'General';
+                categoriasGastos[cat] = (categoriasGastos[cat] || 0) + gastoAbsoluto;
+            }
+        } 
+        // PERIODO ANTERIOR (Para sacar el % de tendencia)
+        else if (diffDias > diasFiltro && diffDias <= diasFiltro * 2) {
+            prevIngresos += ingresoAbsoluto;
+            prevGastos += gastoAbsoluto;
         }
     });
 
     const evolutionArray = Object.keys(mensualidades)
-        .map(key => ({
-            name: key,
-            Ingresos: mensualidades[key].Ingresos,
-            Gastos: mensualidades[key].Gastos,
-            sortKey: mensualidades[key].sortKey
-        }))
+        .map(key => ({ name: key, Ingresos: mensualidades[key].Ingresos, Gastos: mensualidades[key].Gastos, sortKey: mensualidades[key].sortKey }))
         .sort((a, b) => a.sortKey - b.sortKey); 
 
     const gastosArray = Object.keys(categoriasGastos).map(key => ({
-        name: key,
-        value: categoriasGastos[key]
+        name: key, value: categoriasGastos[key]
     })).sort((a, b) => b.value - a.value); 
 
     setChartDataEvolucion(evolutionArray);
@@ -157,28 +161,47 @@ export default function AnalisisAvanzado() {
     
     const beneficio = totalIngresos - totalGastos;
     const margen = totalIngresos > 0 ? (beneficio / totalIngresos) * 100 : 0;
-    
-    setKpis({ ingresos: totalIngresos, gastos: totalGastos, beneficio: beneficio, margen: margen });
+    const prevBeneficio = prevIngresos - prevGastos;
+
+    // Calculo de porcentajes de tendencia
+    const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
+
+    setKpis({ ingresos: totalIngresos, gastos: totalGastos, beneficio, margen });
+    setTrends({ 
+        ingresos: calcTrend(totalIngresos, prevIngresos), 
+        gastos: calcTrend(totalGastos, prevGastos), 
+        beneficio: calcTrend(beneficio, prevBeneficio) 
+    });
+
   }, [allData, filtroTiempo]);
 
-  const generarAuditoria = async () => {
+  // 🚀 GENERADOR DE AUDITORÍA CON SIMULACIONES ESPECÍFICAS
+  const generarAuditoria = async (tipoSimulacion: string) => {
+    setSimulacionActiva(tipoSimulacion);
     if (allData.length === 0) {
       setAiAnalysis("⚠️ **Datos insuficientes.**\n\nNo hay transacciones en este Espacio de Trabajo. Por favor, añade ingresos o gastos en la Consola General para poder generar una auditoría.");
       return;
     }
 
     setIsAnalyzing(true);
-    setAiAnalysis("⏳ **Conectando con el CFO Virtual...**\n\nAnalizando flujos de caja, identificando patrones de gasto y calculando proyecciones basadas en tu sector corporativo. Esto puede tardar unos segundos...");
+    setAiAnalysis(`⏳ **Conectando con el CFO Virtual...**\n\nEjecutando escenario: **${tipoSimulacion}**.\n\nAnalizando flujos de caja y aplicando modelos predictivos. Esto puede tardar unos segundos...`);
 
-    const datosLimpios = allData.map(d => ({
-      fecha: d.name,
-      categoria: d.categoria || 'General',
-      importe: d.total,
-      iva_aplicado: d.iva ? `${d.iva}%` : 'Exento',
-      tipo: d.isRecurrent ? `Recurrente (${d.frecuencia})` : 'Puntual'
-    }));
+    const datosLimpios = allData
+      .filter(d => d.categoria !== 'Presupuestos' && !d.numero_factura?.startsWith('P-'))
+      .map(d => ({
+        fecha: d.name,
+        categoria: d.categoria || 'General',
+        importe: d.total,
+        tipo: d.isRecurrent ? `Recurrente` : 'Puntual'
+      }));
 
-    const contextoEmpresarial = `Sector de la empresa: ${perfilEmpresa.sector || 'General'}. Objetivo Principal de la directiva: ${perfilEmpresa.objetivo || 'Estabilidad financiera'}.`;
+    let promptEspecial = "";
+    if (tipoSimulacion === "Fugas") promptEspecial = "Haz un análisis agresivo buscando gastos innecesarios, fugas de capital y da 3 consejos para recortar costes estructurales.";
+    else if (tipoSimulacion === "Precios") promptEspecial = "Simula qué pasaría con el margen de beneficio si subimos los precios de los ingresos un 10%, asumiendo que perdemos un 5% de volumen de clientes.";
+    else if (tipoSimulacion === "Proyeccion") promptEspecial = "En base al histórico de ingresos y gastos recurrentes, haz una proyección de tesorería (runway) para los próximos 30 y 90 días.";
+    else promptEspecial = "Haz una auditoría financiera general, destacando los puntos fuertes, las debilidades y el estado del margen operativo.";
+
+    const contextoEmpresarial = `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo: ${perfilEmpresa.objetivo || 'Estabilidad'}. INSTRUCCIÓN IA: ${promptEspecial}`;
 
     try {
       const res = await fetch('/api/analyze', {
@@ -194,19 +217,31 @@ export default function AnalisisAvanzado() {
          if (res.ok && json.analysis) {
             setAiAnalysis(json.analysis);
          } else {
-            setAiAnalysis(`❌ **Error devuelto por la IA:**\n\n${json.error || "Fallo desconocido."}\n\n*Haz una captura de este mensaje y pásasela al soporte.*`);
+            setAiAnalysis(`❌ **Error devuelto por la IA:**\n\n${json.error || "Fallo desconocido."}`);
          }
       } catch(parseError) {
-         setAiAnalysis(`❌ **Error de Vercel (Timeout o Caída):**\n\nEl servidor ha tardado más de 10 segundos y ha abortado. \n\nRespuesta técnica:\n\`\`\`\n${textDecoded.substring(0, 150)}...\n\`\`\``);
+         setAiAnalysis(`❌ **Error de Vercel (Timeout):**\n\nEl servidor ha tardado más de 10 segundos. \n\nRespuesta técnica:\n\`\`\`\n${textDecoded.substring(0, 150)}...\n\`\`\``);
       }
       
     } catch (error: any) {
-      setAiAnalysis(`❌ **Error de conexión:** ${error.message}`);
+      setAiAnalysis(`❌ **Error de red:** ${error.message}`);
     } finally {
       setIsAnalyzing(false);
     }
   };
 
+  // UI Helper para las tendencias
+  const renderTrend = (value: number, isGasto: boolean = false) => {
+      if (filtroTiempo === 'all') return null; // No hay tendencia en "histórico"
+      const isPositiveTrend = value >= 0;
+      const isGood = isGasto ? !isPositiveTrend : isPositiveTrend; // Si suben gastos, es malo (rojo)
+      
+      return (
+          <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded-md ${isGood ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+              {isPositiveTrend ? '▲' : '▼'} {Math.abs(value).toFixed(1)}%
+          </span>
+      );
+  };
   if (!isMounted) return null;
   if (planActivo === 'loading' && isSignedIn) {
      return (
@@ -229,6 +264,14 @@ export default function AnalisisAvanzado() {
         </div>
      );
   }
+
+  // SEMÁFORO DE SALUD FINANCIERA
+  const getHealthStatus = (margen: number) => {
+      if (margen >= 20) return { label: 'ÓPTIMO', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' };
+      if (margen >= 5) return { label: 'ESTABLE', color: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-500' };
+      return { label: 'PELIGRO RIESGO', color: 'bg-rose-100 text-rose-700 border-rose-200', dot: 'bg-rose-500' };
+  };
+  const health = getHealthStatus(kpis.margen);
 
   return (
     <>
@@ -269,7 +312,7 @@ export default function AnalisisAvanzado() {
                   Consola General
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-medium shadow-md shadow-blue-600/20" href="/analisis" onClick={() => setIsSidebarOpen(false)}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2h-2a2 2 0 01-2-2z"/></svg>
                   Análisis Avanzado
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/impuestos" onClick={() => setIsSidebarOpen(false)}>
@@ -305,12 +348,12 @@ export default function AnalisisAvanzado() {
           {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
-            <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-10 gap-6">
+            <header className="flex flex-col lg:flex-row lg:justify-between lg:items-start mb-10 gap-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Centro de Inteligencia</h1>
-                <p className="text-sm font-medium text-slate-500 mt-1">Evaluación financiera completa para <span className="font-bold text-blue-600">{empresaId}</span>.</p>
+                <p className="text-sm font-medium text-slate-500 mt-1">Evaluación financiera predictiva para <span className="font-bold text-blue-600">{empresaId}</span>.</p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                  <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
                      {[
                          { id: 'all', label: 'Histórico' },
@@ -328,9 +371,22 @@ export default function AnalisisAvanzado() {
                          </button>
                      ))}
                  </div>
-                 <button onClick={generarAuditoria} disabled={isAnalyzing || planActivo !== 'pro'} className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2">
-                   {isAnalyzing ? "⏳ Procesando en IA..." : "✨ Generar Auditoría Inteligente"}
-                 </button>
+                 
+                 {/* 🚀 BOTONERA DE SIMULACIÓN IA */}
+                 <div className="flex flex-wrap gap-2 justify-end w-full">
+                    <button onClick={() => generarAuditoria('General')} disabled={isAnalyzing || planActivo !== 'pro'} className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-3 py-2 rounded-xl text-[11px] font-bold transition shadow-sm flex items-center gap-1.5">
+                      ✨ Auditoría General
+                    </button>
+                    <button onClick={() => generarAuditoria('Fugas')} disabled={isAnalyzing || planActivo !== 'pro'} className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 border border-rose-200 px-3 py-2 rounded-xl text-[11px] font-bold transition shadow-sm flex items-center gap-1.5">
+                      🩸 Detectar Fugas
+                    </button>
+                    <button onClick={() => generarAuditoria('Precios')} disabled={isAnalyzing || planActivo !== 'pro'} className="bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-xl text-[11px] font-bold transition shadow-sm flex items-center gap-1.5">
+                      📈 Simular +10% Precio
+                    </button>
+                    <button onClick={() => generarAuditoria('Proyeccion')} disabled={isAnalyzing || planActivo !== 'pro'} className="bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-700 border border-blue-200 px-3 py-2 rounded-xl text-[11px] font-bold transition shadow-sm flex items-center gap-1.5">
+                      🔮 Proyección a 30 Días
+                    </button>
+                 </div>
               </div>
             </header>
 
@@ -357,22 +413,39 @@ export default function AnalisisAvanzado() {
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Ingresos</span>
+                      <div className="flex items-center mb-1">
+                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Ingresos</span>
+                         {renderTrend(trends.ingresos, false)}
+                      </div>
                       <span className="text-2xl font-black text-slate-800">{kpis.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
                    </div>
+                   
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Gastos</span>
+                      <div className="flex items-center mb-1">
+                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Gastos</span>
+                         {renderTrend(trends.gastos, true)}
+                      </div>
                       <span className="text-2xl font-black text-rose-500">{kpis.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
                    </div>
+                   
                    <div className={`p-5 rounded-2xl border flex flex-col justify-center ${kpis.beneficio >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
-                      <span className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${kpis.beneficio >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>Beneficio Neto</span>
+                      <div className="flex items-center mb-1">
+                         <span className={`text-[10px] font-bold uppercase tracking-widest ${kpis.beneficio >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>Beneficio Neto</span>
+                         {renderTrend(trends.beneficio, false)}
+                      </div>
                       <span className={`text-2xl font-black tracking-tight ${kpis.beneficio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                          {kpis.beneficio >= 0 ? '+' : ''}{kpis.beneficio.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
                       </span>
                    </div>
-                   <div className="bg-blue-50 p-5 rounded-2xl border border-blue-200 flex flex-col justify-center">
+                   
+                   <div className="bg-blue-50 p-5 rounded-2xl border border-blue-200 flex flex-col justify-between">
                       <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest mb-1">Margen Operativo</span>
-                      <span className="text-2xl font-black text-blue-600">{kpis.margen.toFixed(1)}%</span>
+                      <div className="flex items-center justify-between">
+                         <span className="text-2xl font-black text-blue-600">{kpis.margen.toFixed(1)}%</span>
+                         <span className={`text-[9px] font-black px-2 py-1 rounded border flex items-center gap-1 uppercase tracking-wider ${health.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${health.dot}`}></span> {health.label}
+                         </span>
+                      </div>
                    </div>
                 </div>
 
@@ -488,7 +561,9 @@ export default function AnalisisAvanzado() {
                           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-8 gap-4 border-b border-slate-100 pb-6">
                               <div>
                                   <h2 className="text-xl md:text-2xl font-black text-slate-900">Documento Ejecutivo Confidencial</h2>
-                                  <p className="text-xs font-bold text-blue-600 uppercase mt-2 tracking-wide">MOTOR DE IA | ENGINE TAXGUARDAI</p>
+                                  <p className="text-xs font-bold text-blue-600 uppercase mt-2 tracking-wide">
+                                     MOTOR DE IA | ESCENARIO: {simulacionActiva}
+                                  </p>
                               </div>
                               <span className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-lg border flex items-center gap-2 ${isAnalyzing ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
                                   {isAnalyzing ? <><span className="w-2 h-2 bg-amber-500 rounded-full animate-bounce"></span> PROCESANDO</> : <><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> INFORME LISTO</>}
