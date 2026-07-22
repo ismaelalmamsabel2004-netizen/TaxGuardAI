@@ -752,7 +752,6 @@ export default function Home() {
     link.click();
   };
 
-  // 🚀 LÓGICA DEL NUEVO SOPORTE VIP (INTEGRACIÓN DIRECTA CON GMAIL WEB)
   const abrirGmailWeb = (tipo: string) => {
       const email = "soporte.taxguard@gmail.com";
       const subject = tipo === "ayuda" ? `Asistencia Técnica TaxGuard AI - ${empresaId}` : `Sugerencia de Mejora - TaxGuard AI - ${empresaId}`;
@@ -766,7 +765,6 @@ export default function Home() {
       alert("✅ ¡Correo de soporte (soporte.taxguard@gmail.com) copiado al portapapeles!");
   };
 
-  // 🚀 BIBLIA DE PREGUNTAS FRECUENTES (SUPER EXPANDIDA)
   const faqs = [
       { 
         q: "🚀 ¿Cómo empiezo a usar TaxGuard AI por primera vez?", 
@@ -1588,7 +1586,7 @@ export default function Home() {
 
       </Show>
 
-      {/* RUTA DE ESCAPE PÚBLICA (LANDING PAGE) */}
+      {/* 🚀 RUTA DE ESCAPE PÚBLICA (LANDING PAGE MEJORADA) */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           
@@ -1682,6 +1680,7 @@ export default function Home() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
               
+              {/* TARJETA AUTÓNOMO ACTUALIZADA */}
               <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 hover:border-slate-600 transition flex flex-col relative">
                 <div className="mb-6">
                    <h3 className="text-2xl font-bold text-white mb-2">Plan Autónomo</h3>
@@ -1693,19 +1692,19 @@ export default function Home() {
                 <ul className="space-y-4 mb-8 flex-1">
                    <li className="flex items-start gap-3">
                      <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Escáner OCR Ilimitado con Inteligencia Artificial. Sube tickets y olvídate.</span>
+                     <span className="text-slate-300 text-sm font-medium">Escáner OCR Ilimitado con IA (Sube tickets y olvídate).</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Cálculo Automático del Modelo 303 (IVA). Listo para copiar y pegar en Hacienda.</span>
+                     <span className="text-slate-300 text-sm font-medium">Modelos Trimestrales (303 IVA y 130 IRPF) listos para la AEAT.</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Generador de Facturas en PDF oficiales y personalizadas con tu logo.</span>
+                     <span className="text-slate-300 text-sm font-medium">Creador de Facturas PDF y Presupuestos con tu logo.</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Libro Mayor y Escudo Fiscal (Soporte ante auditorías).</span>
+                     <span className="text-slate-300 text-sm font-medium">Libro Mayor Excel/PDF y 'Escudo 50%' para vehículos.</span>
                    </li>
                 </ul>
                 <SignUpButton mode="modal">
@@ -1715,6 +1714,7 @@ export default function Home() {
                 </SignUpButton>
               </div>
 
+              {/* TARJETA EMPRESA PRO ACTUALIZADA */}
               <div className="bg-slate-900 p-8 rounded-3xl border-2 border-blue-500 shadow-2xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg">
                   MÁS RECOMENDADO
@@ -1733,19 +1733,19 @@ export default function Home() {
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">CFO Virtual 24/7:</strong> Un asistente que responde dudas sobre rentabilidad y estrategias.</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">CFO Virtual y Auditorías IA:</strong> Detección automática de fugas de capital y gastos innecesarios.</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Auditorías Avanzadas:</strong> Reportes ejecutivos generados por IA identificando fugas de capital.</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Modelo 390 Automático:</strong> El resumen anual del IVA consolidado en un clic.</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Gráficos P&L:</strong> Visualiza márgenes operativos y evolución mensual interactiva.</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Simulador de Escenarios:</strong> Proyecciones de tesorería a 30 días y test de subida de precios.</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Soporte Técnico VIP Prioritario.</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Soporte Técnico VIP:</strong> Asistencia prioritaria integrada en la plataforma.</span>
                    </li>
                 </ul>
                 <SignUpButton mode="modal">
@@ -1756,6 +1756,26 @@ export default function Home() {
               </div>
 
             </div>
+            
+            {/* SECCIÓN PREGUNTAS FRECUENTES DE VENTAS */}
+            <div className="mt-32 max-w-3xl mx-auto border-t border-white/5 pt-16">
+               <h3 className="text-2xl font-black text-white text-center mb-10">Dudas antes de empezar</h3>
+               <div className="space-y-6">
+                  <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
+                     <h4 className="text-white font-bold mb-2 text-sm">¿Puedo cambiar del Plan Autónomo al Pro más adelante?</h4>
+                     <p className="text-slate-400 text-sm leading-relaxed">Por supuesto. Puedes hacer el upgrade desde tu panel en cualquier momento. Nuestro sistema calculará automáticamente la diferencia prorrateada (solo pagarás la parte proporcional del mes que queda).</p>
+                  </div>
+                  <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
+                     <h4 className="text-white font-bold mb-2 text-sm">¿Mis datos y facturas están seguros?</h4>
+                     <p className="text-slate-400 text-sm leading-relaxed">Máxima seguridad. TaxGuard AI utiliza bases de datos aisladas y cifradas de extremo a extremo. Nadie, ni siquiera nosotros, puede leer tus reportes financieros confidenciales.</p>
+                  </div>
+                  <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
+                     <h4 className="text-white font-bold mb-2 text-sm">¿El borrador de impuestos me sirve para presentarlo de verdad?</h4>
+                     <p className="text-slate-400 text-sm leading-relaxed">Sí. Nuestros PDFs de los modelos 303, 130 y 390 generan exactamente las mismas casillas numeradas que la Agencia Tributaria. Solo tienes que abrir su Sede Electrónica y copiar los valores en dos minutos.</p>
+                  </div>
+               </div>
+            </div>
+
           </div>
 
           <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
