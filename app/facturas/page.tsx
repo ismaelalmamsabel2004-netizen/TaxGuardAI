@@ -20,17 +20,14 @@ Font.register({
 
 const styles = StyleSheet.create({
   page: { backgroundColor: '#ffffff', padding: 50, fontFamily: 'Roboto' },
-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#2563eb', marginBottom: 40 },
-  headerContainerPresupuesto: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#f59e0b', marginBottom: 40 },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, marginBottom: 40 },
   logoSection: { flexDirection: 'column', maxWidth: '60%' },
   logoImage: { width: 140, height: 60, objectFit: 'contain', marginBottom: 8 },
   logoText: { fontSize: 24, fontWeight: 700, color: '#0f172a', letterSpacing: -0.5, marginBottom: 4 },
   logoSub: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 },
   invoiceInfoBox: { alignItems: 'flex-end' },
-  invoiceBadge: { backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
-  presupuestoBadge: { backgroundColor: '#fffbeb', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
-  invoiceBadgeText: { color: '#2563eb', fontSize: 14, fontWeight: 700, letterSpacing: 1 },
-  presupuestoBadgeText: { color: '#d97706', fontSize: 14, fontWeight: 700, letterSpacing: 1 },
+  invoiceBadge: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
+  invoiceBadgeText: { fontSize: 14, fontWeight: 700, letterSpacing: 1 },
   invoiceDetailsText: { fontSize: 10, color: '#475569', marginBottom: 4 },
   invoiceDetailsBold: { fontWeight: 700, color: '#0f172a' },
   infoGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40 },
@@ -51,8 +48,7 @@ const styles = StyleSheet.create({
   colTotal: { width: '15%', textAlign: 'right' },
   bottomSection: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
   paymentWrapper: { width: '40%' },
-  paymentBox: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#2563eb' },
-  paymentBoxPresupuesto: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#f59e0b' },
+  paymentBox: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3 },
   paymentTitle: { fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 },
   paymentText: { fontSize: 10, color: '#0f172a', fontWeight: 500, marginBottom: 4 },
   totalsWrapper: { width: '55%' },
@@ -62,20 +58,28 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: 11, color: '#0f172a', fontWeight: 500 },
   grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#cbd5e1' },
   grandTotalLabel: { fontSize: 12, color: '#0f172a', fontWeight: 700, textTransform: 'uppercase' },
-  grandTotalValue: { fontSize: 16, color: '#2563eb', fontWeight: 700 },
-  grandTotalValuePresupuesto: { fontSize: 16, color: '#d97706', fontWeight: 700 },
+  grandTotalValue: { fontSize: 16, fontWeight: 700 },
   footer: { position: 'absolute', bottom: 40, left: 50, right: 50, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 15, flexDirection: 'row', justifyContent: 'space-between' },
   footerText: { fontSize: 8, color: '#94a3b8' },
   footerBrand: { fontSize: 8, color: '#3b82f6', fontWeight: 700 }
 });
 
+// 🚀 PDF INTELIGENTE: SE ADAPTA A FACTURAS, PRESUPUESTOS Y RECTIFICATIVAS
 const FacturaPDF = ({ datos }: { datos: any }) => {
   const isPresupuesto = datos.modo === 'presupuesto';
+  const isRectificativa = datos.numeroDocumento && datos.numeroDocumento.startsWith('R-');
+  
+  const docTypeLabel = isPresupuesto ? 'PRESUPUESTO' : (isRectificativa ? 'FACTURA RECTIFICATIVA' : 'FACTURA');
+  const mainColor = isPresupuesto ? '#d97706' : (isRectificativa ? '#e11d48' : '#2563eb');
+  const badgeBg = isPresupuesto ? '#fffbeb' : (isRectificativa ? '#ffe4e6' : '#eff6ff');
+  
+  // Si es rectificativa, los valores deben mostrarse en negativo (o ya vienen en negativo si la base es < 0)
+  const sign = isRectificativa ? -1 : 1;
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <View style={isPresupuesto ? styles.headerContainerPresupuesto : styles.headerContainer}>
+        <View style={[styles.headerContainer, { borderBottomColor: mainColor }]}>
           <View style={styles.logoSection}>
             {datos.logo && (
                <Image src={{ uri: datos.logo, method: 'GET', headers: { 'Cache-Control': 'no-cache' }, body: '' }} style={styles.logoImage} />
@@ -84,9 +88,9 @@ const FacturaPDF = ({ datos }: { datos: any }) => {
             <Text style={styles.logoSub}>{isPresupuesto ? 'Propuesta Comercial' : 'Facturación Electrónica'}</Text>
           </View>
           <View style={styles.invoiceInfoBox}>
-            <View style={isPresupuesto ? styles.presupuestoBadge : styles.invoiceBadge}>
-               <Text style={isPresupuesto ? styles.presupuestoBadgeText : styles.invoiceBadgeText}>
-                  {isPresupuesto ? 'PRESUPUESTO' : 'FACTURA'}
+            <View style={[styles.invoiceBadge, { backgroundColor: badgeBg }]}>
+               <Text style={[styles.invoiceBadgeText, { color: mainColor }]}>
+                  {docTypeLabel}
                </Text>
             </View>
             <Text style={styles.invoiceDetailsText}>Nº Documento: <Text style={styles.invoiceDetailsBold}>{datos.numeroDocumento}</Text></Text>
@@ -119,12 +123,12 @@ const FacturaPDF = ({ datos }: { datos: any }) => {
             <Text style={[styles.tableHeaderCell, styles.colTotal]}>TOTAL</Text>
           </View>
           {datos.lineasFactura.map((linea: any, index: number) => {
-            const importe = Number(linea.cantidad) * Number(linea.precio);
+            const importe = Number(linea.cantidad) * Number(linea.precio) * sign;
             return (
               <View key={linea.id || index} style={styles.tableRow}>
                 <Text style={[styles.tableCell, styles.colCant]}>{linea.cantidad}</Text>
                 <Text style={[styles.tableCell, styles.colConcepto]}>{linea.concepto}</Text>
-                <Text style={[styles.tableCell, styles.colPrecio]}>{Number(linea.precio).toFixed(2)} €</Text>
+                <Text style={[styles.tableCell, styles.colPrecio]}>{(Number(linea.precio) * sign).toFixed(2)} €</Text>
                 <Text style={[styles.tableCell, styles.colBase]}>{importe.toFixed(2)} €</Text>
                 <Text style={[styles.tableCell, styles.colIva]}>{datos.ivaSeleccionado}%</Text>
                 <Text style={[styles.tableCell, styles.colTotal]}>{(importe * (1 + datos.ivaNum/100)).toFixed(2)} €</Text>
@@ -135,7 +139,7 @@ const FacturaPDF = ({ datos }: { datos: any }) => {
 
         <View style={styles.bottomSection}>
            <View style={styles.paymentWrapper}>
-              <View style={isPresupuesto ? styles.paymentBoxPresupuesto : styles.paymentBox}>
+              <View style={[styles.paymentBox, { borderLeftColor: mainColor }]}>
                  <Text style={styles.paymentTitle}>Método de Pago</Text>
                  <Text style={styles.paymentText}>{datos.metodoPago}</Text>
                  {datos.metodoPago === 'Transferencia' && datos.iban && (
@@ -147,23 +151,23 @@ const FacturaPDF = ({ datos }: { datos: any }) => {
              <View style={styles.totalsBox}>
                <View style={styles.totalRow}>
                  <Text style={styles.totalLabel}>Subtotal Operación:</Text>
-                 <Text style={styles.totalValue}>{datos.baseImponible} €</Text>
+                 <Text style={styles.totalValue}>{(Number(datos.baseImponible) * sign).toFixed(2)} €</Text>
                </View>
                <View style={styles.totalRow}>
                  <Text style={styles.totalLabel}>Impuestos (IVA {datos.ivaSeleccionado}%):</Text>
-                 <Text style={styles.totalValue}>{datos.cuotaIva.toFixed(2)} €</Text>
+                 <Text style={styles.totalValue}>{(Number(datos.cuotaIva) * sign).toFixed(2)} €</Text>
                </View>
                
                {datos.cuotaIrpf > 0 && (
                    <View style={styles.totalRow}>
                      <Text style={styles.totalLabel}>Retención IRPF (-{datos.irpfSeleccionado}%):</Text>
-                     <Text style={{...styles.totalValue, color: '#ef4444'}}>-{datos.cuotaIrpf.toFixed(2)} €</Text>
+                     <Text style={{...styles.totalValue, color: '#ef4444'}}>{(Number(datos.cuotaIrpf) * -sign).toFixed(2)} €</Text>
                    </View>
                )}
 
                <View style={styles.grandTotalRow}>
                  <Text style={styles.grandTotalLabel}>{isPresupuesto ? 'Total Estimado' : 'Total a Pagar'}</Text>
-                 <Text style={isPresupuesto ? styles.grandTotalValuePresupuesto : styles.grandTotalValue}>{datos.totalFinal.toFixed(2)} €</Text>
+                 <Text style={[styles.grandTotalValue, { color: mainColor }]}>{(Number(datos.totalFinal) * sign).toFixed(2)} €</Text>
                </View>
              </View>
            </View>
@@ -276,13 +280,11 @@ export default function GeneradorFacturas() {
       }
   }, [empresaId, allSettings]);
 
-  // 🚀 ACTUALIZADO: Filtro para admitir facturas normales (F-) y Rectificativas (R-)
   useEffect(() => {
     if (!empresaId) return;
     obtenerDatosSupabase(empresaId).then(movimientos => {
          const anioActual = fecha.split('-')[0] || new Date().getFullYear().toString();
          
-         // Filtramos los registros que tienen numero_factura guardado
          const facturas = movimientos.filter((m: any) => m.numero_factura);
          setHistorialFacturas(facturas.sort((a,b) => b.id - a.id)); 
 
@@ -437,7 +439,6 @@ export default function GeneradorFacturas() {
     }
   };
 
-  // 🚀 NUEVA FUNCIÓN: GENERAR ABONO / RECTIFICATIVA
   const generarFacturaRectificativa = async (facOriginal: any) => {
       if (facOriginal.numero_factura?.startsWith('R-')) {
           return alert("⚠️ No puedes emitir un abono de una factura que ya es rectificativa.");
@@ -480,6 +481,75 @@ export default function GeneradorFacturas() {
       } finally {
           setIsSaving(false);
       }
+  };
+
+  // 🚀 NUEVA FUNCIÓN: DUPLICAR FACTURA AL FORMULARIO
+  const duplicarFactura = (fac: any) => {
+      setClienteNombre(fac.cliente_nombre || "");
+      setClienteNif(fac.cliente_nif || "");
+      setIvaSeleccionado(fac.iva?.toString() || "21");
+      
+      const clienteCrm = clientesCRM.find(c => c.nombre.toLowerCase() === (fac.cliente_nombre || "").toLowerCase());
+      setClienteDireccion(clienteCrm ? clienteCrm.direccion : "");
+
+      let conceptoStr = fac.concepto_detalle || "Servicios generales";
+      let irpf = "0";
+      const matchIrpf = conceptoStr.match(/\(Retención IRPF: -(\d+)%\)/);
+      if (matchIrpf) {
+          irpf = matchIrpf[1];
+          conceptoStr = conceptoStr.replace(/\s*\(Retención IRPF: -\d+%\)/, '');
+      }
+      setIrpfSeleccionado(irpf);
+
+      setLineasFactura([{
+          id: Date.now(),
+          cantidad: 1,
+          concepto: conceptoStr,
+          precio: Math.abs(Number(fac.total))
+      }]);
+
+      setModoActivo("factura");
+      setFacturaBloqueada(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      alert("♻️ Datos de la factura anterior cargados en el formulario superior. Revisa los datos y pulsa 'Registrar en Libro Mayor' cuando estés listo.");
+  };
+
+  // 🚀 NUEVA FUNCIÓN: RECONSTRUIR DATOS PARA EL PDF DEL HISTORIAL
+  const getDatosPdfHistorico = (fac: any) => {
+      let conceptoStr = fac.concepto_detalle || "Servicios prestados";
+      let irpf = "0";
+      const matchIrpf = conceptoStr.match(/\(Retención IRPF: -(\d+)%\)/);
+      if (matchIrpf) {
+          irpf = matchIrpf[1];
+          conceptoStr = conceptoStr.replace(/\s*\(Retención IRPF: -\d+%\)/, '');
+      }
+      
+      const base = Math.abs(Number(fac.total));
+      const ivaN = Number(fac.iva) || 0;
+      const irpfN = Number(irpf);
+      const cIva = base * (ivaN / 100);
+      const cIrpf = base * (irpfN / 100);
+
+      const clienteCrm = clientesCRM.find(c => c.nombre.toLowerCase() === (fac.cliente_nombre || "").toLowerCase());
+
+      return {
+          modo: 'factura', 
+          miEmpresa: empresaId || "Mi Empresa",
+          numeroDocumento: fac.numero_factura || 'S/N',
+          fecha: fac.name,
+          miNif, miDireccion, logo, metodoPago, iban,
+          clienteNombre: fac.cliente_nombre || "",
+          clienteNif: fac.cliente_nif || "",
+          clienteDireccion: clienteCrm ? clienteCrm.direccion : "",
+          lineasFactura: [{ cantidad: 1, concepto: conceptoStr, precio: base }],
+          baseImponible: base.toFixed(2),
+          ivaSeleccionado: fac.iva?.toString() || "0",
+          ivaNum: ivaN,
+          cuotaIva: cIva,
+          irpfSeleccionado: irpf,
+          cuotaIrpf: cIrpf,
+          totalFinal: base + cIva - cIrpf
+      };
   };
 
   const prepararNuevaFactura = () => {
@@ -984,7 +1054,7 @@ export default function GeneradorFacturas() {
               </div>
             </div>
 
-            {/* TABLA DE HISTORIAL RÁPIDO Y RECTIFICATIVAS */}
+            {/* 🚀 TABLA DE HISTORIAL RÁPIDO CON BOTONES DE DESCARGA Y DUPLICAR */}
             <div className="mt-10 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -1014,7 +1084,6 @@ export default function GeneradorFacturas() {
                        </thead>
                        <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
                           {currentItems.map((fac: any) => {
-                             // 🚀 CONTROL VISUAL DE RECTIFICATIVAS
                              const isRectificativa = fac.numero_factura?.startsWith('R-');
 
                              if (editandoHistorialId === fac.id) {
@@ -1054,21 +1123,44 @@ export default function GeneradorFacturas() {
                                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-emerald-200">Emitida</span>
                                         )}
                                      </td>
-                                     <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                                         <button onClick={() => iniciarEdicionCliente(fac)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-md transition border border-blue-100">
-                                             Editar
-                                         </button>
-                                         
-                                         {/* 🚀 BOTÓN PARA RECTIFICAR FACTURAS NORMALES */}
-                                         {!isRectificativa && (
-                                             <button 
-                                                onClick={() => generarFacturaRectificativa(fac)} 
-                                                className="text-rose-500 hover:text-rose-700 font-bold text-[10px] uppercase tracking-wider bg-rose-50 px-2 py-1.5 rounded-md transition border border-rose-100"
-                                                title="Anular factura y crear Abono"
-                                             >
-                                                Rectificar
+                                     <td className="px-6 py-4 text-right">
+                                         <div className="flex items-center justify-end gap-2">
+                                             {/* 🚀 BOTÓN DESCARGAR PDF HISTÓRICO */}
+                                             {isMounted && (
+                                                 <PDFDownloadLink
+                                                     document={<FacturaPDF datos={getDatosPdfHistorico(fac)} />}
+                                                     fileName={`${fac.numero_factura}_${fac.cliente_nombre || 'Cliente'}.pdf`}
+                                                 >
+                                                     {/* @ts-ignore */}
+                                                     {({ loading }) => (
+                                                         <button disabled={loading} className="text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-md transition border border-slate-200" title="Descargar PDF original">
+                                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                                         </button>
+                                                     )}
+                                                 </PDFDownloadLink>
+                                             )}
+
+                                             {/* 🚀 BOTÓN DUPLICAR */}
+                                             <button onClick={() => duplicarFactura(fac)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-md transition border border-blue-100" title="Copiar datos para nueva factura">
+                                                 Duplicar
                                              </button>
-                                         )}
+
+                                             {/* EDITAR */}
+                                             <button onClick={() => iniciarEdicionCliente(fac)} className="text-slate-500 hover:text-slate-700 font-bold text-[10px] uppercase tracking-wider bg-slate-50 px-2 py-1.5 rounded-md transition border border-slate-200" title="Editar cliente o NIF">
+                                                 Editar
+                                             </button>
+                                             
+                                             {/* 🚀 BOTÓN RECTIFICAR */}
+                                             {!isRectificativa && (
+                                                 <button 
+                                                    onClick={() => generarFacturaRectificativa(fac)} 
+                                                    className="text-rose-500 hover:text-rose-700 font-bold text-[10px] uppercase tracking-wider bg-rose-50 px-2 py-1.5 rounded-md transition border border-rose-100"
+                                                    title="Anular factura y crear Abono"
+                                                 >
+                                                    Rectificar
+                                                 </button>
+                                             )}
+                                         </div>
                                      </td>
                                  </tr>
                              );
