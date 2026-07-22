@@ -6,9 +6,78 @@ import { useUser, UserButton, SignInButton, SignUpButton, Show } from "@clerk/ne
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
+import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 
 // LAS TUBERÍAS DE SUPABASE Y GEMINI
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA } from './actions';
+
+// CONFIGURACIÓN DE FUENTES PARA EL PDF DEL LIBRO MAYOR
+Font.register({
+  family: 'Roboto',
+  fonts: [
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf', fontWeight: 300 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf', fontWeight: 400 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf', fontWeight: 500 },
+    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf', fontWeight: 700 },
+  ]
+});
+
+const pdfStyles = StyleSheet.create({
+  page: { backgroundColor: '#ffffff', padding: 40, fontFamily: 'Roboto' },
+  header: { borderBottomWidth: 2, borderBottomColor: '#2563eb', paddingBottom: 15, marginBottom: 20 },
+  title: { fontSize: 22, fontWeight: 700, color: '#0f172a' },
+  subtitle: { fontSize: 10, color: '#64748b', marginTop: 5 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#f1f5f9', paddingVertical: 8, paddingHorizontal: 5, borderBottomWidth: 1, borderBottomColor: '#cbd5e1', marginTop: 10 },
+  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingVertical: 8, paddingHorizontal: 5, alignItems: 'center' },
+  colFecha: { width: '15%', fontSize: 9, color: '#475569' },
+  colCat: { width: '35%', fontSize: 9, fontWeight: 700, color: '#334155' },
+  colImporte: { width: '25%', fontSize: 9, textAlign: 'right', fontWeight: 700 },
+  colIva: { width: '25%', fontSize: 9, textAlign: 'right', color: '#64748b' },
+  footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
+  footerText: { fontSize: 7, color: '#94a3b8' },
+});
+
+// 🚀 NUEVO: COMPONENTE GENERADOR DE PDF PARA EL LIBRO MAYOR
+const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
+  <Document>
+    <Page size="A4" style={pdfStyles.page}>
+      <View style={pdfStyles.header}>
+        <Text style={pdfStyles.title}>Libro Mayor - {empresaId}</Text>
+        <Text style={pdfStyles.subtitle}>Extracto de operaciones. Filtro aplicado: {filtro}</Text>
+        <Text style={{ fontSize: 8, color: '#94a3b8', marginTop: 4 }}>Fecha de emisión: {new Date().toLocaleDateString('es-ES')}</Text>
+      </View>
+
+      <View style={pdfStyles.tableHeader}>
+        <Text style={pdfStyles.colFecha}>FECHA</Text>
+        <Text style={pdfStyles.colCat}>CATEGORÍA / DOC.</Text>
+        <Text style={pdfStyles.colImporte}>BASE IMPONIBLE</Text>
+        <Text style={pdfStyles.colIva}>IMPUESTOS</Text>
+      </View>
+
+      {datos.map((item: any, i: number) => {
+         const isGasto = Number(item.total) < 0;
+         const importeText = `${isGasto ? '-' : '+'}${Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2})} €`;
+         const colorImporte = isGasto ? '#e11d48' : '#10b981';
+
+         return (
+          <View key={i} style={pdfStyles.tableRow}>
+            <Text style={pdfStyles.colFecha}>{item.name}</Text>
+            <Text style={pdfStyles.colCat}>
+               {item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}
+            </Text>
+            <Text style={[pdfStyles.colImporte, { color: colorImporte }]}>{importeText}</Text>
+            <Text style={pdfStyles.colIva}>{item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}</Text>
+          </View>
+         );
+      })}
+
+      <View style={pdfStyles.footer}>
+        <Text style={pdfStyles.footerText}>Generado mediante TaxGuard AI</Text>
+        <Text style={pdfStyles.footerText}>SaaS Financiero B2B</Text>
+      </View>
+    </Page>
+  </Document>
+);
 
 export default function Home() {
   const router = useRouter(); 
@@ -47,7 +116,6 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
   
-  // 🚀 NUEVO FILTRO PARA LA TABLA DEL LIBRO MAYOR
   const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos">("all");
 
   const [chartFilter, setChartFilter] = useState<string | null>(null);
@@ -68,6 +136,9 @@ export default function Home() {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  // 🚀 ESTADO PARA EL NUEVO MODAL DE SOPORTE VIP
+  const [showSupportModal, setShowSupportModal] = useState(false);
+
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   const [sectorInput, setSectorInput] = useState("");
   const [objetivoInput, setObjetivoInput] = useState("");
@@ -116,7 +187,7 @@ export default function Home() {
 
          setPlanActivo(planDetectado);
 
-         const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
+         const listaEmpresas = ajustesGuardados.empresas || ["Alperez"];
          setEmpresas(listaEmpresas);
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
@@ -267,7 +338,6 @@ export default function Home() {
     return Infinity;
   };
 
-  // 🚀 PASO 1: SEPARACIÓN DE DATOS (EL ESCUDO ANTIMULTIPLICACIONES)
   const datosVisibles = data.filter(item => {
     if (filtro === "all") return true;
     const ahora = new Date().getTime();
@@ -277,7 +347,6 @@ export default function Home() {
     return diffDias <= determinarRangoDias(filtro);
   });
 
-  // 👇 Esta variable elimina los presupuestos de todas las matemáticas y gráficas
   const datosFinancieros = datosVisibles.filter((item: any) => {
      const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
      return !isPresupuesto;
@@ -321,7 +390,6 @@ export default function Home() {
     return new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime() - new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
   });
 
-  // 🚀 PASO 2: FILTRO AVANZADO DE LA TABLA (Muestra/Oculta Presupuestos a voluntad)
   let datosTablaFiltrados = datosTabla.filter(item => {
     if (chartFilter) {
       const [d, m, y] = item.name.split('/');
@@ -342,7 +410,6 @@ export default function Home() {
        if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente) return false;
     }
 
-    // Lógica de pestañas del Libro Mayor
     const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
     const isAbono = item.numero_factura?.startsWith('R-');
     const isIngreso = Number(item.total) > 0 && !isPresupuesto;
@@ -360,7 +427,6 @@ export default function Home() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
-  // Todo esto ahora usa datosFinancieros (sin presupuestos)
   const gastosPorCategoria = datosFinancieros
     .filter(d => Number(d.total) < 0)
     .reduce((acc: {name: string, value: number}[], curr: any) => {
@@ -622,7 +688,6 @@ export default function Home() {
     setCurrentMessage("");
     setIsChatLoading(true);
 
-    // Mandamos al chat SOLO los datos financieros (sin presupuestos) para que no se líe
     const datosContexto = datosFinancieros.map(d => ({ 
       fecha: d.name, 
       categoria: d.categoria, 
@@ -657,11 +722,9 @@ export default function Home() {
     }
   };
 
-  // 🚀 CSV INTELIGENTE: Descarga exactamente lo que estás viendo en la tabla (aplica el filtroDoc)
   const exportarAExcel = () => {
     if (datosTablaFiltrados.length === 0) return alert("No hay datos para exportar.");
     
-    // BOM para que Excel reconozca tildes en UTF-8 y separación por punto y coma (;)
     let csvContent = "\uFEFFFecha;Nº Documento;Categoría;Recurrencia;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
     
     datosTablaFiltrados.forEach(row => {
@@ -720,7 +783,7 @@ export default function Home() {
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
@@ -791,6 +854,14 @@ export default function Home() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Facturación PDF
                 </Link>
+                
+                {/* 🚀 NUEVO BOTÓN DE SOPORTE VIP */}
+                <div className="pt-4 mt-4 border-t border-slate-800">
+                    <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
+                      <span className="text-lg group-hover:scale-110 transition-transform">🎧</span>
+                      Soporte VIP
+                    </button>
+                </div>
               </nav>
             </div>
             
@@ -996,7 +1067,6 @@ export default function Home() {
                       <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
                     
-                    {/* 🚀 NUEVA CASILLA PARA VEHÍCULOS (SOLO APARECE SI ES GASTO) */}
                     {tipoTransaccion === 'gasto' && (
                         <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl">
                             <input 
@@ -1074,7 +1144,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 🚀 TABLA DE LIBRO MAYOR CON FILTROS AVANZADOS */}
+            {/* 🚀 TABLA DE LIBRO MAYOR CON BOTÓN PDF */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
               <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
                 <div className="flex items-center gap-3">
@@ -1090,13 +1160,28 @@ export default function Home() {
                       onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
                       className="w-full sm:flex-1 sm:w-64 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
                    />
-                   <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
-                      ↓ CSV
-                   </button>
+                   <div className="flex gap-2 w-full sm:w-auto">
+                       <button onClick={exportarAExcel} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2. rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
+                          ↓ CSV
+                       </button>
+                       {/* 🚀 BOTÓN PARA EXPORTAR EL LIBRO MAYOR A PDF */}
+                       {isMounted && (
+                           <PDFDownloadLink 
+                               document={<LibroMayorPDF datos={datosTablaFiltrados} empresaId={empresaId} filtro={etiquetasFiltro[filtro] || 'Todas las Fechas'} />} 
+                               fileName={`LibroMayor_${empresaId.replace(/\s+/g, '')}_${filtroDoc}.pdf`}
+                           >
+                               {/* @ts-ignore */}
+                               {({ loading }) => (
+                                   <button disabled={loading} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 border border-blue-200 shadow-sm transition whitespace-nowrap disabled:opacity-50">
+                                       {loading ? '⏳...' : '📄 PDF'}
+                                   </button>
+                               )}
+                           </PDFDownloadLink>
+                       )}
+                   </div>
                 </div>
               </div>
               
-              {/* PESTAÑAS DE FILTRADO (El Escudo Antimultiplicaciones visual) */}
               <div className="px-4 md:px-6 pt-4 pb-2 bg-slate-50/50 border-b border-slate-100">
                   <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                      <button onClick={() => {setFiltroDoc('all'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas las Op.</button>
@@ -1211,7 +1296,6 @@ export default function Home() {
                 </table>
               </div>
               
-              {/* PAGINACIÓN */}
               {totalPages > 1 && (
                 <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
                    <button 
@@ -1238,7 +1322,6 @@ export default function Home() {
             <div className="h-24 md:h-10"></div>
           </main>
         </div>
-
         <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end" translate="no">
           {isChatOpen && (
             <div className="mb-4 w-[calc(100vw-3rem)] max-w-sm h-[400px] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-fade-in-up">
@@ -1300,6 +1383,7 @@ export default function Home() {
           </button>
         </div>
 
+        {/* 🚀 MODAL DE CONFIGURACIÓN DE ESPACIO */}
         {showConfig && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
@@ -1368,6 +1452,58 @@ export default function Home() {
              </div>
           </div>
         )}
+
+        {/* 🚀 NUEVO MODAL DE SOPORTE VIP */}
+        {showSupportModal && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">🎧 Centro de Soporte VIP</h3>
+                  <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-rose-500 transition">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                
+                <div className="p-6 space-y-6 overflow-y-auto">
+                   
+                   {/* BOTONES RÁPIDOS DE CORREO */}
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                       <a href={`mailto:soporte.taxguard@gmail.com?subject=Asistencia Técnica TaxGuard AI - ${empresaId}`} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left">
+                           <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">📨</span>
+                           <h4 className="text-sm font-black text-blue-900 mb-1">Contactar a Soporte</h4>
+                           <p className="text-xs text-blue-700 font-medium">Resolvemos tus dudas fiscales o técnicas en menos de 24h laborables.</p>
+                       </a>
+                       <a href={`mailto:soporte.taxguard@gmail.com?subject=Sugerencia de Mejora - TaxGuard AI - ${empresaId}`} className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl hover:bg-emerald-100 transition group flex flex-col items-start text-left">
+                           <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">💡</span>
+                           <h4 className="text-sm font-black text-emerald-900 mb-1">Buzón de Sugerencias</h4>
+                           <p className="text-xs text-emerald-700 font-medium">¿Echas en falta alguna función? Escríbenos y nuestro equipo la evaluará.</p>
+                       </a>
+                   </div>
+
+                   {/* MINI FAQ INCORPORADO */}
+                   <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl">
+                      <h4 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2">📚 Preguntas Frecuentes Rápidas</h4>
+                      <div className="space-y-4">
+                         <div>
+                            <p className="text-xs font-bold text-slate-700">¿Cómo elimino un presupuesto?</p>
+                            <p className="text-[11px] text-slate-500 mt-1">Ve al Libro Mayor Integrado, selecciona la pestaña "Presupuestos (Ocultos)" y pulsa el icono de la papelera en la fila que quieras borrar.</p>
+                         </div>
+                         <div>
+                            <p className="text-xs font-bold text-slate-700">¿Cómo funciona el escudo de vehículos?</p>
+                            <p className="text-[11px] text-slate-500 mt-1">Al registrar un gasto marcando la casilla "Gasto Vehículo", el sistema solo aplicará el 50% del IVA introducido como deducible en tus modelos AEAT, tal y como exige la normativa.</p>
+                         </div>
+                         <div>
+                            <p className="text-xs font-bold text-slate-700">¿Qué hago con los Modelos de Hacienda generados?</p>
+                            <p className="text-[11px] text-slate-500 mt-1">Nuestros PDF son una guía oficial exacta. Debes abrir la Sede Electrónica de la AEAT en otra pestaña y copiar el valor de cada casilla [XX] del PDF a su casilla correspondiente en la web.</p>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+
+             </div>
+          </div>
+        )}
+
       </Show>
 
       {/* RUTA DE ESCAPE PÚBLICA (LANDING PAGE) */}
