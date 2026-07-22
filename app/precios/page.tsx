@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { SignInButton, useUser } from "@clerk/nextjs";
+// IMPORTAMOS LOS CONTROLES COMPLETOS DE CLERK
+import { SignInButton, useUser, UserButton, SignOutButton } from "@clerk/nextjs";
 
 export default function Precios() {
   const [loading, setLoading] = useState<string | null>(null);
@@ -41,14 +42,24 @@ export default function Precios() {
             <span className="text-2xl font-black tracking-tight text-white">TaxGuard<span className="text-blue-500">AI</span></span>
           </Link>
           
-          <div className="flex items-center">
+          <div className="flex items-center gap-4">
             {isSignedIn ? (
-              <Link href="/" className="text-slate-400 hover:text-white text-sm font-bold transition px-4 py-2 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10">
-                Ir a mi Consola
-              </Link>
+              <>
+                <SignOutButton>
+                  <button className="text-slate-400 hover:text-white text-xs sm:text-sm font-bold transition hidden sm:block">
+                    Cerrar Sesión y Volver al Inicio
+                  </button>
+                </SignOutButton>
+                <Link href="/" className="text-slate-400 hover:text-white text-xs sm:text-sm font-bold transition px-3 sm:px-4 py-2 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10">
+                  Ir a mi Consola
+                </Link>
+                <div className="bg-slate-800 p-1 rounded-full border border-slate-700 flex items-center justify-center">
+                   <UserButton />
+                </div>
+              </>
             ) : (
               <SignInButton mode="modal">
-                <button className="text-slate-300 hover:text-white text-sm font-bold transition px-5 py-2.5 bg-blue-600/20 rounded-lg border border-blue-500/30 hover:bg-blue-600/40 shadow-lg shadow-blue-900/20 cursor-pointer">
+                <button className="text-slate-300 hover:text-white text-xs sm:text-sm font-bold transition px-4 sm:px-5 py-2.5 bg-blue-600/20 rounded-lg border border-blue-500/30 hover:bg-blue-600/40 shadow-lg shadow-blue-900/20 cursor-pointer">
                   Acceder / Crear Cuenta
                 </button>
               </SignInButton>
@@ -73,7 +84,6 @@ export default function Precios() {
         
         <div className="flex flex-col md:flex-row gap-8 w-full items-center md:items-stretch justify-center">
           
-          {/* TARJETA AUTÓNOMO */}
           <div className="bg-slate-900/40 p-8 rounded-3xl shadow-xl border border-slate-800 flex-1 flex flex-col w-full max-w-md backdrop-blur-sm hover:border-slate-700 transition">
             <h2 className="text-2xl font-bold text-white">Plan Autónomo</h2>
             <p className="text-slate-400 text-sm mt-2">Para profesionales independientes.</p>
@@ -85,19 +95,19 @@ export default function Precios() {
             <ul className="space-y-4 mb-8 flex-1">
                <li className="flex items-start gap-3">
                  <span className="text-emerald-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium">Escáner OCR de facturas ilimitado.</span>
+                 <span className="text-slate-300 text-sm font-medium">Escáner OCR Ilimitado con IA (Sube tickets y olvídate).</span>
                </li>
                <li className="flex items-start gap-3">
                  <span className="text-emerald-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium">Creador de Presupuestos y Facturas en PDF.</span>
+                 <span className="text-slate-300 text-sm font-medium">Modelos Trimestrales (303 IVA y 130 IRPF) listos para la AEAT.</span>
                </li>
                <li className="flex items-start gap-3">
                  <span className="text-emerald-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium">Modelos AEAT Automatizados (303, 130).</span>
+                 <span className="text-slate-300 text-sm font-medium">Creador de Facturas PDF y Presupuestos con tu logo.</span>
                </li>
                <li className="flex items-start gap-3">
                  <span className="text-emerald-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium">Libro Mayor y Escudo Fiscal.</span>
+                 <span className="text-slate-300 text-sm font-medium">Libro Mayor Excel/PDF y 'Escudo 50%' para vehículos.</span>
                </li>
             </ul>
             
@@ -110,7 +120,6 @@ export default function Precios() {
             </button>
           </div>
 
-          {/* TARJETA PRO (RECOMENDADO) */}
           <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl border-2 border-blue-500 flex-1 flex flex-col relative transform md:-translate-y-4 w-full max-w-md">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-5 py-2 rounded-full tracking-widest shadow-lg shadow-blue-500/30">
               MÁS RECOMENDADO
@@ -129,19 +138,19 @@ export default function Precios() {
                </li>
                <li className="flex items-start gap-3">
                  <span className="text-blue-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Motor IA (CFO Virtual):</strong> Asistente avanzado 24/7 para consultas de rentabilidad.</span>
+                 <span className="text-slate-300 text-sm font-medium"><strong className="text-white">CFO Virtual y Auditorías IA:</strong> Detección automática de fugas de capital y gastos innecesarios.</span>
                </li>
                <li className="flex items-start gap-3">
                  <span className="text-blue-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Auditorías Automáticas:</strong> Reportes ejecutivos buscando fugas de capital y optimización.</span>
+                 <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Modelo 390 Automático:</strong> El resumen anual del IVA consolidado en un clic.</span>
                </li>
                <li className="flex items-start gap-3">
                  <span className="text-blue-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Modelo 390 (Anual):</strong> Consolidación del ejercicio completo para Hacienda.</span>
+                 <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Simulador de Escenarios:</strong> Proyecciones de tesorería a 30 días y test de subida de precios.</span>
                </li>
                <li className="flex items-start gap-3">
                  <span className="text-blue-400 mt-0.5">✓</span>
-                 <span className="text-slate-300 text-sm font-medium">Soporte Técnico VIP y Buzón de sugerencias.</span>
+                 <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Soporte Técnico VIP:</strong> Asistencia prioritaria integrada en la plataforma.</span>
                </li>
             </ul>
             
@@ -156,21 +165,20 @@ export default function Precios() {
           </div>
         </div>
 
-        {/* SECCIÓN PREGUNTAS FRECUENTES DE VENTAS */}
         <div className="mt-32 max-w-3xl mx-auto border-t border-white/5 pt-16">
-           <h3 className="text-2xl font-black text-white text-center mb-10">Dudas antes de comprar</h3>
+           <h3 className="text-2xl font-black text-white text-center mb-10">Dudas antes de empezar</h3>
            <div className="space-y-6">
               <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
                  <h4 className="text-white font-bold mb-2 text-sm">¿Puedo cambiar del Plan Autónomo al Pro más adelante?</h4>
-                 <p className="text-slate-400 text-sm leading-relaxed">Por supuesto. Puedes hacer el upgrade desde tu panel en cualquier momento. Stripe calculará automáticamente la diferencia prorrateada (solo pagarás la parte proporcional del mes que queda).</p>
+                 <p className="text-slate-400 text-sm leading-relaxed">Por supuesto. Puedes hacer el upgrade desde tu panel en cualquier momento. Nuestro sistema calculará automáticamente la diferencia prorrateada (solo pagarás la parte proporcional del mes que queda).</p>
               </div>
               <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
                  <h4 className="text-white font-bold mb-2 text-sm">¿Mis datos y facturas están seguros?</h4>
-                 <p className="text-slate-400 text-sm leading-relaxed">Máxima seguridad. TaxGuard AI utiliza bases de datos aisladas en la infraestructura de Supabase, cifradas de extremo a extremo. Nadie, ni siquiera nosotros, puede leer tus reportes confidenciales.</p>
+                 <p className="text-slate-400 text-sm leading-relaxed">Máxima seguridad. TaxGuard AI utiliza bases de datos aisladas y cifradas de extremo a extremo. Nadie, ni siquiera nosotros, puede leer tus reportes financieros confidenciales.</p>
               </div>
               <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
                  <h4 className="text-white font-bold mb-2 text-sm">¿El borrador de impuestos me sirve para presentarlo de verdad?</h4>
-                 <p className="text-slate-400 text-sm leading-relaxed">Sí. Nuestros PDFs de los modelos 303, 130 y 390 generan exactamente las mismas casillas numeradas que la Agencia Tributaria. Solo tienes que abrir la Sede Electrónica y copiar los valores en dos minutos.</p>
+                 <p className="text-slate-400 text-sm leading-relaxed">Sí. Nuestros PDFs de los modelos 303, 130 y 390 generan exactamente las mismas casillas numeradas que la Agencia Tributaria. Solo tienes que abrir su Sede Electrónica y copiar los valores en dos minutos.</p>
               </div>
            </div>
         </div>
