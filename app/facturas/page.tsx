@@ -192,7 +192,6 @@ export default function GeneradorFacturas() {
   const [empresaId, setEmpresaId] = useState("");
   const [empresas, setEmpresas] = useState<string[]>([]);
   
-  // 🚀 NUEVO: CONTROL DE PESTAÑAS
   const [modoActivo, setModoActivo] = useState<"factura" | "presupuesto">("factura");
   
   const [numeroFactura, setNumeroFactura] = useState(`F-${new Date().getFullYear()}-001`);
@@ -277,21 +276,23 @@ export default function GeneradorFacturas() {
       }
   }, [empresaId, allSettings]);
 
+  // 🚀 ACTUALIZADO: Filtro para admitir facturas normales (F-) y Rectificativas (R-)
   useEffect(() => {
     if (!empresaId) return;
     obtenerDatosSupabase(empresaId).then(movimientos => {
          const anioActual = fecha.split('-')[0] || new Date().getFullYear().toString();
-         const ventas = movimientos.filter((m: any) => m.categoria === "Ventas" && Number(m.total) > 0);
-         setHistorialFacturas(ventas); 
+         
+         // Filtramos los registros que tienen numero_factura guardado
+         const facturas = movimientos.filter((m: any) => m.numero_factura);
+         setHistorialFacturas(facturas.sort((a,b) => b.id - a.id)); 
 
          if (!facturaBloqueada) {
-            const ventasDelAnio = ventas.filter((m: any) => {
+            const facturasFDelAnio = facturas.filter((m: any) => {
                const [, , y] = m.name.split('/');
-               return y === anioActual;
+               return y === anioActual && m.numero_factura?.startsWith('F-');
             });
-            const siguienteNumero = ventasDelAnio.length + 1;
+            const siguienteNumero = facturasFDelAnio.length + 1;
             setNumeroFactura(`F-${anioActual}-${String(siguienteNumero).padStart(3, '0')}`);
-            // Inventamos un número correlativo simple para presupuestos (en uso real se guardaría en DB)
             setNumeroPresupuesto(`P-${anioActual}-${String(Math.floor(Math.random() * 100) + 1).padStart(3, '0')}`);
          }
     });
@@ -369,13 +370,10 @@ export default function GeneradorFacturas() {
   const baseNum = lineasFactura.reduce((acc, line) => acc + (Number(line.cantidad) * Number(line.precio)), 0);
   const ivaNum = Number(ivaSeleccionado) || 0;
   const cuotaIva = baseNum * (ivaNum / 100);
-  
   const irpfNum = Number(irpfSeleccionado) || 0;
   const cuotaIrpf = baseNum * (irpfNum / 100);
-  
   const totalFinal = baseNum + cuotaIva - cuotaIrpf;
 
-  // 🚀 ACTUALIZADO: Pasamos el MODO al PDF y el Número correcto
   const datosPDF = {
     modo: modoActivo,
     miEmpresa: empresaId || "Mi Empresa", 
@@ -439,13 +437,57 @@ export default function GeneradorFacturas() {
     }
   };
 
+  // 🚀 NUEVA FUNCIÓN: GENERAR ABONO / RECTIFICATIVA
+  const generarFacturaRectificativa = async (facOriginal: any) => {
+      if (facOriginal.numero_factura?.startsWith('R-')) {
+          return alert("⚠️ No puedes emitir un abono de una factura que ya es rectificativa.");
+      }
+
+      const confirmar = window.confirm(`⚠️ Vas a emitir una Factura Rectificativa (Abono) para la factura ${facOriginal.numero_factura || 'S/N'}.\n\nEsto anulará su importe en el Libro Mayor creando un registro en negativo. ¿Deseas continuar?`);
+      if (!confirmar) return;
+
+      setIsSaving(true);
+      try {
+          const anioActual = new Date().getFullYear().toString();
+          const rectificativasDelAnio = historialFacturas.filter(f => f.numero_factura?.startsWith(`R-${anioActual}`));
+          const siguienteNumeroR = rectificativasDelAnio.length + 1;
+          const numeroRectificativa = `R-${anioActual}-${String(siguienteNumeroR).padStart(3, '0')}`;
+
+          const fechaFormateada = new Date().toLocaleDateString('es-ES'); 
+          const importeNegativo = -Math.abs(Number(facOriginal.total));
+
+          const res = await guardarDatoSupabase({
+              month: fechaFormateada,
+              total: importeNegativo,
+              empresaId: empresaId,
+              categoria: "Ventas", 
+              isRecurrent: false,
+              iva: facOriginal.iva || "21",
+              numero_factura: numeroRectificativa,
+              cliente_nombre: facOriginal.cliente_nombre,
+              cliente_nif: facOriginal.cliente_nif,
+              concepto_detalle: `Anulación/Abono de factura ${facOriginal.numero_factura || 'S/N'}`
+          });
+
+          if (res.success) {
+              alert(`✅ Factura Rectificativa ${numeroRectificativa} generada y registrada con éxito en el Libro Mayor.`);
+              setRefreshTrigger(prev => prev + 1);
+          } else {
+              alert("⚠️ Error al generar la factura rectificativa.");
+          }
+      } catch (e) {
+          alert("⚠️ Error de conexión.");
+      } finally {
+          setIsSaving(false);
+      }
+  };
+
   const prepararNuevaFactura = () => {
      setClienteNombre(""); setClienteNif(""); setClienteDireccion(""); 
      setLineasFactura([{ id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
      setFacturaBloqueada(false); 
   };
 
-  // 🚀 MAGIA: CONVERTIR PRESUPUESTO A FACTURA
   const convertirPresupuestoAFactura = () => {
       setModoActivo("factura");
       alert("🪄 ¡Presupuesto convertido a Factura! Revisa los datos y pulsa 'Registrar en Libro Mayor' para oficializarla.");
@@ -586,7 +628,7 @@ export default function GeneradorFacturas() {
                   Consola General
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis" onClick={() => setIsSidebarOpen(false)}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2h-2a2 2 0 01-2-2z"/></svg>
                   Análisis Avanzado
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/impuestos" onClick={() => setIsSidebarOpen(false)}>
@@ -942,7 +984,7 @@ export default function GeneradorFacturas() {
               </div>
             </div>
 
-            {/* TABLA DE HISTORIAL RÁPIDO */}
+            {/* TABLA DE HISTORIAL RÁPIDO Y RECTIFICATIVAS */}
             <div className="mt-10 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -965,17 +1007,20 @@ export default function GeneradorFacturas() {
                              <th className="px-6 py-4">Nº Factura</th>
                              <th className="px-6 py-4">Fecha</th>
                              <th className="px-6 py-4">Cliente / NIF</th>
-                             <th className="px-6 py-4">Base Imponible</th>
+                             <th className="px-6 py-4">Total</th>
                              <th className="px-6 py-4">Estado</th>
-                             <th className="px-6 py-4 text-right">Acción</th>
+                             <th className="px-6 py-4 text-right">Acciones</th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
                           {currentItems.map((fac: any) => {
+                             // 🚀 CONTROL VISUAL DE RECTIFICATIVAS
+                             const isRectificativa = fac.numero_factura?.startsWith('R-');
+
                              if (editandoHistorialId === fac.id) {
                                  return (
                                      <tr key={fac.id} className="bg-blue-50/30">
-                                         <td className="px-6 py-3 font-bold text-slate-900">{fac.numero_factura || 'S/N'}</td>
+                                         <td className={`px-6 py-3 font-bold ${isRectificativa ? 'text-rose-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
                                          <td className="px-6 py-3">{fac.name}</td>
                                          <td className="px-6 py-3 space-y-1">
                                              <input type="text" value={editClientData.nombre} onChange={(e) => setEditClientData({...editClientData, nombre: e.target.value})} placeholder="Nombre Cliente" className="w-full p-1 border border-blue-300 rounded text-xs outline-none block" />
@@ -993,20 +1038,37 @@ export default function GeneradorFacturas() {
 
                              return (
                                  <tr key={fac.id} className="hover:bg-slate-50/80 transition">
-                                     <td className="px-6 py-4 font-bold text-slate-900">{fac.numero_factura || 'S/N'}</td>
+                                     <td className={`px-6 py-4 font-bold ${isRectificativa ? 'text-rose-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
                                      <td className="px-6 py-4 text-slate-500">{fac.name}</td>
                                      <td className="px-6 py-4">
                                         <div className="font-bold text-slate-800">{fac.cliente_nombre || 'Sin asignar'}</div>
                                         <div className="text-[10px] text-slate-400">NIF: {fac.cliente_nif || '-'}</div>
                                      </td>
-                                     <td className="px-6 py-4 font-black text-emerald-600">+{Number(fac.total).toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
-                                     <td className="px-6 py-4">
-                                        <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-emerald-200">Emitida</span>
+                                     <td className={`px-6 py-4 font-black ${Number(fac.total) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {Number(fac.total) > 0 ? '+' : ''}{Number(fac.total).toLocaleString('es-ES', {minimumFractionDigits: 2})} €
                                      </td>
-                                     <td className="px-6 py-4 text-right">
-                                         <button onClick={() => iniciarEdicionCliente(fac)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-3 py-1.5 rounded-md transition border border-blue-100">
-                                             Editar Cliente
+                                     <td className="px-6 py-4">
+                                        {isRectificativa ? (
+                                           <span className="bg-rose-100 text-rose-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-rose-200">Abono</span>
+                                        ) : (
+                                           <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-emerald-200">Emitida</span>
+                                        )}
+                                     </td>
+                                     <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                         <button onClick={() => iniciarEdicionCliente(fac)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-md transition border border-blue-100">
+                                             Editar
                                          </button>
+                                         
+                                         {/* 🚀 BOTÓN PARA RECTIFICAR FACTURAS NORMALES */}
+                                         {!isRectificativa && (
+                                             <button 
+                                                onClick={() => generarFacturaRectificativa(fac)} 
+                                                className="text-rose-500 hover:text-rose-700 font-bold text-[10px] uppercase tracking-wider bg-rose-50 px-2 py-1.5 rounded-md transition border border-rose-100"
+                                                title="Anular factura y crear Abono"
+                                             >
+                                                Rectificar
+                                             </button>
+                                         )}
                                      </td>
                                  </tr>
                              );
