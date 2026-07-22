@@ -41,11 +41,14 @@ export default function Home() {
   const [frecuencia, setFrecuencia] = useState("Mensual");
   const [ivaSeleccionado, setIvaSeleccionado] = useState("21");
 
-  // 🚀 NUEVA VARIABLE: ESCUDO PARA VEHÍCULOS
+  // ESCUDO PARA VEHÍCULOS
   const [isVehiculo, setIsVehiculo] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
+  
+  // 🚀 NUEVO FILTRO PARA LA TABLA DEL LIBRO MAYOR
+  const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos">("all");
 
   const [chartFilter, setChartFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -89,9 +92,7 @@ export default function Home() {
   const syncSettingsToCloud = async (ajustes: any) => {
     try {
       await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ajustes)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ajustes)
       });
     } catch (error) {
       console.error("Error sincronizando ajustes en la nube", error);
@@ -104,7 +105,6 @@ export default function Home() {
 
   useEffect(() => { 
     setIsMounted(true); 
-    
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
@@ -112,11 +112,7 @@ export default function Home() {
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
-         
-         if (planDetectado === 'free') {
-            router.push('/precios');
-            return; 
-         }
+         if (planDetectado === 'free') { router.push('/precios'); return; }
 
          setPlanActivo(planDetectado);
 
@@ -137,7 +133,6 @@ export default function Home() {
 
   useEffect(() => {
     setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
-    // Resetear el checkbox de vehículo si cambiamos a ingreso
     if (tipoTransaccion === 'ingreso') setIsVehiculo(false);
   }, [tipoTransaccion, categoriasIngreso, categoriasGasto]);
 
@@ -272,6 +267,7 @@ export default function Home() {
     return Infinity;
   };
 
+  // 🚀 PASO 1: SEPARACIÓN DE DATOS (EL ESCUDO ANTIMULTIPLICACIONES)
   const datosVisibles = data.filter(item => {
     if (filtro === "all") return true;
     const ahora = new Date().getTime();
@@ -281,7 +277,13 @@ export default function Home() {
     return diffDias <= determinarRangoDias(filtro);
   });
 
-  const datosCronologicos = [...datosVisibles].sort((a, b) => {
+  // 👇 Esta variable elimina los presupuestos de todas las matemáticas y gráficas
+  const datosFinancieros = datosVisibles.filter((item: any) => {
+     const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
+     return !isPresupuesto;
+  });
+
+  const datosCronologicos = [...datosFinancieros].sort((a, b) => {
     const pA = a.name.split('/');
     const pB = b.name.split('/');
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
@@ -319,6 +321,7 @@ export default function Home() {
     return new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime() - new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
   });
 
+  // 🚀 PASO 2: FILTRO AVANZADO DE LA TABLA (Muestra/Oculta Presupuestos a voluntad)
   let datosTablaFiltrados = datosTabla.filter(item => {
     if (chartFilter) {
       const [d, m, y] = item.name.split('/');
@@ -334,8 +337,22 @@ export default function Home() {
        const searchLower = searchTerm.toLowerCase();
        const coincideCategoria = item.categoria?.toLowerCase().includes(searchLower);
        const coincideMonto = Math.abs(item.total).toString().includes(searchLower);
-       if (!coincideCategoria && !coincideMonto) return false;
+       const coincideFactura = item.numero_factura?.toLowerCase().includes(searchLower);
+       const coincideCliente = item.cliente_nombre?.toLowerCase().includes(searchLower);
+       if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente) return false;
     }
+
+    // Lógica de pestañas del Libro Mayor
+    const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
+    const isAbono = item.numero_factura?.startsWith('R-');
+    const isIngreso = Number(item.total) > 0 && !isPresupuesto;
+    const isGasto = Number(item.total) < 0 && !isAbono && !isPresupuesto;
+
+    if (filtroDoc === 'ingresos' && !isIngreso) return false;
+    if (filtroDoc === 'gastos' && !isGasto) return false;
+    if (filtroDoc === 'presupuestos' && !isPresupuesto) return false;
+    if (filtroDoc === 'abonos' && !isAbono) return false;
+
     return true;
   });
 
@@ -343,7 +360,8 @@ export default function Home() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
-  const gastosPorCategoria = datosVisibles
+  // Todo esto ahora usa datosFinancieros (sin presupuestos)
+  const gastosPorCategoria = datosFinancieros
     .filter(d => Number(d.total) < 0)
     .reduce((acc: {name: string, value: number}[], curr: any) => {
       const cat = curr.categoria || 'General';
@@ -354,18 +372,18 @@ export default function Home() {
     }, [])
     .sort((a, b) => b.value - a.value);
 
-  const ingresosTotales = datosVisibles.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + Number(item.total), 0);
-  const gastosTotales = datosVisibles.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + Math.abs(Number(item.total)), 0);
+  const ingresosTotales = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + Number(item.total), 0);
+  const gastosTotales = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + Math.abs(Number(item.total)), 0);
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
-  const ivaRepercutido = datosVisibles.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Number(item.total) * ((Number(item.iva) || 0) / 100)), 0);
-  const ivaSoportado = datosVisibles.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
+  const ivaRepercutido = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Number(item.total) * ((Number(item.iva) || 0) / 100)), 0);
+  const ivaSoportado = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const liquidacionIva = ivaRepercutido - ivaSoportado;
 
   const generarAlertas = () => {
     const alertas: { tipo: string, titulo: string, texto: string }[] = [];
-    if (datosVisibles.length === 0) return alertas;
+    if (datosFinancieros.length === 0) return alertas;
 
     if (beneficioNeto < 0) {
       alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €. Riesgo de liquidez.` });
@@ -504,14 +522,12 @@ export default function Home() {
          return;
       }
 
-      // 🚀 MAGIA DEL VEHÍCULO: Si es gasto y está marcado, dividimos el IVA introducido entre 2
       let ivaFinal = ivaSeleccionado;
       if (tipoTransaccion === 'gasto' && isVehiculo) {
          ivaFinal = (Number(ivaSeleccionado) / 2).toString();
       }
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
-      // Añadimos una marca al detalle si se aplicó el escudo del 50%
       const detalleAdicional = (tipoTransaccion === 'gasto' && isVehiculo) ? " (Gasto Vehículo: IVA 50% deducible)" : "";
       
       const res = await guardarDatoSupabase({ 
@@ -530,7 +546,7 @@ export default function Home() {
         setData(actualizadosBD);
         setIngreso('');
         setIsRecurrent(false);
-        setIsVehiculo(false); // Reiniciamos el escudo
+        setIsVehiculo(false);
         setFrecuencia('Mensual');
         setIvaSeleccionado("21"); 
       } else {
@@ -606,7 +622,8 @@ export default function Home() {
     setCurrentMessage("");
     setIsChatLoading(true);
 
-    const datosContexto = datosVisibles.map(d => ({ 
+    // Mandamos al chat SOLO los datos financieros (sin presupuestos) para que no se líe
+    const datosContexto = datosFinancieros.map(d => ({ 
       fecha: d.name, 
       categoria: d.categoria, 
       importe: d.total, 
@@ -640,34 +657,40 @@ export default function Home() {
     }
   };
 
+  // 🚀 CSV INTELIGENTE: Descarga exactamente lo que estás viendo en la tabla (aplica el filtroDoc)
   const exportarAExcel = () => {
-    if (datosVisibles.length === 0) return alert("No hay datos para exportar.");
+    if (datosTablaFiltrados.length === 0) return alert("No hay datos para exportar.");
     
     // BOM para que Excel reconozca tildes en UTF-8 y separación por punto y coma (;)
-    let csvContent = "\uFEFFFecha;Categoría;Recurrencia;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
+    let csvContent = "\uFEFFFecha;Nº Documento;Categoría;Recurrencia;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
     
-    datosVisibles.forEach(row => {
+    datosTablaFiltrados.forEach(row => {
+      const isPresupuesto = row.categoria === 'Presupuestos' || row.numero_factura?.startsWith('P-');
+      const isAbono = row.numero_factura?.startsWith('R-');
       const valorNum = Number(row.total);
-      const tipoTxt = valorNum >= 0 ? "Ingreso" : "Gasto";
+      
+      let tipoTxt = "Ingreso";
+      if (isPresupuesto) tipoTxt = "PRESUPUESTO";
+      else if (isAbono) tipoTxt = "ABONO";
+      else if (valorNum < 0) tipoTxt = "Gasto";
+
       const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
       const ivaPorcentaje = Number(row.iva) || 0;
       
       const cuotaIva = Math.abs(valorNum) * (ivaPorcentaje / 100);
       const totalFinal = Math.abs(valorNum) + cuotaIva;
 
-      // Forzamos 2 decimales y usamos la coma como separador decimal para España
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
 
-      csvContent += `${row.name};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(Math.abs(valorNum))};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
+      csvContent += `${row.name};${row.numero_factura || 'S/N'};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(Math.abs(valorNum))};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `Libro_Mayor_${empresaId || 'General'}_${filtro}.csv`;
+    link.download = `Libro_Mayor_${empresaId || 'General'}_${filtroDoc}.csv`;
     link.click();
   };
-
   if (!isMounted) return null;
   
   if (planActivo === 'loading' && isSignedIn) {
@@ -752,7 +775,7 @@ export default function Home() {
               </div>
               
               <nav className="space-y-1">
-                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-medium transition shadow-sm shadow-blue-600/20" href="/" onClick={() => setIsSidebarOpen(false)}>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm" href="/" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
                   Consola General
                 </Link>
@@ -984,7 +1007,7 @@ export default function Home() {
                                 className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" 
                             />
                             <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
-                                🚘 Gasto de Vehículo (Deducir solo 50% IVA)
+                                🚘 Gasto Vehículo (Deducir 50% IVA)
                             </label>
                         </div>
                     )}
@@ -1017,7 +1040,7 @@ export default function Home() {
                      </button>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-400 font-medium mb-4">Haz clic en una barra para filtrar la tabla de abajo.</p>
+                <p className="text-[11px] text-slate-400 font-medium mb-4">Gráficas libres de presupuestos (solo ingresos y gastos reales).</p>
                 <div className="flex-1 min-h-[220px]">
                   {isMounted && chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -1051,30 +1074,45 @@ export default function Home() {
               </div>
             </div>
 
+            {/* 🚀 TABLA DE LIBRO MAYOR CON FILTROS AVANZADOS */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
-              <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between sm:items-center bg-white z-10 gap-4">
+              <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
                 <div className="flex items-center gap-3">
                    <h3 className="text-md font-bold text-slate-900">Libro Mayor Integrado</h3>
                    <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black px-2 py-0.5 rounded-full">{datosTablaFiltrados.length} registros</span>
                 </div>
-                <div className="flex items-center gap-3 w-full sm:w-auto">
+                
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
                    <input 
                       type="text" 
-                      placeholder="🔍 Buscar categoría o importe..." 
+                      placeholder="🔍 Buscar categoría, número, importe..." 
                       value={searchTerm}
                       onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
-                      className="flex-1 sm:w-64 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
+                      className="w-full sm:flex-1 sm:w-64 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
                    />
-                   <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition">CSV</button>
+                   <button onClick={exportarAExcel} className="flex items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
+                      ↓ CSV
+                   </button>
                 </div>
               </div>
               
+              {/* PESTAÑAS DE FILTRADO (El Escudo Antimultiplicaciones visual) */}
+              <div className="px-4 md:px-6 pt-4 pb-2 bg-slate-50/50 border-b border-slate-100">
+                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                     <button onClick={() => {setFiltroDoc('all'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas las Op.</button>
+                     <button onClick={() => {setFiltroDoc('ingresos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'ingresos' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>Ingresos Reales</button>
+                     <button onClick={() => {setFiltroDoc('gastos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'gastos' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Gastos / Compras</button>
+                     <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>Presupuestos (Ocultos)</button>
+                     <button onClick={() => {setFiltroDoc('abonos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'abonos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>Abonos / Rectif.</button>
+                  </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-100 text-left whitespace-nowrap">
                   <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-20">
                     <tr>
                       <th className="px-4 md:px-6 py-3">Fecha</th>
-                      <th className="px-4 md:px-6 py-3">Categoría</th>
+                      <th className="px-4 md:px-6 py-3">Categoría / Doc</th>
                       <th className="px-4 md:px-6 py-3">Base Imponible</th>
                       <th className="px-4 md:px-6 py-3">Impuestos</th>
                       <th className="px-4 md:px-6 py-3 text-right">Acciones</th>
@@ -1082,6 +1120,14 @@ export default function Home() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
                     {currentItems.map((item: any, index: number) => {
+                      const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
+                      const isAbono = item.numero_factura?.startsWith('R-');
+                      const isIngreso = Number(item.total) > 0 && !isPresupuesto;
+                      
+                      let colorText = isPresupuesto ? 'text-amber-500' : (isAbono ? 'text-rose-500' : (isIngreso ? 'text-emerald-500' : 'text-rose-500'));
+                      let bgBadge = isPresupuesto ? 'bg-amber-100 text-amber-700' : (isAbono ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600');
+                      let tagLabel = isPresupuesto ? 'PRESUPUESTO' : (isAbono ? 'ABONO' : (item.categoria || 'General'));
+
                       if (editingId === item.id) {
                         return (
                           <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
@@ -1115,33 +1161,43 @@ export default function Home() {
                       return (
                         <tr key={`view-${item.id || index}`} className="hover:bg-slate-50/80 transition">
                           <td className="px-4 md:px-6 py-3.5 text-slate-600">{item.name}</td>
-                          <td className="px-4 md:px-6 py-3.5 flex items-center">
-                            <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{item.categoria || 'General'}</span>
-                            {item.isRecurrent && (
-                              <span className="ml-2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-md flex items-center gap-1" title={`Gasto fijo: ${item.frecuencia}`}>
-                                🔄 <span className="hidden lg:inline">{item.frecuencia}</span>
-                              </span>
+                          <td className="px-4 md:px-6 py-3.5 flex flex-col gap-1 items-start">
+                            <span className={`${bgBadge} px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border border-white/20`}>
+                               {tagLabel}
+                            </span>
+                            {item.numero_factura && (
+                                <span className="text-[10px] font-bold text-slate-400">{item.numero_factura}</span>
                             )}
-                            {/* 🚀 INDICADOR VISUAL SI APLICÓ EL ESCUDO DEL VEHÍCULO */}
-                            {item.concepto_detalle && item.concepto_detalle.includes("Vehículo") && (
-                                <span className="ml-2 text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded-md flex items-center gap-1 border border-orange-200" title="Solo 50% del IVA deducido por ley">
-                                   🚘 50%
-                                </span>
-                            )}
+                            <div className="flex gap-1">
+                                {item.isRecurrent && (
+                                  <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center" title={`Gasto fijo: ${item.frecuencia}`}>
+                                    🔄 {item.frecuencia}
+                                  </span>
+                                )}
+                                {item.concepto_detalle && item.concepto_detalle.includes("Vehículo") && (
+                                    <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200" title="Solo 50% del IVA deducido por ley">
+                                       🚘 50%
+                                    </span>
+                                )}
+                            </div>
                           </td>
-                          <td className={`px-4 md:px-6 py-3.5 font-bold ${Number(item.total) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{Number(item.total) >= 0 ? '+' : '-'} {Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                          <td className={`px-4 md:px-6 py-3.5 font-black ${colorText}`}>
+                             {isPresupuesto || isIngreso ? '+' : '-'}{Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                          </td>
                           
                           <td className="px-4 md:px-6 py-3.5">
                              <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
-                                {item.iva === 0 ? "Exento" : `IVA ${item.iva}%`}
+                                {item.iva === 0 || item.iva === "0" ? "Exento" : `IVA ${item.iva}%`}
                              </span>
                           </td>
 
                           <td className="px-4 md:px-6 py-3.5 text-right space-x-2">
-                            <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar">
-                              <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                            </button>
-                            <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar">
+                            {!isPresupuesto && !isAbono && (
+                                <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar manual">
+                                  <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                </button>
+                            )}
+                            <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar registro">
                               <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             </button>
                           </td>
@@ -1155,7 +1211,7 @@ export default function Home() {
                 </table>
               </div>
               
-              {/* 🚀 PAGINACIÓN AVANZADA */}
+              {/* PAGINACIÓN */}
               {totalPages > 1 && (
                 <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
                    <button 
@@ -1314,7 +1370,7 @@ export default function Home() {
         )}
       </Show>
 
-      {/* 🚀 LANDING PAGE PÚBLICA (CON LA NUEVA SECCIÓN DE PLANES Y RENTABILIDAD) */}
+      {/* RUTA DE ESCAPE PÚBLICA (LANDING PAGE) */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           
