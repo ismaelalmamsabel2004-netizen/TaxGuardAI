@@ -112,11 +112,11 @@ export default function Precios() {
             </ul>
             
             <button 
-              onClick={() => comprarPlan('price_1Tsjz1JhA316XLs0dk9307W2')}
-              disabled={loading === 'price_1Tsjz1JhA316XLs0dk9307W2'}
+              onClick={() => comprarPlan('price_1TwN2RJADsdd8EhemCpvJbef')}
+              disabled={loading === 'price_1TwN2RJADsdd8EhemCpvJbef'}
               className="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl border border-slate-700 hover:bg-slate-700 transition shadow-sm disabled:opacity-50"
             >
-              {loading === 'price_1Tsjz1JhA316XLs0dk9307W2' ? 'Conectando...' : 'Empezar como Autónomo'}
+              {loading === 'price_1TwN2RJADsdd8EhemCpvJbef' ? 'Conectando...' : 'Empezar como Autónomo'}
             </button>
           </div>
 
@@ -155,11 +155,11 @@ export default function Precios() {
             </ul>
             
             <button 
-              onClick={() => comprarPlan('price_1Tsk0EJhA316XLs049Nl6hka')}
-              disabled={loading === 'price_1Tsk0EJhA316XLs049Nl6hka'}
+              onClick={() => comprarPlan('price_1TwN54JADsdd8EheCYnGZuaZ')}
+              disabled={loading === 'price_1TwN54JADsdd8EheCYnGZuaZ'}
               className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-500 shadow-xl shadow-blue-500/20 border border-blue-400/20 transition disabled:opacity-50"
             >
-              {loading === 'price_1Tsk0EJhA316XLs049Nl6hka' ? 'Conectando...' : 'Dominar mis finanzas por 89€'}
+              {loading === 'price_1TwN54JADsdd8EheCYnGZuaZ' ? 'Conectando...' : 'Dominar mis finanzas por 89€'}
             </button>
             <p className="text-center text-[10px] text-slate-500 mt-4">Cancela o mejora tu plan en cualquier momento.</p>
           </div>

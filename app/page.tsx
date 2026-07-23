@@ -1316,7 +1316,7 @@ export default function Home() {
                                 )}
                                 {item.concepto_detalle && item.concepto_detalle.includes("Vehículo") && (
                                     <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200" title="Solo 50% del IVA deducido por ley">
-                                       🚘 50%
+                                        🚘 50%
                                     </span>
                                 )}
                             </div>

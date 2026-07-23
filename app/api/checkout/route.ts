@@ -47,8 +47,8 @@ export async function POST(request: Request) {
 
            // 🚀 Actualizamos tu Base de Datos directamente aquí
            let planNombre = 'free';
-           if (priceId === 'price_1Tsjz1JhA316XLs0dk9307W2') planNombre = 'autonomo';
-           if (priceId === 'price_1Tsk0EJhA316XLs049Nl6hka') planNombre = 'pro';
+           if (priceId === 'price_1TwN2RJADsdd8EhemCpvJbef') planNombre = 'autonomo';
+           if (priceId === 'price_1TwN54JADsdd8EheCYnGZuaZ') planNombre = 'pro';
 
            const row = await prisma.$queryRawUnsafe<any[]>(
              `SELECT data FROM user_settings WHERE user_id = $1`, userId
