@@ -121,7 +121,7 @@ export default function Home() {
   const itemsPerPage = 10;
 
   const etiquetasFiltro: Record<string, string> = {
-    all: "Histórico Completo", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
+    all: "Histórico Completo", week: "Última Semana", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
   };
 
   const [metaMensual, setMetaMensual] = useState(5000);
@@ -329,6 +329,7 @@ export default function Home() {
   };
 
   const determinarRangoDias = (tipoFiltro: string) => {
+    if (tipoFiltro === 'week') return 7;
     if (tipoFiltro === 'month') return 30;
     if (tipoFiltro === 'quarter') return 90;
     if (tipoFiltro === 'year') return 365;
@@ -995,6 +996,7 @@ export default function Home() {
 
             <div className="flex gap-2 lg:gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
               <button onClick={() => setFiltro('all')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Histórico</button>
+              <button onClick={() => setFiltro('week')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'week' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Semana</button>
               <button onClick={() => setFiltro('month')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'month' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Mes</button>
               <button onClick={() => setFiltro('quarter')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'quarter' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Trimestre</button>
               <button onClick={() => setFiltro('year')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Año</button>
