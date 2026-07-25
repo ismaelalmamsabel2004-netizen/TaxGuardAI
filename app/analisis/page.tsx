@@ -204,8 +204,9 @@ export default function AnalisisAvanzado() {
     const provisionImpuestos = (liquidacionIva > 0 ? liquidacionIva : 0) + provisionIRPF;
     const beneficioLiquido = beneficio - provisionImpuestos;
 
-    let mesesPeriodo = diasFiltro === Infinity ? Math.max(1, Object.keys(mensualidades).length) : diasFiltro / 30;
-    const gastoMedioMensual = totalGastos / (mesesPeriodo || 1);
+    // 🛠️ CORRECCIÓN: Cálculo de la Supervivencia usando solo meses con actividad real
+    const mesesActivos = Math.max(1, Object.keys(mensualidades).length);
+    const gastoMedioMensual = totalGastos / mesesActivos;
     const runwayMeses = gastoMedioMensual > 0 && beneficioLiquido > 0 ? (beneficioLiquido / gastoMedioMensual) : 0;
 
     const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
@@ -461,7 +462,7 @@ export default function AnalisisAvanzado() {
                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Ingresos</span>
                          {renderTrend(trends.ingresos, false)}
                       </div>
-                      <span className="text-2xl font-black text-slate-800">{kpis.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
+                      <span className="text-2xl font-black text-slate-800">{kpis.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                    </div>
                    
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
@@ -469,7 +470,7 @@ export default function AnalisisAvanzado() {
                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Gastos</span>
                          {renderTrend(trends.gastos, true)}
                       </div>
-                      <span className="text-2xl font-black text-rose-500">{kpis.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
+                      <span className="text-2xl font-black text-rose-500">{kpis.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                    </div>
                    
                    <div className={`p-5 rounded-2xl border flex flex-col justify-center ${kpis.beneficio >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
@@ -478,7 +479,7 @@ export default function AnalisisAvanzado() {
                          {renderTrend(trends.beneficio, false)}
                       </div>
                       <span className={`text-2xl font-black tracking-tight ${kpis.beneficio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                         {kpis.beneficio >= 0 ? '+' : ''}{kpis.beneficio.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                         {kpis.beneficio >= 0 ? '+' : ''}{kpis.beneficio.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                       </span>
                    </div>
                    
@@ -500,7 +501,7 @@ export default function AnalisisAvanzado() {
                           <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Caja Libre (Beneficio Líquido)</span>
                        </div>
                        <span className="text-3xl font-black tracking-tight text-white">
-                          {kpis.beneficioLiquido >= 0 ? '+' : ''}{kpis.beneficioLiquido.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                          {kpis.beneficioLiquido >= 0 ? '+' : ''}{kpis.beneficioLiquido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                        </span>
                        <span className="text-[10px] font-medium text-indigo-200 mt-1">Tu dinero real (Impuestos ya restados)</span>
                     </div>
@@ -510,7 +511,7 @@ export default function AnalisisAvanzado() {
                           <span className="text-rose-500 text-sm">🏛️</span>
                           <span className="text-[10px] font-bold text-rose-700 uppercase tracking-widest">Hucha Hacienda (Intocable)</span>
                        </div>
-                       <span className="text-2xl font-black text-rose-600">{kpis.provisionImpuestos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
+                       <span className="text-2xl font-black text-rose-600">{kpis.provisionImpuestos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                        <span className="text-[9px] font-bold text-rose-500 mt-1">Provisión calculada de IVA + IRPF</span>
                     </div>
 
@@ -570,7 +571,7 @@ export default function AnalisisAvanzado() {
                                         ))}
                                      </Pie>
                                      <RechartsTooltip 
-                                        formatter={(value: number, name: string) => [`${value.toLocaleString('es-ES', {minimumFractionDigits: 2})} €`, name]}
+                                        formatter={(value: number, name: string) => [`${value.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, name]}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontWeight: 'bold' }}
                                      />
                                   </PieChart>
@@ -592,7 +593,7 @@ export default function AnalisisAvanzado() {
                                <div key={idx}>
                                   <div className="flex justify-between text-xs font-bold mb-1.5">
                                      <span className="text-slate-600 truncate mr-2">{gasto.name}</span>
-                                     <span className="text-slate-900">{gasto.value.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
+                                     <span className="text-slate-900">{gasto.value.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                                   </div>
                                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                                      <div className="h-1.5 rounded-full" style={{ width: `${Math.min((gasto.value / kpis.gastos) * 100, 100)}%`, backgroundColor: COLORS[idx % COLORS.length] }}></div>
@@ -630,9 +631,9 @@ export default function AnalisisAvanzado() {
                                            🎯 {p.name}
                                         </span>
                                      </td>
-                                     <td className="px-4 py-4 text-right text-emerald-600">+{p.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
-                                     <td className="px-4 py-4 text-right text-rose-500">-{p.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
-                                     <td className={`px-4 py-4 text-right font-black ${p.margen >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{p.margen >= 0 ? '+' : ''}{p.margen.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
+                                     <td className="px-4 py-4 text-right text-emerald-600">+{p.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                                     <td className="px-4 py-4 text-right text-rose-500">-{p.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
+                                     <td className={`px-4 py-4 text-right font-black ${p.margen >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{p.margen >= 0 ? '+' : ''}{p.margen.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
                                      <td className="px-4 py-4 text-right">
                                         <span className={`text-[10px] px-2.5 py-1 rounded-md font-black border ${p.rentabilidad >= 20 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : p.rentabilidad > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                                            {p.rentabilidad.toFixed(1)}%
