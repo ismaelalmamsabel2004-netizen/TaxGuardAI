@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useUser, UserButton, Show, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase } from '../actions';
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase } from '../actions';
 
 Font.register({
   family: 'Roboto',
@@ -200,7 +201,6 @@ export default function GeneradorFacturas() {
   const [empresas, setEmpresas] = useState<string[]>([]);
   
   const [modoActivo, setModoActivo] = useState<"factura" | "presupuesto">("factura");
-  // 🚀 NUEVO ESTADO: Filtro para la tabla
   const [filtroHistorial, setFiltroHistorial] = useState<"todas" | "facturas" | "presupuestos" | "rectificativas">("todas");
   
   const [numeroFactura, setNumeroFactura] = useState(`F-${new Date().getFullYear()}-001`);
@@ -248,6 +248,12 @@ export default function GeneradorFacturas() {
   const [showNuevoCliente, setShowNuevoCliente] = useState(false);
   const [nuevoClienteData, setNuevoClienteData] = useState({ nombre: "", nif: "", direccion: "" });
 
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{role: string, content: string}[]>([]);
+  const [currentMessage, setCurrentMessage] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setIsMounted(true);
     
@@ -285,7 +291,6 @@ export default function GeneradorFacturas() {
       }
   }, [empresaId, allSettings]);
 
-  // 🚀 OBTENER DATOS (FACTURAS, ABONOS Y AHORA PRESUPUESTOS)
   useEffect(() => {
     if (!empresaId) return;
     obtenerDatosSupabase(empresaId).then(movimientos => {
@@ -402,7 +407,6 @@ export default function GeneradorFacturas() {
     totalFinal
   };
 
-  // 🚀 GUARDAR DOCUMENTO (FACTURA O PRESUPUESTO) EN BASE DE DATOS
   const guardarDocumento = async () => {
     if (!empresaId) return alert("⚠️ Por favor, selecciona un Espacio de Trabajo.");
     if (lineasFactura.some(l => !l.concepto)) return alert("⚠️ Rellena la descripción de todos los conceptos.");
@@ -501,7 +505,6 @@ export default function GeneradorFacturas() {
       }
   };
 
-  // 🚀 NUEVA FUNCIÓN: CARGAR DATOS PARA DUPLICAR O CONVERTIR
   const duplicarFactura = (fac: any, aFactura: boolean = false) => {
       setClienteNombre(fac.cliente_nombre || "");
       setClienteNif(fac.cliente_nif || "");
@@ -512,6 +515,10 @@ export default function GeneradorFacturas() {
 
       let conceptoStr = fac.concepto_detalle || "Servicios generales";
       let irpf = "0";
+      
+      // Limpiamos los tags de estado si existen
+      conceptoStr = conceptoStr.replace(/\[ESTADO: COBRADA\]/g, '').trim();
+
       const matchIrpf = conceptoStr.match(/\(Retención IRPF: -(\d+)%\)/);
       if (matchIrpf) {
           irpf = matchIrpf[1];
@@ -538,8 +545,31 @@ export default function GeneradorFacturas() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // 🚀 FUNCIÓN: MARCAR COMO COBRADA
+  const marcarCobrada = async (fac: any) => {
+     try {
+         const res = await editarDatoSupabase({
+             id: fac.id, 
+             month: fac.name, 
+             total: fac.total, 
+             categoria: fac.categoria, 
+             iva: fac.iva,
+             cliente_nombre: fac.cliente_nombre, 
+             cliente_nif: fac.cliente_nif,
+             concepto_detalle: (fac.concepto_detalle || "") + " [ESTADO: COBRADA]"
+         });
+         if (res.success) {
+             setRefreshTrigger(prev => prev + 1);
+         } else {
+             alert("Error al marcar como cobrada.");
+         }
+     } catch (e) { alert("Error de conexión"); }
+  };
+
   const getDatosPdfHistorico = (fac: any) => {
       let conceptoStr = fac.concepto_detalle || "Servicios prestados";
+      conceptoStr = conceptoStr.replace(/\[ESTADO: COBRADA\]/g, '').trim(); // Limpiamos tag visual
+      
       let irpf = "0";
       const matchIrpf = conceptoStr.match(/\(Retención IRPF: -(\d+)%\)/);
       if (matchIrpf) {
@@ -629,7 +659,7 @@ export default function GeneradorFacturas() {
       try {
           const res = await editarDatoSupabase({
               id: fac.id, month: fac.name, total: fac.total, categoria: fac.categoria, iva: fac.iva,
-              cliente_nombre: editClientData.nombre, cliente_nif: editClientData.nif
+              cliente_nombre: editClientData.nombre, cliente_nif: editClientData.nif, concepto_detalle: fac.concepto_detalle
           });
           if (res.success) {
               setEditandoHistorialId(null);
@@ -638,7 +668,16 @@ export default function GeneradorFacturas() {
       } catch(e) { alert("Error al actualizar"); }
   };
 
-  // 🚀 LÓGICA DE FILTROS EN TABLA
+  const eliminarDato = async (id: any) => {
+    const confirmacion = window.confirm("¿Seguro que deseas eliminar este documento?");
+    if (!confirmacion) return;
+
+    const res = await borrarDatoSupabase(id.toString());
+    if (res.success) {
+      setRefreshTrigger(prev => prev + 1);
+    }
+  };
+
   const filteredHistorial = historialFacturas.filter((fac: any) => {
      const search = searchTerm.toLowerCase();
      const numFac = fac.numero_factura?.toLowerCase() || "";
@@ -658,9 +697,37 @@ export default function GeneradorFacturas() {
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const clientesFiltrados = clientesCRM.filter(c => c.nombre.toLowerCase().includes(clienteNombre.toLowerCase()));
+  
+  // 🚀 LÓGICA RADAR DE MOROSIDAD
+  const ahora = new Date().getTime();
+  const facturasPendientesArr = historialFacturas.filter((f: any) => {
+      const isPresu = f.numero_factura?.startsWith('P-');
+      const isRect = f.numero_factura?.startsWith('R-');
+      const isCobrada = f.concepto_detalle?.includes('[ESTADO: COBRADA]');
+      return !isPresu && !isRect && !isCobrada;
+  });
+
+  let totalPendienteMonto = 0;
+  let totalVencidoMonto = 0;
+
+  facturasPendientesArr.forEach((f: any) => {
+      const base = Math.abs(Number(f.total));
+      const iva = Number(f.iva) || 0;
+      const totalFac = base + (base * (iva/100));
+      
+      totalPendienteMonto += totalFac;
+
+      const [d, m, y] = f.name.split('/');
+      const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+      const diasDesdeEmision = (ahora - fechaEmision) / (1000 * 3600 * 24);
+      
+      if (diasDesdeEmision > 30) {
+          totalVencidoMonto += totalFac;
+      }
+  });
+
   if (!isMounted) return null;
 
-  // 🚀 PANTALLA DE CARGA ELEGANTE
   if (planActivo === 'loading' && isSignedIn) {
      return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white" translate="no">
@@ -786,7 +853,7 @@ export default function GeneradorFacturas() {
               </div>
             </header>
 
-            {/* 🚀 PESTAÑAS FACTURAS VS PRESUPUESTOS */}
+            {/* PESTAÑAS FACTURAS VS PRESUPUESTOS */}
             <div className="flex gap-6 mb-8 border-b border-slate-200">
                <button 
                   onClick={() => setModoActivo("factura")} 
@@ -1020,7 +1087,7 @@ export default function GeneradorFacturas() {
                     </div>
 
                     <div className="mt-8 space-y-3">
-                       {/* 🚀 BOTÓN DESCARGAR PDF DINÁMICO */}
+                       {/* BOTÓN DESCARGAR PDF DINÁMICO */}
                        {isMounted && (
                            <PDFDownloadLink 
                                document={<FacturaPDF datos={datosPDF} />} 
@@ -1036,7 +1103,7 @@ export default function GeneradorFacturas() {
                            </PDFDownloadLink>
                        )}
                        
-                       {/* 🚀 BOTÓN GUARDAR (Dinámico para Factura o Presupuesto) */}
+                       {/* BOTÓN GUARDAR (Dinámico para Factura o Presupuesto) */}
                        <button 
                           onClick={guardarDocumento} 
                           disabled={isSaving || facturaBloqueada}
@@ -1072,8 +1139,28 @@ export default function GeneradorFacturas() {
               </div>
             </div>
 
-            {/* 🚀 TABLA DE HISTORIAL RÁPIDO CON FILTROS */}
-            <div className="mt-10 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* 🚀 RADAR DE MOROSIDAD (NUEVO) */}
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+               <div className="bg-amber-50 p-6 rounded-3xl border border-amber-200 flex flex-col justify-center relative overflow-hidden">
+                  <div className="flex items-center gap-2 mb-2 relative z-10">
+                     <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse"></span>
+                     <h3 className="text-sm font-black text-amber-900 uppercase tracking-widest">Pendiente de Cobro</h3>
+                  </div>
+                  <span className="text-3xl font-black text-amber-700 relative z-10">{totalPendienteMonto.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
+                  <span className="text-xs font-bold text-amber-600 mt-1 relative z-10">Facturas emitidas no cobradas</span>
+               </div>
+               <div className="bg-rose-50 p-6 rounded-3xl border border-rose-200 flex flex-col justify-center relative overflow-hidden">
+                  <div className="flex items-center gap-2 mb-2 relative z-10">
+                     <span className="w-2.5 h-2.5 bg-rose-500 rounded-full"></span>
+                     <h3 className="text-sm font-black text-rose-900 uppercase tracking-widest">Vencido (+30 Días)</h3>
+                  </div>
+                  <span className="text-3xl font-black text-rose-700 relative z-10">{totalVencidoMonto.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
+                  <span className="text-xs font-bold text-rose-600 mt-1 relative z-10">Riesgo de impago activo</span>
+               </div>
+            </div>
+
+            {/* 🚀 TABLA DE HISTORIAL RÁPIDO CON FILTROS Y ESTADOS */}
+            <div className="mt-6 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-100">
                     <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 mb-4">
                        <div className="flex items-center gap-3">
@@ -1089,7 +1176,6 @@ export default function GeneradorFacturas() {
                        />
                     </div>
                     
-                    {/* BOTONES DE FILTRO RÁPIDO */}
                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                        <button onClick={() => {setFiltroHistorial('todas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'todas' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas</button>
                        <button onClick={() => {setFiltroHistorial('facturas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'facturas' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Solo Facturas</button>
@@ -1114,6 +1200,12 @@ export default function GeneradorFacturas() {
                           {currentItems.map((fac: any) => {
                              const isRectificativa = fac.numero_factura?.startsWith('R-');
                              const isPresupuesto = fac.numero_factura?.startsWith('P-');
+                             const isCobrada = fac.concepto_detalle?.includes('[ESTADO: COBRADA]');
+                             
+                             const [d, m, y] = fac.name.split('/');
+                             const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+                             const diasDesdeEmision = (ahora - fechaEmision) / (1000 * 3600 * 24);
+                             const isVencida = !isCobrada && !isPresupuesto && !isRectificativa && (diasDesdeEmision > 30);
 
                              if (editandoHistorialId === fac.id) {
                                  return (
@@ -1150,13 +1242,24 @@ export default function GeneradorFacturas() {
                                            <span className="bg-rose-100 text-rose-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-rose-200">Abono</span>
                                         ) : isPresupuesto ? (
                                            <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-amber-200">Presupuesto</span>
+                                        ) : isCobrada ? (
+                                           <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-emerald-200">Cobrada</span>
+                                        ) : isVencida ? (
+                                           <span className="bg-rose-100 text-rose-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-rose-200">Vencida</span>
                                         ) : (
-                                           <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-emerald-200">Emitida</span>
+                                           <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-blue-200">Pendiente</span>
                                         )}
                                      </td>
                                      <td className="px-6 py-4 text-right">
                                          <div className="flex items-center justify-end gap-2">
-                                             {/* 🚀 BOTÓN DESCARGAR PDF HISTÓRICO */}
+                                             {/* 🚀 BOTÓN COBRAR (Solo si está pendiente y no es presupuesto ni abono) */}
+                                             {!isPresupuesto && !isRectificativa && !isCobrada && (
+                                                 <button onClick={() => marcarCobrada(fac)} className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] uppercase tracking-wider bg-emerald-50 px-2 py-1.5 rounded-md transition border border-emerald-200" title="Marcar como cobrada">
+                                                    💰 Cobrar
+                                                 </button>
+                                             )}
+
+                                             {/* BOTÓN DESCARGAR PDF HISTÓRICO */}
                                              {isMounted && (
                                                  <PDFDownloadLink
                                                      document={<FacturaPDF datos={getDatosPdfHistorico(fac)} />}
@@ -1171,23 +1274,23 @@ export default function GeneradorFacturas() {
                                                  </PDFDownloadLink>
                                              )}
 
-                                             {/* 🚀 BOTÓN CONVERTIR (Si es presupuesto) o DUPLICAR (Si es factura) */}
+                                             {/* BOTÓN CONVERTIR (Si es presupuesto) o DUPLICAR (Si es factura) */}
                                              {isPresupuesto ? (
                                                 <button onClick={() => duplicarFactura(fac, true)} className="text-amber-600 hover:text-amber-700 font-bold text-[10px] uppercase tracking-wider bg-amber-50 px-2 py-1.5 rounded-md transition border border-amber-200 flex items-center gap-1" title="Convertir a Factura Oficial">
-                                                    🪄 Convertir
+                                                   🪄 Convertir
                                                 </button>
                                              ) : (
                                                 <button onClick={() => duplicarFactura(fac, false)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-md transition border border-blue-100" title="Copiar datos para nueva factura">
-                                                    Duplicar
+                                                   Duplicar
                                                 </button>
                                              )}
 
                                              {/* EDITAR */}
                                              <button onClick={() => iniciarEdicionCliente(fac)} className="text-slate-500 hover:text-slate-700 font-bold text-[10px] uppercase tracking-wider bg-slate-50 px-2 py-1.5 rounded-md transition border border-slate-200" title="Editar cliente o NIF">
-                                                 Editar
+                                                Editar
                                              </button>
                                              
-                                             {/* 🚀 BOTÓN RECTIFICAR (Solo en facturas normales) */}
+                                             {/* BOTÓN RECTIFICAR (Solo en facturas normales) */}
                                              {!isRectificativa && !isPresupuesto && (
                                                  <button 
                                                     onClick={() => generarFacturaRectificativa(fac)} 
@@ -1333,6 +1436,7 @@ export default function GeneradorFacturas() {
              </div>
           </div>
         )}
+
       </Show>
 
       {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
@@ -1343,7 +1447,7 @@ export default function GeneradorFacturas() {
                <h2 className="text-2xl font-black mb-4">Acceso Restringido</h2>
                <p className="text-slate-400 mb-8 max-w-sm">Esta es una zona privada para clientes de TaxGuard AI. Inicia sesión para continuar.</p>
                <Link href="/" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition">
-                  Ir al Inicio
+                 Ir al Inicio
                </Link>
             </div>
          </div>

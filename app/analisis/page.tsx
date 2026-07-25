@@ -30,7 +30,10 @@ export default function AnalisisAvanzado() {
   const [chartDataEvolucion, setChartDataEvolucion] = useState<any[]>([]);
   const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
   
-  // 🚀 KPIS Y TENDENCIAS (Añadidas métricas estratégicas)
+  // 🚀 NUEVO ESTADO: DATOS DE PROYECTOS
+  const [chartDataProyectos, setChartDataProyectos] = useState<any[]>([]);
+  
+  // KPIS Y TENDENCIAS
   const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
   const [trends, setTrends] = useState({ ingresos: 0, gastos: 0, beneficio: 0 });
 
@@ -92,17 +95,18 @@ export default function AnalisisAvanzado() {
     obtenerDatosSupabase(nuevaEmpresa).then(d => setAllData(d));
   };
 
-  // 🚀 MOTOR MATEMÁTICO: CÁLCULO DE KPIS Y TENDENCIAS
+  // 🚀 MOTOR MATEMÁTICO: CÁLCULO DE KPIS, TENDENCIAS Y PROYECTOS
   useEffect(() => {
     if (!allData || allData.length === 0) {
-       setChartDataEvolucion([]); setChartDataGastos([]); 
+       setChartDataEvolucion([]); 
+       setChartDataGastos([]); 
+       setChartDataProyectos([]);
        setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
        setTrends({ ingresos: 0, gastos: 0, beneficio: 0 });
        return;
     }
 
     const ahora = new Date().getTime();
-    // 💡 Añadida la lógica de 7 días (Semana)
     const diasFiltro = filtroTiempo === 'week' ? 7 : filtroTiempo === 'month' ? 30 : filtroTiempo === 'quarter' ? 90 : filtroTiempo === 'year' ? 365 : Infinity;
     
     let totalIngresos = 0; let totalGastos = 0;
@@ -111,6 +115,9 @@ export default function AnalisisAvanzado() {
     
     const mensualidades: Record<string, { Ingresos: number, Gastos: number, sortKey: number }> = {};
     const categoriasGastos: Record<string, number> = {};
+    
+    // Diccionario para el cálculo de proyectos
+    const proyectosMap: Record<string, { Ingresos: number, Gastos: number }> = {};
 
     allData.forEach(item => {
         if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
@@ -130,7 +137,6 @@ export default function AnalisisAvanzado() {
             totalIngresos += ingresoAbsoluto;
             totalGastos += gastoAbsoluto;
 
-            // Acumulamos IVA para la Hucha de Hacienda
             if (valor > 0) ivaRepercutido += ingresoAbsoluto * (iva / 100);
             else ivaSoportado += gastoAbsoluto * (iva / 100);
 
@@ -145,6 +151,15 @@ export default function AnalisisAvanzado() {
             if (valor < 0) {
                 const cat = item.categoria || 'General';
                 categoriasGastos[cat] = (categoriasGastos[cat] || 0) + gastoAbsoluto;
+            }
+
+            // 🚀 EXTRACCIÓN DE RENTABILIDAD POR PROYECTO
+            const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
+            if (matchProy && matchProy[1]) {
+                const pName = matchProy[1];
+                if (!proyectosMap[pName]) proyectosMap[pName] = { Ingresos: 0, Gastos: 0 };
+                if (valor > 0) proyectosMap[pName].Ingresos += ingresoAbsoluto;
+                else proyectosMap[pName].Gastos += gastoAbsoluto;
             }
         } 
         // PERIODO ANTERIOR (Para sacar el % de tendencia)
@@ -162,16 +177,30 @@ export default function AnalisisAvanzado() {
         name: key, value: categoriasGastos[key]
     })).sort((a, b) => b.value - a.value); 
 
+    // Convertir el mapa de proyectos en un array ordenado por margen
+    const proyectosArray = Object.keys(proyectosMap).map(key => {
+        const ing = proyectosMap[key].Ingresos;
+        const gas = proyectosMap[key].Gastos;
+        const marg = ing - gas;
+        return {
+            name: key,
+            ingresos: ing,
+            gastos: gas,
+            margen: marg,
+            rentabilidad: ing > 0 ? (marg / ing) * 100 : (gas > 0 ? -100 : 0)
+        };
+    }).sort((a, b) => b.margen - a.margen);
+
     setChartDataEvolucion(evolutionArray);
     setChartDataGastos(gastosArray);
+    setChartDataProyectos(proyectosArray);
     
     const beneficio = totalIngresos - totalGastos;
     const margen = totalIngresos > 0 ? (beneficio / totalIngresos) * 100 : 0;
     const prevBeneficio = prevIngresos - prevGastos;
 
-    // 💡 Lógica Financiera Estratégica
     const liquidacionIva = ivaRepercutido - ivaSoportado;
-    const provisionIRPF = beneficio > 0 ? beneficio * 0.15 : 0; // 15% provisión de seguridad
+    const provisionIRPF = beneficio > 0 ? beneficio * 0.15 : 0; 
     const provisionImpuestos = (liquidacionIva > 0 ? liquidacionIva : 0) + provisionIRPF;
     const beneficioLiquido = beneficio - provisionImpuestos;
 
@@ -190,7 +219,6 @@ export default function AnalisisAvanzado() {
 
   }, [allData, filtroTiempo]);
 
-  // 🚀 GENERADOR DE AUDITORÍA CON SIMULACIONES ESPECÍFICAS
   const generarAuditoria = async (tipoSimulacion: string) => {
     setSimulacionActiva(tipoSimulacion);
     if (allData.length === 0) {
@@ -368,7 +396,6 @@ export default function AnalisisAvanzado() {
               </div>
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                  <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
-                     {/* 💡 AÑADIDO EL FILTRO DE 7 DÍAS */}
                      {[
                          { id: 'all', label: 'Histórico' },
                          { id: 'year', label: '12 Meses' },
@@ -464,9 +491,8 @@ export default function AnalisisAvanzado() {
                    </div>
                 </div>
 
-                {/* 🚀 FILA 2: MÉTRICAS ESTRATÉGICAS (NUEVAS) */}
+                {/* 🚀 FILA 2: MÉTRICAS ESTRATÉGICAS */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-                    {/* Caja Libre */}
                     <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-5 rounded-2xl border border-indigo-500 flex flex-col justify-center text-white shadow-lg shadow-indigo-500/30">
                        <div className="flex items-center mb-1">
                           <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Caja Libre (Beneficio Líquido)</span>
@@ -477,7 +503,6 @@ export default function AnalisisAvanzado() {
                        <span className="text-[10px] font-medium text-indigo-200 mt-1">Tu dinero real (Impuestos ya restados)</span>
                     </div>
 
-                    {/* Hucha de Hacienda */}
                     <div className="bg-rose-50 p-5 rounded-2xl border border-rose-200 flex flex-col justify-center">
                        <div className="flex items-center mb-1 gap-1.5">
                           <span className="text-rose-500 text-sm">🏛️</span>
@@ -487,7 +512,6 @@ export default function AnalisisAvanzado() {
                        <span className="text-[9px] font-bold text-rose-500 mt-1">Provisión calculada de IVA + IRPF</span>
                     </div>
 
-                    {/* Runway / Colchón */}
                     <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex flex-col justify-center text-white">
                        <div className="flex items-center mb-1 gap-1.5">
                           <span className="text-emerald-400 text-sm">🛡️</span>
@@ -577,6 +601,48 @@ export default function AnalisisAvanzado() {
                       )}
                    </div>
                 </div>
+
+                {/* 🚀 NUEVA SECCIÓN: RENTABILIDAD POR PROYECTO */}
+                {chartDataProyectos.length > 0 && (
+                   <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm mb-8">
+                      <div className="flex items-center gap-2 mb-6">
+                         <span className="w-2.5 h-2.5 bg-purple-500 rounded-full"></span>
+                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Rentabilidad por Proyecto / Evento</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                         <table className="min-w-full text-left whitespace-nowrap">
+                            <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                               <tr>
+                                  <th className="px-4 py-3 rounded-tl-xl">Etiqueta de Proyecto</th>
+                                  <th className="px-4 py-3 text-right">Ingresos Asignados</th>
+                                  <th className="px-4 py-3 text-right">Costes Asignados</th>
+                                  <th className="px-4 py-3 text-right">Beneficio Limpio</th>
+                                  <th className="px-4 py-3 text-right rounded-tr-xl">Margen Real</th>
+                               </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
+                               {chartDataProyectos.map((p, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-50/80 transition">
+                                     <td className="px-4 py-4">
+                                        <span className="text-[10px] bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md font-black border border-purple-200 shadow-sm tracking-wide">
+                                           🎯 {p.name}
+                                        </span>
+                                     </td>
+                                     <td className="px-4 py-4 text-right text-emerald-600">+{p.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
+                                     <td className="px-4 py-4 text-right text-rose-500">-{p.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
+                                     <td className={`px-4 py-4 text-right font-black ${p.margen >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{p.margen >= 0 ? '+' : ''}{p.margen.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
+                                     <td className="px-4 py-4 text-right">
+                                        <span className={`text-[10px] px-2.5 py-1 rounded-md font-black border ${p.rentabilidad >= 20 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : p.rentabilidad > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                                           {p.rentabilidad.toFixed(1)}%
+                                        </span>
+                                     </td>
+                                  </tr>
+                               ))}
+                            </tbody>
+                         </table>
+                      </div>
+                   </div>
+                )}
 
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                   <div className="xl:col-span-1 space-y-6">
