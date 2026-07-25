@@ -113,18 +113,31 @@ export default function AnalisisAvanzado() {
     const categoriasGastos: Record<string, number> = {};
     const proyectosMap: Record<string, { Ingresos: number, Gastos: number }> = {};
 
+    // 🚀 LÓGICA GLOBAL PARA BLINDAR LA SUPERVIVENCIA CONTRA LOS FILTROS DE TIEMPO
+    let globalIngresos = 0; let globalGastos = 0; let globalIvaRep = 0; let globalIvaSop = 0;
+    const globalMesesActivos = new Set<string>();
+
     allData.forEach(item => {
         if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
         if (!item.name || !item.name.includes('/')) return;
 
-        const [d, m, y] = item.name.split('/');
-        const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
-        const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
-        
         const valor = Number(item.total);
         const gastoAbsoluto = valor < 0 ? Math.abs(valor) : 0;
         const ingresoAbsoluto = valor > 0 ? valor : 0;
         const iva = Number(item.iva) || 0;
+        
+        const [d, m, y] = item.name.split('/');
+        
+        // CÁLCULO GLOBAL (Sin importar el filtro de tiempo)
+        globalIngresos += ingresoAbsoluto;
+        globalGastos += gastoAbsoluto;
+        if (valor > 0) globalIvaRep += ingresoAbsoluto * (iva / 100);
+        else globalIvaSop += gastoAbsoluto * (iva / 100);
+        globalMesesActivos.add(`${y}-${m}`);
+
+        // CÁLCULO ESPECÍFICO DEL PERIODO FILTRADO
+        const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+        const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
 
         if (diffDias <= diasFiltro) {
             totalIngresos += ingresoAbsoluto;
@@ -185,32 +198,34 @@ export default function AnalisisAvanzado() {
     setChartDataGastos(gastosArray);
     setChartDataProyectos(proyectosArray);
     
+    // MÉTRICAS DE LA PANTALLA (Basadas en el filtro)
     const beneficio = totalIngresos - totalGastos;
     const margen = totalIngresos > 0 ? (beneficio / totalIngresos) * 100 : 0;
     const prevBeneficio = prevIngresos - prevGastos;
-
     const liquidacionIva = ivaRepercutido - ivaSoportado;
     const provisionIRPF = beneficio > 0 ? beneficio * 0.15 : 0; 
     const provisionImpuestos = (liquidacionIva > 0 ? liquidacionIva : 0) + provisionIRPF;
     const beneficioLiquido = beneficio - provisionImpuestos;
 
-    // 🛠️ CORRECCIÓN: Cálculo de Supervivencia (Proyección Matemática Real)
-    let gastoMedioMensual = 0;
-    if (diasFiltro === 7) {
-        gastoMedioMensual = (totalGastos / 7) * 30; // Proyecta el gasto de 7 días a un mes
-    } else if (diasFiltro === 30) {
-        gastoMedioMensual = totalGastos; // El gasto de 30 días ya equivale a un mes
-    } else if (diasFiltro === 90) {
-        gastoMedioMensual = totalGastos / 3; // Trimestre
-    } else {
-        const mesesActivos = Math.max(1, Object.keys(mensualidades).length);
-        gastoMedioMensual = totalGastos / mesesActivos; // Histórico / Anual real
-    }
-    const runwayMeses = gastoMedioMensual > 0 && beneficioLiquido > 0 ? (beneficioLiquido / gastoMedioMensual) : 0;
+    // 🚀 SUPERVIVENCIA BLINDADA (Dinero Total / Gasto Medio Histórico Real)
+    const globalBeneficio = globalIngresos - globalGastos;
+    const globalProvision = Math.max(0, globalIvaRep - globalIvaSop) + (globalBeneficio > 0 ? globalBeneficio * 0.15 : 0);
+    const globalCajaLibre = globalBeneficio - globalProvision;
+    const globalGastoMedioMensual = globalGastos / Math.max(1, globalMesesActivos.size);
+    const globalRunway = globalGastoMedioMensual > 0 && globalCajaLibre > 0 ? (globalCajaLibre / globalGastoMedioMensual) : 0;
 
     const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
 
-    setKpis({ ingresos: totalIngresos, gastos: totalGastos, beneficio, margen, beneficioLiquido, provisionImpuestos, runwayMeses });
+    setKpis({ 
+        ingresos: totalIngresos, 
+        gastos: totalGastos, 
+        beneficio, 
+        margen, 
+        beneficioLiquido, 
+        provisionImpuestos, 
+        runwayMeses: globalRunway // El Runway ya nunca fallará
+    });
+    
     setTrends({ 
         ingresos: calcTrend(totalIngresos, prevIngresos), 
         gastos: calcTrend(totalGastos, prevGastos), 
@@ -569,7 +584,7 @@ export default function AnalisisAvanzado() {
                                         ))}
                                      </Pie>
                                      <RechartsTooltip 
-                                        formatter={(value: number, name: string) => [`${value.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, name]}
+                                        formatter={(value: number, name: string) => [`${value.toLocaleString('es-ES', {minimumFractionDigits: 2})} €`, name]}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontWeight: 'bold' }}
                                      />
                                   </PieChart>

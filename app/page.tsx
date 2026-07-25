@@ -55,7 +55,7 @@ const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
 
       {datos.map((item: any, i: number) => {
          const isGasto = Number(item.total) < 0;
-         const importeText = `${isGasto ? '-' : '+'}${Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2})} €`;
+         const importeText = `${isGasto ? '-' : '+'}${Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
          const colorImporte = isGasto ? '#e11d48' : '#10b981';
          const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
          const proyText = matchProy ? matchProy[1] : "-";
@@ -87,7 +87,6 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   const [data, setData] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
@@ -101,9 +100,9 @@ export default function Home() {
   const [ingreso, setIngreso] = useState("");
   const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto" | "proyecto">("ingreso");
   
-  // 🚀 ESTADOS PARA PROYECTOS COMPLETOS
   const [proyecto, setProyecto] = useState("");
-  const [proyectoGastos, setProyectoGastos] = useState([{ id: Date.now(), concepto: "", importe: "", categoria: "Logística", iva: "21" }]);
+  const [proyectoIngresos, setProyectoIngresos] = useState([{ id: Date.now(), concepto: "", importe: "", categoria: "Ventas", iva: "21" }]);
+  const [proyectoGastos, setProyectoGastos] = useState([{ id: Date.now() + 1, concepto: "", importe: "", categoria: "Logística", iva: "21" }]);
 
   const defaultIngresos = ["Ventas", "Servicios", "Inversión", "Subvenciones", "Préstamos", "Otros"];
   const defaultGastos = ["Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Impuestos", "Dietas", "Mantenimiento", "Seguros", "Otros"];
@@ -120,7 +119,10 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
   
-  const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos">("all");
+  // 🚀 ESTADOS PARA EL LIBRO MAYOR DE PROYECTOS
+  const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos" | "proyectos">("all");
+  const [subFiltroProyecto, setSubFiltroProyecto] = useState<"all" | "ingresos" | "gastos">("all");
+  const [proyectoSeleccionadoFiltro, setProyectoSeleccionadoFiltro] = useState<string>("todos");
 
   const [chartFilter, setChartFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -163,19 +165,18 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
 
-  const proyIngresoNum = parseFloat(ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
-  const proyGastosNum = proyectoGastos.reduce((acc, g) => acc + (parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
-  const proyMargen = proyIngresoNum - proyGastosNum;
-  const proyMargenPorcentaje = proyIngresoNum > 0 ? (proyMargen / proyIngresoNum) * 100 : 0;
+  // 🚀 LÓGICA DE CÁLCULO PARA EL CREADOR DE PROYECTOS
+  const proyIngresosNumTotal = proyectoIngresos.reduce((acc, i) => acc + (parseFloat(i.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
+  const proyGastosNumTotal = proyectoGastos.reduce((acc, g) => acc + (parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
+  const proyMargen = proyIngresosNumTotal - proyGastosNumTotal;
+  const proyMargenPorcentaje = proyIngresosNumTotal > 0 ? (proyMargen / proyIngresosNumTotal) * 100 : 0;
 
   const syncSettingsToCloud = async (ajustes: any) => {
     try {
       await fetch('/api/settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ajustes)
       });
-    } catch (error) {
-      console.error("Error sincronizando ajustes", error);
-    }
+    } catch (error) {}
   };
 
   useEffect(() => {
@@ -403,6 +404,12 @@ export default function Home() {
     return new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime() - new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
   });
 
+  // 🚀 OBTENER LISTA DE PROYECTOS ÚNICOS PARA EL FILTRO DEL LIBRO MAYOR
+  const proyectosUnicos = Array.from(new Set(datosTabla.map(item => {
+      const match = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
+      return match ? match[1] : null;
+  }).filter(Boolean))) as string[];
+
   let datosTablaFiltrados = datosTabla.filter(item => {
     if (chartFilter) {
       const [d, m, y] = item.name.split('/');
@@ -433,6 +440,16 @@ export default function Home() {
     if (filtroDoc === 'gastos' && !isGasto) return false;
     if (filtroDoc === 'presupuestos' && !isPresupuesto) return false;
     if (filtroDoc === 'abonos' && !isAbono) return false;
+    
+    // 🚀 LÓGICA DEL FILTRO EXCLUSIVO DE PROYECTOS
+    if (filtroDoc === 'proyectos') {
+        const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
+        if (!matchProy) return false; 
+        
+        if (proyectoSeleccionadoFiltro !== 'todos' && matchProy[1] !== proyectoSeleccionadoFiltro) return false;
+        if (subFiltroProyecto === 'ingresos' && Number(item.total) <= 0) return false;
+        if (subFiltroProyecto === 'gastos' && Number(item.total) >= 0) return false;
+    }
 
     return true;
   });
@@ -593,22 +610,27 @@ export default function Home() {
       if (tipoTransaccion === 'proyecto') {
           const proyName = proyecto.trim().toUpperCase();
           if (!proyName) { setIsSaving(false); return alert("⚠️ Debe indicar el Nombre del Proyecto."); }
-          if (proyIngresoNum <= 0) { setIsSaving(false); return alert("⚠️ El ingreso base del proyecto no es válido o está vacío."); }
+          if (proyIngresosNumTotal <= 0 && proyGastosNumTotal <= 0) { setIsSaving(false); return alert("⚠️ El proyecto no tiene importes válidos."); }
 
           const promesas = [];
           const tagProyecto = ` [PROYECTO: ${proyName}]`;
 
-          // 1. Guardamos el Ingreso
-          promesas.push(guardarDatoSupabase({
-              month: fecha, 
-              total: proyIngresoNum, 
-              categoria: categoria, 
-              iva: ivaSeleccionado,
-              empresaId, 
-              isRecurrent: false, 
-              frecuencia: null, 
-              concepto_detalle: "Ingreso General" + tagProyecto
-          }));
+          // 1. Guardamos todos los Ingresos añadidos
+          for (const ing of proyectoIngresos) {
+              const numI = parseFloat(ing.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+              if (!isNaN(numI) && numI > 0) {
+                  promesas.push(guardarDatoSupabase({
+                      month: fecha, 
+                      total: Math.abs(numI), 
+                      categoria: ing.categoria, 
+                      iva: ing.iva,
+                      empresaId, 
+                      isRecurrent: false, 
+                      frecuencia: null, 
+                      concepto_detalle: (ing.concepto.trim() || "Ingreso asociado") + tagProyecto
+                  }));
+              }
+          }
 
           // 2. Guardamos todos los Gastos añadidos
           for (const g of proyectoGastos) {
@@ -631,9 +653,9 @@ export default function Home() {
           const actualizadosBD = await obtenerDatosSupabase(empresaId);
           setData(actualizadosBD);
           
-          setIngreso(''); setProyecto(''); 
-          setProyectoGastos([{ id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }]);
-          setIvaSeleccionado("21");
+          setProyecto(''); 
+          setProyectoIngresos([{ id: Date.now(), concepto: "", importe: "", categoria: categoriasIngreso[0] || "Ventas", iva: "21" }]);
+          setProyectoGastos([{ id: Date.now() + 1, concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }]);
           setIsSaving(false);
           alert("✅ Proyecto registrado correctamente con sus ingresos y gastos.");
           return;
@@ -915,7 +937,7 @@ export default function Home() {
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
           
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
@@ -987,6 +1009,7 @@ export default function Home() {
                   Facturación PDF
                 </Link>
 
+                {/* 🚀 BOTÓN SOPORTE VIP */}
                 <div className="pt-4 mt-4 border-t border-slate-800">
                     <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
                       <span className="text-lg group-hover:scale-110 transition-transform">🎧</span>
@@ -1016,7 +1039,9 @@ export default function Home() {
             </div>
           </aside>
 
-          {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
+          {isSidebarOpen && (
+             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
+          )}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             
@@ -1238,45 +1263,55 @@ export default function Home() {
                         </div>
                       </>
                     ) : (
-                      // 🚀 NUEVO FORMULARIO: PROYECTO COMPLETO (INGRESO + MÚLTIPLES GASTOS)
+                      // 🚀 NUEVO FORMULARIO: PROYECTO COMPLETO (MÚLTIPLES INGRESOS Y GASTOS)
                       <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
                          <div>
                             <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">Nombre del Proyecto / Evento *</label>
                             <input type="text" placeholder="Ej: Boda Madrid o Mantenimiento Web" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-2.5 bg-white border border-purple-200 text-slate-900 rounded-lg text-sm font-black outline-none focus:ring-2 focus:ring-purple-500/30 shadow-sm" />
                          </div>
                          
-                         <div className="grid grid-cols-2 gap-3">
-                            <div>
-                               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
-                               <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" />
-                            </div>
-                            <div>
-                               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Categoría Ingreso</label>
-                               <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none">
-                                 {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
-                               </select>
-                            </div>
+                         <div>
+                             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
+                             <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" />
                          </div>
-                         
-                         <div className="grid grid-cols-2 gap-3">
-                            <div>
-                               <label className="block text-[10px] font-bold text-emerald-600 uppercase mb-1">Ingreso Total (€) *</label>
-                               <input type="text" inputMode="decimal" placeholder="0.00" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-lg text-sm font-black outline-none" />
-                            </div>
-                            <div>
-                               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">IVA Ingreso</label>
-                               <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none">
-                                  <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                               </select>
-                            </div>
-                         </div>
-                         
-                         <div className="border-t border-purple-200 pt-4 mt-2">
+
+                         {/* MÚLTIPLES INGRESOS */}
+                         <div className="border-t border-emerald-100 pt-3 mt-2">
                              <div className="flex justify-between items-center mb-3">
-                                <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Gastos Asociados</span>
-                                <button type="button" onClick={() => setProyectoGastos([...proyectoGastos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "General", iva: "21" }])} className="text-[9px] font-bold bg-white text-rose-600 px-2 py-1.5 rounded-md border border-rose-200 shadow-sm hover:bg-rose-50">+ Coste</button>
+                                <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Ingresos Asociados (Ventas, Propinas...)</span>
+                                <button type="button" onClick={() => setProyectoIngresos([...proyectoIngresos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasIngreso[0] || "Ventas", iva: "21" }])} className="text-[9px] font-bold bg-white text-emerald-600 px-2 py-1.5 rounded-md border border-emerald-200 shadow-sm hover:bg-emerald-50">+ Ingreso</button>
                              </div>
-                             
+                             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {proyectoIngresos.map((ing, idx) => (
+                                   <div key={ing.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-emerald-100 items-end">
+                                      <div className="w-full sm:flex-1">
+                                         <input type="text" placeholder="Ej: Servicio principal" value={ing.concepto} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, concepto: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-xs font-semibold outline-none" />
+                                      </div>
+                                      <div className="w-full sm:w-20">
+                                         <input type="text" inputMode="decimal" placeholder="€ Valor" value={ing.importe} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, importe: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-xs font-bold outline-none text-emerald-600" />
+                                      </div>
+                                      <div className="w-full sm:w-16">
+                                         <select value={ing.iva} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, iva: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                            <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                         </select>
+                                      </div>
+                                      <div className="w-full sm:w-24">
+                                         <select value={ing.categoria} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, categoria: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                            {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
+                                         </select>
+                                      </div>
+                                      <button type="button" onClick={() => setProyectoIngresos(proyectoIngresos.filter(pi => pi.id !== ing.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                   </div>
+                                ))}
+                             </div>
+                         </div>
+
+                         {/* MÚLTIPLES GASTOS */}
+                         <div className="border-t border-rose-100 pt-3 mt-2">
+                             <div className="flex justify-between items-center mb-3">
+                                <span className="text-[10px] font-black text-rose-700 uppercase tracking-widest">Gastos Asociados (Compras, Nóminas...)</span>
+                                <button type="button" onClick={() => setProyectoGastos([...proyectoGastos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }])} className="text-[9px] font-bold bg-white text-rose-600 px-2 py-1.5 rounded-md border border-rose-200 shadow-sm hover:bg-rose-50">+ Coste</button>
+                             </div>
                              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                                 {proyectoGastos.map((g, idx) => (
                                    <div key={g.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-slate-200 items-end">
@@ -1302,6 +1337,7 @@ export default function Home() {
                              </div>
                          </div>
                          
+                         {/* BENEFICIO LIMPIO ESPERADO */}
                          <div className="bg-purple-100/50 p-4 rounded-xl border border-purple-200 flex justify-between items-center mt-2 shadow-sm">
                              <div>
                                  <span className="text-[10px] font-black text-purple-900 uppercase block">Beneficio Limpio Esperado</span>
@@ -1309,7 +1345,7 @@ export default function Home() {
                              </div>
                              <div className="text-right">
                                  <span className={`text-xl font-black ${proyMargen >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                     {proyMargen >= 0 ? '+' : ''}{proyMargen.toFixed(2)} €
+                                     {proyMargen >= 0 ? '+' : ''}{proyMargen.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                                  </span>
                                  <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded border ${proyMargen >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
                                      {proyMargenPorcentaje.toFixed(1)}%
@@ -1406,14 +1442,35 @@ export default function Home() {
                 </div>
               </div>
               
-              <div className="px-4 md:px-6 pt-4 pb-2 bg-slate-50/50 border-b border-slate-100">
+              <div className="px-4 md:px-6 pt-4 pb-2 bg-slate-50/50 border-b border-slate-100 flex flex-col">
+                  {/* FILTROS PRINCIPALES */}
                   <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                      <button onClick={() => {setFiltroDoc('all'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas las Op.</button>
                      <button onClick={() => {setFiltroDoc('ingresos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'ingresos' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>Ingresos Reales</button>
                      <button onClick={() => {setFiltroDoc('gastos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'gastos' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Gastos / Compras</button>
+                     
+                     {/* 🚀 NUEVA PESTAÑA: MODO PROYECTOS */}
+                     <button onClick={() => {setFiltroDoc('proyectos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'proyectos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>🎯 Modo Proyectos</button>
+                     
                      <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>Presupuestos (Ocultos)</button>
-                     <button onClick={() => {setFiltroDoc('abonos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'abonos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>Abonos / Rectif.</button>
+                     <button onClick={() => {setFiltroDoc('abonos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'abonos' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}>Abonos / Rectif.</button>
                   </div>
+
+                  {/* 🚀 SUB-FILTROS DE PROYECTOS */}
+                  {filtroDoc === 'proyectos' && (
+                     <div className="flex flex-col sm:flex-row gap-3 mt-3 p-3 bg-purple-50/50 border border-purple-100 rounded-xl animate-fade-in-up">
+                         <select value={proyectoSeleccionadoFiltro} onChange={(e) => {setProyectoSeleccionadoFiltro(e.target.value); setCurrentPage(1);}} className="p-2 bg-white border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 outline-none focus:ring-2 focus:ring-purple-500/20">
+                             <option value="todos">📋 Todos los Proyectos</option>
+                             {proyectosUnicos.map(p => <option key={p} value={p}>🎯 {p}</option>)}
+                         </select>
+
+                         <div className="flex bg-white rounded-lg border border-purple-200 overflow-hidden">
+                             <button onClick={() => {setSubFiltroProyecto('all'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition ${subFiltroProyecto === 'all' ? 'bg-purple-100 text-purple-800' : 'text-slate-500 hover:bg-slate-50'}`}>Balance Completo</button>
+                             <button onClick={() => {setSubFiltroProyecto('ingresos'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition border-l border-r border-purple-100 ${subFiltroProyecto === 'ingresos' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-50'}`}>Solo Ingresos</button>
+                             <button onClick={() => {setSubFiltroProyecto('gastos'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition ${subFiltroProyecto === 'gastos' ? 'bg-rose-50 text-rose-700' : 'text-slate-500 hover:bg-slate-50'}`}>Solo Gastos</button>
+                         </div>
+                     </div>
+                  )}
               </div>
 
               <div className="overflow-x-auto">
