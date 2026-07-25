@@ -100,8 +100,6 @@ export default function Home() {
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
   const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto">("ingreso");
-  
-  // 🚀 NUEVO: ESTADO PARA ETIQUETA DE PROYECTO
   const [proyecto, setProyecto] = useState("");
 
   const defaultIngresos = ["Ventas", "Servicios", "Inversión", "Subvenciones", "Préstamos", "Otros"];
@@ -600,7 +598,6 @@ export default function Home() {
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
       const detalleAdicional = (tipoTransaccion === 'gasto' && isVehiculo) ? " (Gasto Vehículo: IVA 50% deducible)" : "";
       
-      // 🚀 INYECCIÓN ETIQUETA DE PROYECTO
       const tagProyecto = proyecto.trim() ? ` [PROYECTO: ${proyecto.toUpperCase()}]` : "";
       
       const res = await guardarDatoSupabase({ 
@@ -649,7 +646,6 @@ export default function Home() {
     setEditingId(item.id);
     const [d, m, y] = item.name.split('/');
     
-    // Extracción de etiqueta de proyecto
     const tagMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
 
     setEditFormData({
@@ -673,7 +669,6 @@ export default function Home() {
 
       const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
 
-      // Recomposición del proyecto
       let nuevoConcepto = editFormData.conceptoOriginal.replace(/\[PROYECTO:\s*(.*?)\]/g, '').trim();
       if (editFormData.proyecto.trim()) {
           nuevoConcepto += ` [PROYECTO: ${editFormData.proyecto.toUpperCase()}]`;
@@ -917,7 +912,7 @@ export default function Home() {
               </div>
               
               <nav className="space-y-1">
-                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-medium shadow-md shadow-blue-600/20" href="/" onClick={() => setIsSidebarOpen(false)}>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm" href="/" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
                   Consola General
                 </Link>
@@ -1142,7 +1137,7 @@ export default function Home() {
                       </select>
                     </div>
 
-                    {/* 🚀 NUEVO: ETIQUETADO DE PROYECTO */}
+                    {/* ETIQUETADO DE PROYECTO */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
@@ -1231,7 +1226,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 🚀 TABLA DE LIBRO MAYOR CON ETIQUETAS DE PROYECTO */}
+            {/* TABLA DE LIBRO MAYOR CON ETIQUETAS DE PROYECTO */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
               <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
                 <div className="flex items-center gap-3">
@@ -1666,11 +1661,11 @@ export default function Home() {
               </div>
               
               <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
-                El primer Director Financiero con <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Inteligencia Artificial</span>
+                Tu empresa merece un Director Financiero. <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">La IA te lo da por 89€.</span>
               </h1>
               
               <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
-                Automatiza tu contabilidad, escanea facturas al instante y genera los modelos oficiales de Hacienda sin depender de terceros. El control total de tu rentabilidad, en tiempo real.
+                Automatiza tu contabilidad, escanea tickets en segundos, controla quién te debe dinero y genera todos tus impuestos oficiales (303, 130, 390, 115, 347, 349) sin depender de terceros.
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -1692,28 +1687,51 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-6 py-24 relative z-10 border-b border-white/5">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-black text-white mb-4">¿Cómo TaxGuard AI multiplica tu rentabilidad?</h2>
-              <p className="text-slate-400 max-w-2xl mx-auto text-lg">Un proceso diseñado para eliminar el error humano y maximizar tu tiempo operativo.</p>
+              <p className="text-slate-400 max-w-2xl mx-auto text-lg">Seis pilares diseñados para eliminar el error humano y maximizar tu tiempo operativo.</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 text-center">
-                <div className="w-16 h-16 bg-blue-500/20 text-blue-400 flex items-center justify-center rounded-2xl text-2xl mx-auto mb-6">📸</div>
-                <h3 className="text-xl font-bold text-white mb-3">1. Sube tus Datos en Segundos</h3>
-                <p className="text-slate-400 text-sm">Sube una foto de tus tickets, conecta tu banco mediante CSV o emite facturas directamente desde nuestra plataforma.</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-blue-500/20 text-blue-400 flex items-center justify-center rounded-2xl text-xl mb-6">📸</div>
+                <h3 className="text-lg font-bold text-white mb-3">Escáner OCR Inteligente</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Convierte montañas de tickets en asientos contables con una simple foto. La IA lee el IVA, la base y clasifica el gasto al instante.</p>
               </div>
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 text-center">
-                <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 flex items-center justify-center rounded-2xl text-2xl mx-auto mb-6">🧠</div>
-                <h3 className="text-xl font-bold text-white mb-3">2. La IA Audita tu Negocio</h3>
-                <p className="text-slate-400 text-sm">Nuestro CFO Virtual analiza cada céntimo. Detecta fugas de capital, evalúa tu margen operativo y clasifica gastos automáticamente.</p>
+              
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 flex items-center justify-center rounded-2xl text-xl mb-6">📊</div>
+                <h3 className="text-lg font-bold text-white mb-3">Rentabilidad por Eventos</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Etiqueta tus ingresos y gastos para saber exactamente cuánto dinero limpio te deja cada proyecto, servicio o evento individual.</p>
               </div>
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 text-center">
-                <div className="w-16 h-16 bg-purple-500/20 text-purple-400 flex items-center justify-center rounded-2xl text-2xl mx-auto mb-6">🏛️</div>
-                <h3 className="text-xl font-bold text-white mb-3">3. Presenta Impuestos Sin Miedo</h3>
-                <p className="text-slate-400 text-sm">Genera borradores exactos del Modelo 303, 130 y 390 con un clic. Copia las casillas en la AEAT sabiendo que todo cuadra al milímetro.</p>
+              
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-rose-500/20 text-rose-400 flex items-center justify-center rounded-2xl text-xl mb-6">🚨</div>
+                <h3 className="text-lg font-bold text-white mb-3">Radar de Morosidad</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">No dejes que jueguen con tu dinero. Control automático de facturas vencidas (+30 días) y alertas de liquidez pendiente de cobro.</p>
               </div>
+
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-purple-500/20 text-purple-400 flex items-center justify-center rounded-2xl text-xl mb-6">🏛️</div>
+                <h3 className="text-lg font-bold text-white mb-3">Fiscalidad Total</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Olvídate del miedo a Hacienda. Generamos los modelos 303, 130, 390, 115, 347 y 349 listos para calcar en la Agencia Tributaria.</p>
+              </div>
+
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-amber-500/20 text-amber-400 flex items-center justify-center rounded-2xl text-xl mb-6">🪄</div>
+                <h3 className="text-lg font-bold text-white mb-3">Facturación B2B</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Crea facturas con tu logo, emite presupuestos elegantes y conviértelos a oficiales con un solo clic. Control total de tu flujo de caja.</p>
+              </div>
+
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-indigo-500/20 text-indigo-400 flex items-center justify-center rounded-2xl text-xl mb-6">🧠</div>
+                <h3 className="text-lg font-bold text-white mb-3">CFO Virtual AI</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Un auditor de IA que detecta fugas de capital, analiza tus márgenes operativos y te avisa de problemas antes de que ocurran.</p>
+              </div>
+
             </div>
           </div>
 
-          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10">
+          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10 border-b border-white/5">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-black text-white mb-4">La Inversión que se paga sola</h2>
               <p className="text-slate-400 max-w-2xl mx-auto text-lg">
@@ -1756,7 +1774,7 @@ export default function Home() {
                 </SignUpButton>
               </div>
 
-              {/* 🚀 TARJETA EMPRESA PRO ACTUALIZADA CON TODOS LOS SERVICIOS */}
+              {/* TARJETA EMPRESA PRO */}
               <div className="bg-slate-900 p-8 rounded-3xl border-2 border-blue-500 shadow-2xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg">
                   MÁS RECOMENDADO
@@ -1779,15 +1797,15 @@ export default function Home() {
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Visión de Caja Libre:</strong> Separación inteligente del beneficio real y la provisión de Hacienda.</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Visión de Caja Libre:</strong> Separación inteligente del beneficio real y la provisión intocable de Hacienda.</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Rentabilidad por Proyecto:</strong> Etiqueta ingresos y gastos para conocer el margen exacto de cada evento.</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Rentabilidad por Proyecto/Evento:</strong> Etiqueta ingresos y gastos para conocer tu margen exacto.</span>
                    </li>
                    <li className="flex items-start gap-3">
                      <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Radar de Morosidad:</strong> Control de impagados y facturas vencidas en tiempo real.</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Radar de Morosidad:</strong> Control de clientes impagados y facturas vencidas en tiempo real.</span>
                    </li>
                 </ul>
                 <SignUpButton mode="modal">
@@ -1798,31 +1816,61 @@ export default function Home() {
               </div>
 
             </div>
-            
-            <div className="mt-32 max-w-3xl mx-auto border-t border-white/5 pt-16">
-               <h3 className="text-2xl font-black text-white text-center mb-10">Dudas antes de empezar</h3>
-               <div className="space-y-6">
-                  <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
-                     <h4 className="text-white font-bold mb-2 text-sm">¿Puedo cambiar del Plan Autónomo al Pro más adelante?</h4>
-                     <p className="text-slate-400 text-sm leading-relaxed">Por supuesto. Puedes hacer el upgrade desde tu panel en cualquier momento. Nuestro sistema calculará automáticamente la diferencia prorrateada (solo pagarás la parte proporcional del mes que queda).</p>
-                  </div>
-                  <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
-                     <h4 className="text-white font-bold mb-2 text-sm">¿Mis datos y facturas están seguros?</h4>
-                     <p className="text-slate-400 text-sm leading-relaxed">Máxima seguridad. TaxGuard AI utiliza bases de datos aisladas y cifradas de extremo a extremo. Nadie, ni siquiera nosotros, puede leer tus reportes financieros confidenciales.</p>
-                  </div>
-                  <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
-                     <h4 className="text-white font-bold mb-2 text-sm">¿El borrador de impuestos me sirve para presentarlo de verdad?</h4>
-                     <p className="text-slate-400 text-sm leading-relaxed">Sí. Nuestros PDFs generan exactamente las mismas casillas numeradas que la Agencia Tributaria. Solo tienes que abrir su Sede Electrónica y copiar los valores en dos minutos.</p>
-                  </div>
-               </div>
-            </div>
+          </div>
 
+          {/* SECCIÓN PREGUNTAS FRECUENTES INTERACTIVA (SIN REACT STATE) */}
+          <div className="max-w-3xl mx-auto px-6 py-24 relative z-10">
+             <h3 className="text-3xl font-black text-white text-center mb-10">Dudas antes de empezar</h3>
+             
+             <div className="space-y-4">
+                
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Mis datos y facturas están seguros?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Máxima seguridad. TaxGuard AI utiliza bases de datos aisladas (Supabase) y cifradas de extremo a extremo. Nadie, ni siquiera nosotros, puede leer tus reportes financieros ni los datos de tus clientes.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿El borrador de impuestos me sirve para presentarlo de verdad?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Sí. Nuestros PDFs generan exactamente las mismas casillas numeradas que la Agencia Tributaria. Solo tienes que abrir su Sede Electrónica, buscar el modelo correspondiente, y copiar los valores en dos minutos. Sin gestores, sin esperas.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Cómo funciona la Rentabilidad por Proyecto o Eventos?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Es una función exclusiva del Plan Pro. Por ejemplo, si alquilas material para eventos o haces una consultoría, puedes etiquetar todos los gastos (gasolina, personal, compras) y la factura de cobro bajo el nombre "Evento Madrid". El Centro de Inteligencia calculará automáticamente el porcentaje de beneficio limpio de esa operación.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Qué pasa si un cliente no me paga a tiempo?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">El Radar de Morosidad (Plan Pro) vigila tus facturas emitidas. Si pasan 30 días sin que marques la factura como "Cobrada", el sistema la marcará en rojo como "Vencida" y sumará el importe a tu panel de riesgo para que sepas exactamente quién te debe dinero.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Puedo cambiar del Plan Autónomo al Pro más adelante?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Por supuesto. Puedes hacer el upgrade desde tu panel en cualquier momento. Nuestro sistema calculará automáticamente la diferencia prorrateada (solo pagarás la parte proporcional del mes que queda).</p>
+                </details>
+
+             </div>
           </div>
 
           <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
             <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
-            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs.</p>
-            <p className="mt-6 text-xs text-slate-600">Contacto: soporte.taxguard@gmail.com</p>
+            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs y Autónomos.</p>
+            <p className="mt-6 text-xs text-slate-600">Contacto comercial y soporte: soporte.taxguard@gmail.com</p>
           </footer>
         </div>
       </Show>
