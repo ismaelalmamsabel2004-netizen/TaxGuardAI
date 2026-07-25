@@ -30,10 +30,8 @@ export default function AnalisisAvanzado() {
   const [chartDataEvolucion, setChartDataEvolucion] = useState<any[]>([]);
   const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
   
-  // 🚀 NUEVO ESTADO: DATOS DE PROYECTOS
   const [chartDataProyectos, setChartDataProyectos] = useState<any[]>([]);
   
-  // KPIS Y TENDENCIAS
   const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
   const [trends, setTrends] = useState({ ingresos: 0, gastos: 0, beneficio: 0 });
 
@@ -95,7 +93,6 @@ export default function AnalisisAvanzado() {
     obtenerDatosSupabase(nuevaEmpresa).then(d => setAllData(d));
   };
 
-  // 🚀 MOTOR MATEMÁTICO: CÁLCULO DE KPIS, TENDENCIAS Y PROYECTOS
   useEffect(() => {
     if (!allData || allData.length === 0) {
        setChartDataEvolucion([]); 
@@ -115,8 +112,6 @@ export default function AnalisisAvanzado() {
     
     const mensualidades: Record<string, { Ingresos: number, Gastos: number, sortKey: number }> = {};
     const categoriasGastos: Record<string, number> = {};
-    
-    // Diccionario para el cálculo de proyectos
     const proyectosMap: Record<string, { Ingresos: number, Gastos: number }> = {};
 
     allData.forEach(item => {
@@ -132,7 +127,6 @@ export default function AnalisisAvanzado() {
         const ingresoAbsoluto = valor > 0 ? valor : 0;
         const iva = Number(item.iva) || 0;
 
-        // PERIODO ACTUAL
         if (diffDias <= diasFiltro) {
             totalIngresos += ingresoAbsoluto;
             totalGastos += gastoAbsoluto;
@@ -153,7 +147,6 @@ export default function AnalisisAvanzado() {
                 categoriasGastos[cat] = (categoriasGastos[cat] || 0) + gastoAbsoluto;
             }
 
-            // 🚀 EXTRACCIÓN DE RENTABILIDAD POR PROYECTO
             const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
             if (matchProy && matchProy[1]) {
                 const pName = matchProy[1];
@@ -162,7 +155,6 @@ export default function AnalisisAvanzado() {
                 else proyectosMap[pName].Gastos += gastoAbsoluto;
             }
         } 
-        // PERIODO ANTERIOR (Para sacar el % de tendencia)
         else if (diffDias > diasFiltro && diffDias <= diasFiltro * 2) {
             prevIngresos += ingresoAbsoluto;
             prevGastos += gastoAbsoluto;
@@ -177,7 +169,6 @@ export default function AnalisisAvanzado() {
         name: key, value: categoriasGastos[key]
     })).sort((a, b) => b.value - a.value); 
 
-    // Convertir el mapa de proyectos en un array ordenado por margen
     const proyectosArray = Object.keys(proyectosMap).map(key => {
         const ing = proyectosMap[key].Ingresos;
         const gas = proyectosMap[key].Gastos;
@@ -204,7 +195,7 @@ export default function AnalisisAvanzado() {
     const provisionImpuestos = (liquidacionIva > 0 ? liquidacionIva : 0) + provisionIRPF;
     const beneficioLiquido = beneficio - provisionImpuestos;
 
-    // 🛠️ CORRECCIÓN: Cálculo de la Supervivencia usando solo meses con actividad real
+    // 🛠️ CORRECCIÓN: Cálculo de Supervivencia Exacto (Solo meses activos)
     const mesesActivos = Math.max(1, Object.keys(mensualidades).length);
     const gastoMedioMensual = totalGastos / mesesActivos;
     const runwayMeses = gastoMedioMensual > 0 && beneficioLiquido > 0 ? (beneficioLiquido / gastoMedioMensual) : 0;
@@ -381,7 +372,6 @@ export default function AnalisisAvanzado() {
                   {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
                 </span>
               </Link>
-              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>

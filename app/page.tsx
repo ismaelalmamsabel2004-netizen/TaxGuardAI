@@ -99,8 +99,11 @@ export default function Home() {
 
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
-  const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto">("ingreso");
+  const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto" | "proyecto">("ingreso");
+  
+  // 🚀 ESTADOS PARA PROYECTOS COMPLETOS
   const [proyecto, setProyecto] = useState("");
+  const [proyectoGastos, setProyectoGastos] = useState([{ id: Date.now(), concepto: "", importe: "", categoria: "Logística", iva: "21" }]);
 
   const defaultIngresos = ["Ventas", "Servicios", "Inversión", "Subvenciones", "Préstamos", "Otros"];
   const defaultGastos = ["Logística", "Marketing", "Software/Suscripciones", "Inventario/Materiales", "Nóminas", "Impuestos", "Dietas", "Mantenimiento", "Seguros", "Otros"];
@@ -160,6 +163,11 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
 
+  const proyIngresoNum = parseFloat(ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
+  const proyGastosNum = proyectoGastos.reduce((acc, g) => acc + (parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
+  const proyMargen = proyIngresoNum - proyGastosNum;
+  const proyMargenPorcentaje = proyIngresoNum > 0 ? (proyMargen / proyIngresoNum) * 100 : 0;
+
   const syncSettingsToCloud = async (ajustes: any) => {
     try {
       await fetch('/api/settings', {
@@ -203,8 +211,12 @@ export default function Home() {
   }, [filtro, empresaId]);
 
   useEffect(() => {
-    setCategoria(tipoTransaccion === 'ingreso' ? categoriasIngreso[0] : categoriasGasto[0]);
-    if (tipoTransaccion === 'ingreso') setIsVehiculo(false);
+    if (tipoTransaccion === 'ingreso' || tipoTransaccion === 'proyecto') {
+        setCategoria(categoriasIngreso[0]);
+    } else {
+        setCategoria(categoriasGasto[0]);
+    }
+    if (tipoTransaccion === 'ingreso' || tipoTransaccion === 'proyecto') setIsVehiculo(false);
   }, [tipoTransaccion, categoriasIngreso, categoriasGasto]);
 
   const agregarEmpresa = async () => {
@@ -570,17 +582,64 @@ export default function Home() {
        alert("⚠️ Por favor, selecciona una fecha operativa.");
        return;
     }
-    if (!ingreso) {
-       alert("⚠️ Por favor, introduce un importe en Base Imponible.");
-       return;
-    }
 
     setIsSaving(true);
     
     try {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
+
+      // 🚀 LÓGICA DE GUARDADO PARA PROYECTOS COMPLETOS (MULTIPLES LÍNEAS)
+      if (tipoTransaccion === 'proyecto') {
+          const proyName = proyecto.trim().toUpperCase();
+          if (!proyName) { setIsSaving(false); return alert("⚠️ Debe indicar el Nombre del Proyecto."); }
+          if (proyIngresoNum <= 0) { setIsSaving(false); return alert("⚠️ El ingreso base del proyecto no es válido o está vacío."); }
+
+          const promesas = [];
+          const tagProyecto = ` [PROYECTO: ${proyName}]`;
+
+          // 1. Guardamos el Ingreso
+          promesas.push(guardarDatoSupabase({
+              month: fecha, 
+              total: proyIngresoNum, 
+              categoria: categoria, 
+              iva: ivaSeleccionado,
+              empresaId, 
+              isRecurrent: false, 
+              frecuencia: null, 
+              concepto_detalle: "Ingreso General" + tagProyecto
+          }));
+
+          // 2. Guardamos todos los Gastos añadidos
+          for (const g of proyectoGastos) {
+              const numG = parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+              if (!isNaN(numG) && numG > 0) {
+                  promesas.push(guardarDatoSupabase({
+                      month: fecha, 
+                      total: -Math.abs(numG), 
+                      categoria: g.categoria, 
+                      iva: g.iva,
+                      empresaId, 
+                      isRecurrent: false, 
+                      frecuencia: null, 
+                      concepto_detalle: (g.concepto.trim() || "Coste asociado") + tagProyecto
+                  }));
+              }
+          }
+
+          await Promise.all(promesas);
+          const actualizadosBD = await obtenerDatosSupabase(empresaId);
+          setData(actualizadosBD);
+          
+          setIngreso(''); setProyecto(''); 
+          setProyectoGastos([{ id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }]);
+          setIvaSeleccionado("21");
+          setIsSaving(false);
+          alert("✅ Proyecto registrado correctamente con sus ingresos y gastos.");
+          return;
+      }
       
+      // LÓGICA DE GUARDADO NORMAL (INGRESO O GASTO SIMPLE)
       const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
       const numeroLimpio = parseFloat(textoLimpio);
 
@@ -597,7 +656,6 @@ export default function Home() {
 
       const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
       const detalleAdicional = (tipoTransaccion === 'gasto' && isVehiculo) ? " (Gasto Vehículo: IVA 50% deducible)" : "";
-      
       const tagProyecto = proyecto.trim() ? ` [PROYECTO: ${proyecto.toUpperCase()}]` : "";
       
       const res = await guardarDatoSupabase({ 
@@ -857,7 +915,7 @@ export default function Home() {
   return (
     <>
       <Show when="signed-in">
-        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
+        <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
@@ -912,7 +970,7 @@ export default function Home() {
               </div>
               
               <nav className="space-y-1">
-                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800 text-white font-medium transition shadow-sm" href="/" onClick={() => setIsSidebarOpen(false)}>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-medium shadow-md shadow-blue-600/20" href="/" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
                   Consola General
                 </Link>
@@ -929,7 +987,6 @@ export default function Home() {
                   Facturación PDF
                 </Link>
 
-                {/* 🚀 BOTÓN SOPORTE VIP */}
                 <div className="pt-4 mt-4 border-t border-slate-800">
                     <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
                       <span className="text-lg group-hover:scale-110 transition-transform">🎧</span>
@@ -959,9 +1016,7 @@ export default function Home() {
             </div>
           </aside>
 
-          {isSidebarOpen && (
-             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
-          )}
+          {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             
@@ -1109,76 +1164,164 @@ export default function Home() {
                   </div>
 
                   <form onSubmit={guardarDato} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3 mb-2">
-                      <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'ingreso' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>+ Ingreso</button>
-                      <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-xs font-bold transition border ${tipoTransaccion === 'gasto' ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>- Gasto</button>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                        <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
-                        <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                        </div>
-                        <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
-                        <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
-                            <option value="21">21% (General)</option>
-                            <option value="10">10% (Reducido)</option>
-                            <option value="4">4% (Superreducido)</option>
-                            <option value="0">0% (Exento)</option>
-                        </select>
-                        </div>
+                    {/* 🚀 BOTONES DE TIPO DE TRANSACCIÓN ACTUALIZADOS */}
+                    <div className="grid grid-cols-3 gap-3 mb-2 bg-slate-100 p-1.5 rounded-2xl">
+                      <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
+                      <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
+                      <button type="button" onClick={() => setTipoTransaccion('proyecto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
-                      <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
-                        {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
+                    {/* 🚀 RENDERIZADO CONDICIONAL: FORMULARIO NORMAL VS PROYECTO */}
+                    {tipoTransaccion !== 'proyecto' ? (
+                      <>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
+                            <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            </div>
+                            <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
+                            <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                <option value="21">21% (General)</option>
+                                <option value="10">10% (Reducido)</option>
+                                <option value="4">4% (Superreducido)</option>
+                                <option value="0">0% (Exento)</option>
+                            </select>
+                            </div>
+                        </div>
 
-                    {/* ETIQUETADO DE PROYECTO */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
-                          <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
+                          <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                            {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Proyecto / Evento (Opc.)</label>
-                          <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
+                              <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta (Opc.)</label>
+                              <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            </div>
                         </div>
-                    </div>
-                    
-                    {tipoTransaccion === 'gasto' && (
-                        <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl">
-                            <input 
-                                type="checkbox" 
-                                id="vehiculo" 
-                                checked={isVehiculo} 
-                                onChange={(e) => setIsVehiculo(e.target.checked)} 
-                                className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" 
-                            />
-                            <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
-                                🚘 Gasto Vehículo (Deducir 50% IVA)
-                            </label>
+                        
+                        {tipoTransaccion === 'gasto' && (
+                            <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+                                <input 
+                                    type="checkbox" 
+                                    id="vehiculo" 
+                                    checked={isVehiculo} 
+                                    onChange={(e) => setIsVehiculo(e.target.checked)} 
+                                    className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" 
+                                />
+                                <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
+                                    🚘 Gasto Vehículo (Deducir 50% IVA)
+                                </label>
+                            </div>
+                        )}
+
+                        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2 gap-3">
+                          <label className="text-xs font-bold text-slate-600 flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" checked={isRecurrent} onChange={(e) => setIsRecurrent(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
+                            Hacer recurrente
+                          </label>
+                          {isRecurrent && (
+                            <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="w-full lg:w-auto p-1.5 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none">
+                              <option value="Mensual">Mensual</option>
+                              <option value="Trimestral">Trimestral</option>
+                              <option value="Anual">Anual</option>
+                            </select>
+                          )}
                         </div>
+                      </>
+                    ) : (
+                      // 🚀 NUEVO FORMULARIO: PROYECTO COMPLETO (INGRESO + MÚLTIPLES GASTOS)
+                      <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
+                         <div>
+                            <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">Nombre del Proyecto / Evento *</label>
+                            <input type="text" placeholder="Ej: Boda Madrid o Mantenimiento Web" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-2.5 bg-white border border-purple-200 text-slate-900 rounded-lg text-sm font-black outline-none focus:ring-2 focus:ring-purple-500/30 shadow-sm" />
+                         </div>
+                         
+                         <div className="grid grid-cols-2 gap-3">
+                            <div>
+                               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
+                               <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" />
+                            </div>
+                            <div>
+                               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Categoría Ingreso</label>
+                               <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none">
+                                 {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
+                               </select>
+                            </div>
+                         </div>
+                         
+                         <div className="grid grid-cols-2 gap-3">
+                            <div>
+                               <label className="block text-[10px] font-bold text-emerald-600 uppercase mb-1">Ingreso Total (€) *</label>
+                               <input type="text" inputMode="decimal" placeholder="0.00" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-lg text-sm font-black outline-none" />
+                            </div>
+                            <div>
+                               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">IVA Ingreso</label>
+                               <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none">
+                                  <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                               </select>
+                            </div>
+                         </div>
+                         
+                         <div className="border-t border-purple-200 pt-4 mt-2">
+                             <div className="flex justify-between items-center mb-3">
+                                <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Gastos Asociados</span>
+                                <button type="button" onClick={() => setProyectoGastos([...proyectoGastos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "General", iva: "21" }])} className="text-[9px] font-bold bg-white text-rose-600 px-2 py-1.5 rounded-md border border-rose-200 shadow-sm hover:bg-rose-50">+ Coste</button>
+                             </div>
+                             
+                             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {proyectoGastos.map((g, idx) => (
+                                   <div key={g.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-slate-200 items-end">
+                                      <div className="w-full sm:flex-1">
+                                         <input type="text" placeholder="Ej: Alquiler furgoneta" value={g.concepto} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, concepto: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-xs font-semibold outline-none" />
+                                      </div>
+                                      <div className="w-full sm:w-20">
+                                         <input type="text" inputMode="decimal" placeholder="€ Coste" value={g.importe} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, importe: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-xs font-bold outline-none text-rose-600" />
+                                      </div>
+                                      <div className="w-full sm:w-16">
+                                         <select value={g.iva} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, iva: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                            <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                         </select>
+                                      </div>
+                                      <div className="w-full sm:w-24">
+                                         <select value={g.categoria} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, categoria: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                            {categoriasGasto.map(c => <option key={c} value={c}>{c}</option>)}
+                                         </select>
+                                      </div>
+                                      <button type="button" onClick={() => setProyectoGastos(proyectoGastos.filter(pg => pg.id !== g.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                   </div>
+                                ))}
+                             </div>
+                         </div>
+                         
+                         <div className="bg-purple-100/50 p-4 rounded-xl border border-purple-200 flex justify-between items-center mt-2 shadow-sm">
+                             <div>
+                                 <span className="text-[10px] font-black text-purple-900 uppercase block">Beneficio Limpio Esperado</span>
+                                 <span className="text-[9px] text-purple-600 font-medium">Ingresos - Gastos asignados</span>
+                             </div>
+                             <div className="text-right">
+                                 <span className={`text-xl font-black ${proyMargen >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                     {proyMargen >= 0 ? '+' : ''}{proyMargen.toFixed(2)} €
+                                 </span>
+                                 <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded border ${proyMargen >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
+                                     {proyMargenPorcentaje.toFixed(1)}%
+                                 </span>
+                             </div>
+                         </div>
+                      </div>
                     )}
 
-                    <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2 gap-3">
-                      <label className="text-xs font-bold text-slate-600 flex items-center gap-2 cursor-pointer select-none">
-                        <input type="checkbox" checked={isRecurrent} onChange={(e) => setIsRecurrent(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
-                        Hacer recurrente
-                      </label>
-                      {isRecurrent && (
-                        <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="w-full lg:w-auto p-1.5 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none">
-                          <option value="Mensual">Mensual</option>
-                          <option value="Trimestral">Trimestral</option>
-                          <option value="Anual">Anual</option>
-                        </select>
-                      )}
-                    </div>
-
-                    <button type="submit" disabled={isSaving} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl disabled:opacity-50 mt-2">{isSaving ? "Procesando..." : "Asignar Movimiento"}</button>
+                    <button type="submit" disabled={isSaving} className={`w-full text-white font-bold py-3 rounded-xl disabled:opacity-50 mt-2 transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/30' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                        {isSaving ? "Procesando..." : tipoTransaccion === 'proyecto' ? "Guardar Proyecto Completo" : "Asignar Movimiento"}
+                    </button>
                   </form>
                 </div>
               </div>
