@@ -29,7 +29,6 @@ export default function AnalisisAvanzado() {
 
   const [chartDataEvolucion, setChartDataEvolucion] = useState<any[]>([]);
   const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
-  
   const [chartDataProyectos, setChartDataProyectos] = useState<any[]>([]);
   
   const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
@@ -55,7 +54,7 @@ export default function AnalisisAvanzado() {
 
          setPlanActivo(planDetectado);
 
-         const listaEmpresas = ajustesGuardados.empresas || ["Alperez", "PetClean", "Techmovile"];
+         const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa"];
          setEmpresas(listaEmpresas);
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
@@ -195,9 +194,18 @@ export default function AnalisisAvanzado() {
     const provisionImpuestos = (liquidacionIva > 0 ? liquidacionIva : 0) + provisionIRPF;
     const beneficioLiquido = beneficio - provisionImpuestos;
 
-    // 🛠️ CORRECCIÓN: Cálculo de Supervivencia Exacto (Solo meses activos)
-    const mesesActivos = Math.max(1, Object.keys(mensualidades).length);
-    const gastoMedioMensual = totalGastos / mesesActivos;
+    // 🛠️ CORRECCIÓN: Cálculo de Supervivencia (Proyección Matemática Real)
+    let gastoMedioMensual = 0;
+    if (diasFiltro === 7) {
+        gastoMedioMensual = (totalGastos / 7) * 30; // Proyecta el gasto de 7 días a un mes
+    } else if (diasFiltro === 30) {
+        gastoMedioMensual = totalGastos; // El gasto de 30 días ya equivale a un mes
+    } else if (diasFiltro === 90) {
+        gastoMedioMensual = totalGastos / 3; // Trimestre
+    } else {
+        const mesesActivos = Math.max(1, Object.keys(mensualidades).length);
+        gastoMedioMensual = totalGastos / mesesActivos; // Histórico / Anual real
+    }
     const runwayMeses = gastoMedioMensual > 0 && beneficioLiquido > 0 ? (beneficioLiquido / gastoMedioMensual) : 0;
 
     const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
