@@ -1272,7 +1272,7 @@ export default function Home() {
                          
                          <div>
                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
-                             <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" />
+                             <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 text-slate-900 rounded-lg text-xs font-bold outline-none" />
                          </div>
 
                          {/* MÚLTIPLES INGRESOS */}
@@ -1285,18 +1285,18 @@ export default function Home() {
                                 {proyectoIngresos.map((ing, idx) => (
                                    <div key={ing.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-emerald-100 items-end">
                                       <div className="w-full sm:flex-1">
-                                         <input type="text" placeholder="Ej: Servicio principal" value={ing.concepto} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, concepto: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-xs font-semibold outline-none" />
+                                         <input type="text" placeholder="Ej: Servicio principal" value={ing.concepto} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, concepto: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
                                       </div>
                                       <div className="w-full sm:w-20">
-                                         <input type="text" inputMode="decimal" placeholder="€ Valor" value={ing.importe} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, importe: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-xs font-bold outline-none text-emerald-600" />
+                                         <input type="text" inputMode="decimal" placeholder="€ Valor" value={ing.importe} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, importe: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-emerald-600 text-xs font-bold outline-none bg-transparent" />
                                       </div>
                                       <div className="w-full sm:w-16">
-                                         <select value={ing.iva} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, iva: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                         <select value={ing.iva} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, iva: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
                                             <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
                                          </select>
                                       </div>
                                       <div className="w-full sm:w-24">
-                                         <select value={ing.categoria} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, categoria: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                         <select value={ing.categoria} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, categoria: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
                                             {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
                                          </select>
                                       </div>
@@ -1316,18 +1316,18 @@ export default function Home() {
                                 {proyectoGastos.map((g, idx) => (
                                    <div key={g.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-slate-200 items-end">
                                       <div className="w-full sm:flex-1">
-                                         <input type="text" placeholder="Ej: Alquiler furgoneta" value={g.concepto} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, concepto: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-xs font-semibold outline-none" />
+                                         <input type="text" placeholder="Ej: Alquiler furgoneta" value={g.concepto} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, concepto: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
                                       </div>
                                       <div className="w-full sm:w-20">
-                                         <input type="text" inputMode="decimal" placeholder="€ Coste" value={g.importe} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, importe: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-xs font-bold outline-none text-rose-600" />
+                                         <input type="text" inputMode="decimal" placeholder="€ Coste" value={g.importe} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, importe: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-rose-600 text-xs font-bold outline-none bg-transparent" />
                                       </div>
                                       <div className="w-full sm:w-16">
-                                         <select value={g.iva} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, iva: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                         <select value={g.iva} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, iva: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
                                             <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
                                          </select>
                                       </div>
                                       <div className="w-full sm:w-24">
-                                         <select value={g.categoria} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, categoria: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] outline-none">
+                                         <select value={g.categoria} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, categoria: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
                                             {categoriasGasto.map(c => <option key={c} value={c}>{c}</option>)}
                                          </select>
                                       </div>
@@ -1674,7 +1674,7 @@ export default function Home() {
           )}
 
           <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-12 h-12 md:w-14 md:h-14 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-transform">
-             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 01-2-2h-5l-5 5v-5z" /></svg>
           </button>
         </div>
 
