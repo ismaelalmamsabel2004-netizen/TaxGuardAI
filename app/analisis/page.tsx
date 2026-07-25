@@ -284,6 +284,7 @@ export default function AnalisisAvanzado() {
           </span>
       );
   };
+  
   if (!isMounted) return null;
   if (planActivo === 'loading' && isSignedIn) {
      return (
@@ -379,6 +380,7 @@ export default function AnalisisAvanzado() {
                   {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
                 </span>
               </Link>
+              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
