@@ -30,8 +30,8 @@ export default function AnalisisAvanzado() {
   const [chartDataEvolucion, setChartDataEvolucion] = useState<any[]>([]);
   const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
   
-  // 🚀 KPIS Y TENDENCIAS
-  const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
+  // 🚀 KPIS Y TENDENCIAS (Añadidas métricas estratégicas)
+  const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
   const [trends, setTrends] = useState({ ingresos: 0, gastos: 0, beneficio: 0 });
 
   const [planActivo, setPlanActivo] = useState('loading');
@@ -92,26 +92,27 @@ export default function AnalisisAvanzado() {
     obtenerDatosSupabase(nuevaEmpresa).then(d => setAllData(d));
   };
 
-  // 🚀 MOTOR MATEMÁTICO: CÁLCULO DE KPIS Y TENDENCIAS (COMPARATIVAS)
+  // 🚀 MOTOR MATEMÁTICO: CÁLCULO DE KPIS Y TENDENCIAS
   useEffect(() => {
     if (!allData || allData.length === 0) {
        setChartDataEvolucion([]); setChartDataGastos([]); 
-       setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0 });
+       setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
        setTrends({ ingresos: 0, gastos: 0, beneficio: 0 });
        return;
     }
 
     const ahora = new Date().getTime();
-    const diasFiltro = filtroTiempo === 'month' ? 30 : filtroTiempo === 'quarter' ? 90 : filtroTiempo === 'year' ? 365 : Infinity;
+    // 💡 Añadida la lógica de 7 días (Semana)
+    const diasFiltro = filtroTiempo === 'week' ? 7 : filtroTiempo === 'month' ? 30 : filtroTiempo === 'quarter' ? 90 : filtroTiempo === 'year' ? 365 : Infinity;
     
     let totalIngresos = 0; let totalGastos = 0;
     let prevIngresos = 0; let prevGastos = 0;
+    let ivaRepercutido = 0; let ivaSoportado = 0;
     
     const mensualidades: Record<string, { Ingresos: number, Gastos: number, sortKey: number }> = {};
     const categoriasGastos: Record<string, number> = {};
 
     allData.forEach(item => {
-        // Ignoramos presupuestos para las analíticas reales
         if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
         if (!item.name || !item.name.includes('/')) return;
 
@@ -122,11 +123,16 @@ export default function AnalisisAvanzado() {
         const valor = Number(item.total);
         const gastoAbsoluto = valor < 0 ? Math.abs(valor) : 0;
         const ingresoAbsoluto = valor > 0 ? valor : 0;
+        const iva = Number(item.iva) || 0;
 
         // PERIODO ACTUAL
         if (diffDias <= diasFiltro) {
             totalIngresos += ingresoAbsoluto;
             totalGastos += gastoAbsoluto;
+
+            // Acumulamos IVA para la Hucha de Hacienda
+            if (valor > 0) ivaRepercutido += ingresoAbsoluto * (iva / 100);
+            else ivaSoportado += gastoAbsoluto * (iva / 100);
 
             const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
             const mesLlave = `${nombresMeses[Number(m) - 1]} ${y}`;
@@ -163,10 +169,19 @@ export default function AnalisisAvanzado() {
     const margen = totalIngresos > 0 ? (beneficio / totalIngresos) * 100 : 0;
     const prevBeneficio = prevIngresos - prevGastos;
 
-    // Calculo de porcentajes de tendencia
+    // 💡 Lógica Financiera Estratégica
+    const liquidacionIva = ivaRepercutido - ivaSoportado;
+    const provisionIRPF = beneficio > 0 ? beneficio * 0.15 : 0; // 15% provisión de seguridad
+    const provisionImpuestos = (liquidacionIva > 0 ? liquidacionIva : 0) + provisionIRPF;
+    const beneficioLiquido = beneficio - provisionImpuestos;
+
+    let mesesPeriodo = diasFiltro === Infinity ? Math.max(1, Object.keys(mensualidades).length) : diasFiltro / 30;
+    const gastoMedioMensual = totalGastos / (mesesPeriodo || 1);
+    const runwayMeses = gastoMedioMensual > 0 && beneficioLiquido > 0 ? (beneficioLiquido / gastoMedioMensual) : 0;
+
     const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
 
-    setKpis({ ingresos: totalIngresos, gastos: totalGastos, beneficio, margen });
+    setKpis({ ingresos: totalIngresos, gastos: totalGastos, beneficio, margen, beneficioLiquido, provisionImpuestos, runwayMeses });
     setTrends({ 
         ingresos: calcTrend(totalIngresos, prevIngresos), 
         gastos: calcTrend(totalGastos, prevGastos), 
@@ -230,11 +245,10 @@ export default function AnalisisAvanzado() {
     }
   };
 
-  // UI Helper para las tendencias
   const renderTrend = (value: number, isGasto: boolean = false) => {
-      if (filtroTiempo === 'all') return null; // No hay tendencia en "histórico"
+      if (filtroTiempo === 'all') return null;
       const isPositiveTrend = value >= 0;
-      const isGood = isGasto ? !isPositiveTrend : isPositiveTrend; // Si suben gastos, es malo (rojo)
+      const isGood = isGasto ? !isPositiveTrend : isPositiveTrend;
       
       return (
           <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded-md ${isGood ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
@@ -265,7 +279,6 @@ export default function AnalisisAvanzado() {
      );
   }
 
-  // SEMÁFORO DE SALUD FINANCIERA
   const getHealthStatus = (margen: number) => {
       if (margen >= 20) return { label: 'ÓPTIMO', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' };
       if (margen >= 5) return { label: 'ESTABLE', color: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-500' };
@@ -355,11 +368,13 @@ export default function AnalisisAvanzado() {
               </div>
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                  <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
+                     {/* 💡 AÑADIDO EL FILTRO DE 7 DÍAS */}
                      {[
                          { id: 'all', label: 'Histórico' },
                          { id: 'year', label: '12 Meses' },
                          { id: 'quarter', label: '3 Meses' },
-                         { id: 'month', label: '30 Días' }
+                         { id: 'month', label: '30 Días' },
+                         { id: 'week', label: '7 Días' }
                      ].map(f => (
                          <button 
                              key={f.id}
@@ -372,7 +387,6 @@ export default function AnalisisAvanzado() {
                      ))}
                  </div>
                  
-                 {/* 🚀 BOTONERA DE SIMULACIÓN IA */}
                  <div className="flex flex-wrap gap-2 justify-end w-full">
                     <button onClick={() => generarAuditoria('General')} disabled={isAnalyzing || planActivo !== 'pro'} className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-3 py-2 rounded-xl text-[11px] font-bold transition shadow-sm flex items-center gap-1.5">
                       ✨ Auditoría General
@@ -411,7 +425,8 @@ export default function AnalisisAvanzado() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                {/* 🚀 FILA 1: KPIs GENERALES */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
                       <div className="flex items-center mb-1">
                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Ingresos</span>
@@ -430,7 +445,7 @@ export default function AnalisisAvanzado() {
                    
                    <div className={`p-5 rounded-2xl border flex flex-col justify-center ${kpis.beneficio >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
                       <div className="flex items-center mb-1">
-                         <span className={`text-[10px] font-bold uppercase tracking-widest ${kpis.beneficio >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>Beneficio Neto</span>
+                         <span className={`text-[10px] font-bold uppercase tracking-widest ${kpis.beneficio >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>Beneficio (Bruto)</span>
                          {renderTrend(trends.beneficio, false)}
                       </div>
                       <span className={`text-2xl font-black tracking-tight ${kpis.beneficio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -447,6 +462,40 @@ export default function AnalisisAvanzado() {
                          </span>
                       </div>
                    </div>
+                </div>
+
+                {/* 🚀 FILA 2: MÉTRICAS ESTRATÉGICAS (NUEVAS) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+                    {/* Caja Libre */}
+                    <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-5 rounded-2xl border border-indigo-500 flex flex-col justify-center text-white shadow-lg shadow-indigo-500/30">
+                       <div className="flex items-center mb-1">
+                          <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Caja Libre (Beneficio Líquido)</span>
+                       </div>
+                       <span className="text-3xl font-black tracking-tight text-white">
+                          {kpis.beneficioLiquido >= 0 ? '+' : ''}{kpis.beneficioLiquido.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                       </span>
+                       <span className="text-[10px] font-medium text-indigo-200 mt-1">Tu dinero real (Impuestos ya restados)</span>
+                    </div>
+
+                    {/* Hucha de Hacienda */}
+                    <div className="bg-rose-50 p-5 rounded-2xl border border-rose-200 flex flex-col justify-center">
+                       <div className="flex items-center mb-1 gap-1.5">
+                          <span className="text-rose-500 text-sm">🏛️</span>
+                          <span className="text-[10px] font-bold text-rose-700 uppercase tracking-widest">Hucha Hacienda (Intocable)</span>
+                       </div>
+                       <span className="text-2xl font-black text-rose-600">{kpis.provisionImpuestos.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</span>
+                       <span className="text-[9px] font-bold text-rose-500 mt-1">Provisión calculada de IVA + IRPF</span>
+                    </div>
+
+                    {/* Runway / Colchón */}
+                    <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex flex-col justify-center text-white">
+                       <div className="flex items-center mb-1 gap-1.5">
+                          <span className="text-emerald-400 text-sm">🛡️</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Supervivencia (Runway)</span>
+                       </div>
+                       <span className="text-2xl font-black text-white">{kpis.runwayMeses > 0 ? kpis.runwayMeses.toFixed(1) + ' Meses' : 'Riesgo Crítico'}</span>
+                       <span className="text-[9px] font-medium text-slate-500 mt-1">Vida del negocio con ingresos a cero</span>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
@@ -562,7 +611,7 @@ export default function AnalisisAvanzado() {
                               <div>
                                   <h2 className="text-xl md:text-2xl font-black text-slate-900">Documento Ejecutivo Confidencial</h2>
                                   <p className="text-xs font-bold text-blue-600 uppercase mt-2 tracking-wide">
-                                     MOTOR DE IA | ESCENARIO: {simulacionActiva}
+                                      MOTOR DE IA | ESCENARIO: {simulacionActiva}
                                   </p>
                               </div>
                               <span className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-lg border flex items-center gap-2 ${isAnalyzing ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
@@ -590,7 +639,7 @@ export default function AnalisisAvanzado() {
                <h2 className="text-2xl font-black mb-4">Acceso Restringido</h2>
                <p className="text-slate-400 mb-8 max-w-sm">Esta es una zona privada para clientes de TaxGuard AI. Inicia sesión para continuar.</p>
                <Link href="/" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl transition">
-                  Ir al Inicio
+                 Ir al Inicio
                </Link>
             </div>
          </div>
