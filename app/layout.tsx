@@ -1,7 +1,7 @@
+import { Analytics } from "@vercel/analytics/react";
 import { ClerkProvider } from '@clerk/nextjs';
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import PwaActivator from './PwaActivator'
 import { esES } from '@clerk/localizations';
@@ -36,7 +36,7 @@ export default function RootLayout({
         <body suppressHydrationWarning className={`${inter.variable} font-sans antialiased bg-background text-foreground`}>
           <PwaActivator />
           {children}
-          {process.env.NODE_ENV === 'production' && <Analytics />}
+          <Analytics />
         </body>
       </ClerkProvider>
     </html>
