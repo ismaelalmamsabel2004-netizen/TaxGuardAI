@@ -80,6 +80,9 @@ export async function POST(request: Request) {
           metadata: { userId: userId, priceId: priceId },
           line_items: [{ price: priceId, quantity: 1 }],
           mode: 'subscription',
+          subscription_data: {
+            trial_period_days: 7, // 🚀 EL TRUCO: Stripe pide tarjeta pero cobra 0€ hoy, y 89€ en 7 días
+          },
           success_url: `${baseUrl}/?pago=exito`,
           cancel_url: `${baseUrl}/precios?pago=cancelado`,
         });

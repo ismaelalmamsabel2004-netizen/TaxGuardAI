@@ -1968,8 +1968,9 @@ export default function Home() {
                    </li>
                 </ul>
                 <SignUpButton mode="modal">
-                  <button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition">
-                    Empezar como Autónomo
+                  <button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition flex flex-col items-center">
+                    <span>Empezar 7 días gratis</span>
+                    <span className="text-[10px] font-medium text-slate-400 font-normal mt-0.5">Cancela cuando quieras</span>
                   </button>
                 </SignUpButton>
               </div>
@@ -2009,8 +2010,9 @@ export default function Home() {
                    </li>
                 </ul>
                 <SignUpButton mode="modal">
-                  <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition">
-                    Dominar mis finanzas por 89€
+                  <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition flex flex-col items-center">
+                    <span>Probar PRO 7 días gratis</span>
+                    <span className="text-[10px] text-blue-200 font-normal mt-0.5">Sin compromiso de permanencia</span>
                   </button>
                 </SignUpButton>
               </div>
