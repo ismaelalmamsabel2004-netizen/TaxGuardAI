@@ -1,4 +1,5 @@
 'use client';
+
 import { useState } from 'react';
 import Link from 'next/link';
 // IMPORTAMOS LOS CONTROLES COMPLETOS DE CLERK
@@ -84,6 +85,7 @@ export default function Precios() {
         
         <div className="flex flex-col md:flex-row gap-8 w-full items-center md:items-stretch justify-center">
           
+          {/* PLAN AUTÓNOMO */}
           <div className="bg-slate-900/40 p-8 rounded-3xl shadow-xl border border-slate-800 flex-1 flex flex-col w-full max-w-md backdrop-blur-sm hover:border-slate-700 transition">
             <h2 className="text-2xl font-bold text-white">Plan Autónomo</h2>
             <p className="text-slate-400 text-sm mt-2">Para profesionales independientes.</p>
@@ -114,12 +116,20 @@ export default function Precios() {
             <button 
               onClick={() => comprarPlan('price_1TwN2RJADsdd8EhemCpvJbef')}
               disabled={loading === 'price_1TwN2RJADsdd8EhemCpvJbef'}
-              className="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl border border-slate-700 hover:bg-slate-700 transition shadow-sm disabled:opacity-50"
+              className="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl border border-slate-700 hover:bg-slate-700 transition shadow-sm disabled:opacity-50 flex flex-col items-center"
             >
-              {loading === 'price_1TwN2RJADsdd8EhemCpvJbef' ? 'Conectando...' : 'Empezar como Autónomo'}
+              {loading === 'price_1TwN2RJADsdd8EhemCpvJbef' ? (
+                <span>Conectando...</span>
+              ) : (
+                <>
+                  <span>Empezar 7 días gratis</span>
+                  <span className="text-[10px] text-slate-400 font-normal mt-0.5">Cancela cuando quieras</span>
+                </>
+              )}
             </button>
           </div>
 
+          {/* PLAN PRO */}
           <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl border-2 border-blue-500 flex-1 flex flex-col relative transform md:-translate-y-4 w-full max-w-md">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-5 py-2 rounded-full tracking-widest shadow-lg shadow-blue-500/30">
               MÁS RECOMENDADO
@@ -157,9 +167,16 @@ export default function Precios() {
             <button 
               onClick={() => comprarPlan('price_1TwN54JADsdd8EheCYnGZuaZ')}
               disabled={loading === 'price_1TwN54JADsdd8EheCYnGZuaZ'}
-              className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-500 shadow-xl shadow-blue-500/20 border border-blue-400/20 transition disabled:opacity-50"
+              className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-500 shadow-xl shadow-blue-500/20 border border-blue-400/20 transition disabled:opacity-50 flex flex-col items-center"
             >
-              {loading === 'price_1TwN54JADsdd8EheCYnGZuaZ' ? 'Conectando...' : 'Dominar mis finanzas por 89€'}
+              {loading === 'price_1TwN54JADsdd8EheCYnGZuaZ' ? (
+                <span>Conectando...</span>
+              ) : (
+                <>
+                  <span>Probar PRO 7 días gratis</span>
+                  <span className="text-[10px] text-blue-200 font-normal mt-0.5">Sin compromiso de permanencia</span>
+                </>
+              )}
             </button>
             <p className="text-center text-[10px] text-slate-500 mt-4">Cancela o mejora tu plan en cualquier momento.</p>
           </div>
