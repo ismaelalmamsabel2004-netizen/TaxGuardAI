@@ -118,6 +118,10 @@ export default function Home() {
   const [isVehiculo, setIsVehiculo] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
+
+  // 🚀 ESTADOS PARA LA CONFIANZA IA
+  const [confianzaIA, setConfianzaIA] = useState<number | null>(null);
+  const [evidenciaIA, setEvidenciaIA] = useState<string | null>(null);
   
   // 🚀 ESTADOS PARA EL LIBRO MAYOR DE PROYECTOS
   const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos" | "proyectos">("all");
@@ -527,6 +531,8 @@ export default function Home() {
     if (!file) return;
 
     setIsScanning(true);
+    setConfianzaIA(null); // Reseteamos la confianza al escanear de nuevo
+    setEvidenciaIA(null);
     
     const formData = new FormData();
     formData.append('factura', file);
@@ -541,6 +547,11 @@ export default function Home() {
         if (res.data.base_imponible) setIngreso(res.data.base_imponible.toString());
         if (res.data.iva !== undefined) setIvaSeleccionado(res.data.iva.toString());
         if (res.data.categoria && categoriasGasto.includes(res.data.categoria)) setCategoria(res.data.categoria);
+        
+        // 🚀 GUARDAMOS LA CONFIANZA Y LA EVIDENCIA DE LA IA
+        if (res.data.confianza) setConfianzaIA(res.data.confianza);
+        if (res.data.evidencia) setEvidenciaIA(res.data.evidencia);
+
       } else {
         alert("Error de la IA: " + (res.error || "Fallo desconocido"));
       }
@@ -700,6 +711,11 @@ export default function Home() {
         setIsVehiculo(false);
         setFrecuencia('Mensual');
         setIvaSeleccionado("21"); 
+        
+        // 🚀 LIMPIAR EL BADGE DE CONFIANZA TRAS GUARDAR CON ÉXITO
+        setConfianzaIA(null);
+        setEvidenciaIA(null);
+
       } else {
         alert("⚠️ Fallo en el servidor de la nube. Inténtalo de nuevo.");
       }
@@ -1186,6 +1202,25 @@ export default function Home() {
                         {isImporting ? "⏳ Cargando..." : "📊 Banco (CSV)"}
                       </button>
                     </div>
+                    
+                    {/* 🚀 INICIO BADGE CONFIANZA IA */}
+                    {confianzaIA !== null && evidenciaIA && (
+                      <div className="mt-1 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl animate-fade-in-up">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="relative flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                          </span>
+                          <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">
+                            Auditoría IA: Confianza {confianzaIA}%
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-emerald-600 font-medium italic">
+                          "{evidenciaIA}"
+                        </p>
+                      </div>
+                    )}
+                    {/* 🚀 FIN BADGE CONFIANZA IA */}
                   </div>
 
                   <form onSubmit={guardarDato} className="space-y-4">

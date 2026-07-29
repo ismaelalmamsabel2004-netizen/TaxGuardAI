@@ -151,14 +151,17 @@ export async function escanearFacturaIA(formData: FormData) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+    // 🚀 AÑADIDO: Instrucción estricta para Confianza y Evidencia
     const prompt = `
-      Eres un contable experto. Analiza este ticket o factura.
+      Eres un auditor financiero experto. Analiza este ticket o factura.
       Devuelve SOLO y EXCLUSIVAMENTE este JSON exacto:
       {
         "categoria": "Elige la que mejor encaje de esta lista: [${categorias}] o pon 'General'",
         "base_imponible": (el subtotal sin IVA en número),
         "iva": (el porcentaje de IVA en número, ej: 21, 10 o 0),
-        "fecha": "YYYY-MM-DD"
+        "fecha": "YYYY-MM-DD",
+        "confianza": (tu nivel de seguridad en la lectura de estos datos del 0 al 100 en formato número, ej: 98),
+        "evidencia": "Breve justificación técnica de 1 línea de dónde has extraído los importes (ej: Extraído de la línea 'Total Base' y desglose de cuota en la parte inferior)."
       }
     `;
 
