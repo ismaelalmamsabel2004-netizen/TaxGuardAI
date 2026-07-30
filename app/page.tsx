@@ -175,6 +175,22 @@ export default function Home() {
   const proyMargen = proyIngresosNumTotal - proyGastosNumTotal;
   const proyMargenPorcentaje = proyIngresosNumTotal > 0 ? (proyMargen / proyIngresosNumTotal) * 100 : 0;
 
+  // 🚀 FUNCIÓN PARA IR AL PORTAL DE STRIPE (CANCELAR/GESTIONAR)
+  const gestionarSuscripcion = async () => {
+    try {
+      const res = await fetch('/api/portal', { method: 'POST' });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url; // Te manda a Stripe
+      } else {
+        alert("⚠️ No se pudo cargar el portal. Asegúrate de tener una suscripción activa.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("⚠️ Error de conexión.");
+    }
+  };
+
   const syncSettingsToCloud = async (ajustes: any) => {
     try {
       await fetch('/api/settings', {
@@ -1036,17 +1052,30 @@ export default function Home() {
             </div>
             
             <div className="mt-auto">
-              <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                  <span className={`text-xs font-bold ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                    {planActivo === 'pro' ? 'Plan Empresa PRO' : planActivo === 'autonomo' ? 'Plan Autónomo' : 'Suscripción Inactiva'}
+              {/* 🚀 BOTÓN INTELIGENTE: SI TIENE PLAN VA A STRIPE, SI NO, VA A PRECIOS */}
+              {planActivo === 'pro' || planActivo === 'autonomo' ? (
+                <button onClick={gestionarSuscripcion} className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full animate-pulse bg-emerald-500"></span>
+                    <span className="text-xs font-bold text-emerald-400">
+                      {planActivo === 'pro' ? 'Plan Empresa PRO' : 'Plan Autónomo'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-md text-emerald-300 bg-emerald-900/50 hover:bg-emerald-800/80 transition">
+                    Gestionar
                   </span>
-                </div>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-300 bg-emerald-900/50' : 'text-slate-800 bg-white'}`}>
-                  {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
-                </span>
-              </Link>
+                </button>
+              ) : (
+                <Link href="/precios" className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-slate-800/50 border-slate-700 hover:bg-slate-800">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full animate-pulse bg-rose-500"></span>
+                    <span className="text-xs font-bold text-slate-300">Suscripción Inactiva</span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-md text-slate-800 bg-white hover:bg-slate-200 transition">
+                    Activar
+                  </span>
+                </Link>
+              )}
               
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
