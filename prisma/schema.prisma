@@ -10,7 +10,7 @@ datasource db {
 model Transaccion {
   id               Int      @id @default(autoincrement())
   userId           String
-  empresaId        String?  // <-- AÑADIDO: Para saber de qué empresa es
+  empresaId        String?  
   fecha            DateTime
   tipo             String
   baseImponible    Float
@@ -18,12 +18,57 @@ model Transaccion {
   categoria        String?
   isRecurrent      Boolean? @default(false)
   frecuencia       String?
-  
-  // Campos extra para Facturación PDF
+
+  // Campos extra para Facturación PDF (INTACTOS)
   numero_factura   String?
   cliente_nombre   String?
   cliente_nif      String?
   concepto_detalle String?
+
+  createdAt        DateTime @default(now())
+
+  // 🚀=============================================================🚀
+  // 🌟 NUEVOS CAMPOS AÑADIDOS: EXPANSIÓN PRO (Sin romper nada) 🌟
+  // Todos son opcionales (?) para que el código viejo siga funcionando
+  // 🚀=============================================================🚀
+
+  // 📁 1. GESTOR DOCUMENTAL AVANZADO
+  // Para que el cliente tenga su propio "Google Drive" de facturas
+  url_archivo      String?  // El enlace de la foto del ticket o el PDF en la nube
+  nombre_archivo   String?  // Nombre editable (ej: "Factura Amazon Servidores")
+  tipo_archivo     String?  // Para diferenciar si es un ticket (JPG) o factura (PDF)
+
+  // 🚨 2. RADAR DE MOROSIDAD Y TESORERÍA
+  estado_pago      String?  @default("COBRADO") // Puede ser: "PENDIENTE", "COBRADO", "PAGADO"
+  fecha_vencimiento DateTime? // Día límite de pago para lanzar alertas automáticas
+  metodo_pago      String?  // "Transferencia", "Tarjeta", "Efectivo", "Stripe"
+
+  // 🧠 3. ORGANIZACIÓN Y BÚSQUEDA
+  notas_internas   String?  // Cuadro de texto para notas privadas del usuario
+  etiqueta_color   String?  // Para organizar gastos por colores en la tabla
+  
+  // Saber cuándo fue la última vez que el usuario modificó esta factura
+  updatedAt        DateTime @default(now()) @updatedAt 
+}
+
+// 🏢===============================================================🏢
+// 🌟 NUEVO MODELO DE VALOR: MINI-CRM PARA TUS CLIENTES 🌟
+// Esto permite que guarden su agenda de contactos y no tengan que
+// teclear el NIF y el nombre cada vez que hacen una factura.
+// 🏢===============================================================🏢
+
+model ContactoEmpresa {
+  id               Int      @id @default(autoincrement())
+  userId           String
+  empresaId        String
+  tipo             String   // Para diferenciar "CLIENTE" o "PROVEEDOR"
+  nombre           String
+  nif              String?
+  email            String?
+  telefono         String?
+  direccion        String?
+  iban_bancario    String?  // Para saber a qué cuenta hacer transferencias
   
   createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
 }

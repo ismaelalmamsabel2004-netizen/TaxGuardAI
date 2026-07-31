@@ -5,13 +5,12 @@ import { auth } from '@clerk/nextjs/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // ==========================================
-// 1. OBTENER DATOS (CEREBRO CENTRALIZADO)
+// 1. OBTENER DATOS (CEREBRO CENTRALIZADO MEJORADO)
 // ==========================================
 export async function obtenerDatosSupabase(empresaId?: string) {
   const { userId } = await auth();
   if (!userId) return [];
 
-  // Filtramos por empresa si se pasa el ID (para Análisis y Tributos)
   const whereClause: any = { userId: userId };
   if (empresaId) {
     whereClause.empresaId = empresaId;
@@ -22,7 +21,6 @@ export async function obtenerDatosSupabase(empresaId?: string) {
     orderBy: { createdAt: 'desc' },
   });
 
-  // Transformamos al formato universal que le gusta a tu frontend
   return transacciones.map((t: any) => ({
     id: t.id,
     name: t.fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
@@ -35,25 +33,38 @@ export async function obtenerDatosSupabase(empresaId?: string) {
     numero_factura: t.numero_factura || null,
     cliente_nombre: t.cliente_nombre || null,
     cliente_nif: t.cliente_nif || null,
-    concepto_detalle: t.concepto_detalle || null
+    concepto_detalle: t.concepto_detalle || null,
+    
+    // 🚀 NUEVOS CAMPOS AÑADIDOS AL FRONTEND
+    url_archivo: t.url_archivo || null,
+    nombre_archivo: t.nombre_archivo || null,
+    tipo_archivo: t.tipo_archivo || null,
+    estado_pago: t.estado_pago || "COBRADO",
+    fecha_vencimiento: t.fecha_vencimiento ? t.fecha_vencimiento.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
+    raw_fecha_vencimiento: t.fecha_vencimiento || null, // Útil para cálculos de días de retraso
+    metodo_pago: t.metodo_pago || null,
+    notas_internas: t.notas_internas || null
   }));
 }
 
 // ==========================================
-// 2. GUARDAR NUEVO DATO (Consola y Facturas)
+// 2. GUARDAR NUEVO DATO (Soporta nuevos campos)
 // ==========================================
 export async function guardarDatoSupabase(datos: any) {
   const { userId } = await auth();
   if (!userId) return { error: "No autorizado" };
 
-  // Control estricto de fechas (soporta DD/MM/YYYY)
   let fechaObj = new Date();
   if (datos.month && datos.month.includes('/')) {
      const [d, m, y] = datos.month.split('/');
      fechaObj = new Date(Number(y), Number(m) - 1, Number(d));
   } else if (datos.fecha) {
-     // Por si viene de algún sitio con formato YYYY-MM-DD
      fechaObj = new Date(datos.fecha);
+  }
+
+  let fechaVencimientoObj = null;
+  if (datos.fecha_vencimiento) {
+     fechaVencimientoObj = new Date(datos.fecha_vencimiento);
   }
 
   try {
@@ -71,7 +82,16 @@ export async function guardarDatoSupabase(datos: any) {
         numero_factura: datos.numero_factura || null,
         cliente_nombre: datos.cliente_nombre || null,
         cliente_nif: datos.cliente_nif || null,
-        concepto_detalle: datos.concepto_detalle || datos.concepto || null
+        concepto_detalle: datos.concepto_detalle || datos.concepto || null,
+        
+        // 🚀 GUARDADO DE LOS NUEVOS CAMPOS (Si vienen)
+        url_archivo: datos.url_archivo || null,
+        nombre_archivo: datos.nombre_archivo || null,
+        tipo_archivo: datos.tipo_archivo || null,
+        estado_pago: datos.estado_pago || "COBRADO",
+        fecha_vencimiento: fechaVencimientoObj,
+        metodo_pago: datos.metodo_pago || null,
+        notas_internas: datos.notas_internas || null
       }
     });
     return { success: true };
@@ -98,16 +118,20 @@ export async function editarDatoSupabase(datos: any) {
 
   try {
     await prisma.transaccion.update({
-      where: { id: Number(datos.id), userId: userId }, // 🚀 DEVUELTO A NUMBER
+      where: { id: Number(datos.id), userId: userId },
       data: {
         fecha: fechaObj,
         categoria: datos.categoria,
         tipo: Number(datos.total) >= 0 ? 'INGRESO' : 'GASTO',
         baseImponible: Math.abs(Number(datos.total)),
         iva: Number(datos.iva) || 0,
-        // 🚀 AHORA PERMITE EDITAR EL CLIENTE DESDE LA TABLA DE FACTURAS
         ...(datos.cliente_nombre !== undefined && { cliente_nombre: datos.cliente_nombre }),
-        ...(datos.cliente_nif !== undefined && { cliente_nif: datos.cliente_nif })
+        ...(datos.cliente_nif !== undefined && { cliente_nif: datos.cliente_nif }),
+        ...(datos.concepto_detalle !== undefined && { concepto_detalle: datos.concepto_detalle }),
+        // 🚀 EDICIÓN DE GESTOR DOCUMENTAL Y ESTADOS
+        ...(datos.estado_pago !== undefined && { estado_pago: datos.estado_pago }),
+        ...(datos.nombre_archivo !== undefined && { nombre_archivo: datos.nombre_archivo }),
+        ...(datos.url_archivo !== undefined && { url_archivo: datos.url_archivo }),
       }
     });
     return { success: true };
@@ -125,7 +149,7 @@ export async function borrarDatoSupabase(id: string) {
 
   try {
     await prisma.transaccion.delete({
-      where: { id: Number(id), userId: userId } // 🚀 DEVUELTO A NUMBER
+      where: { id: Number(id), userId: userId }
     });
     return { success: true };
   } catch (error: any) {
@@ -134,7 +158,25 @@ export async function borrarDatoSupabase(id: string) {
 }
 
 // ==========================================
-// 5. ESCÁNER DE FACTURAS CON IA
+// 5. ACTUALIZAR ESTADO RÁPIDO (Morosidad)
+// ==========================================
+export async function actualizarEstadoPago(id: number, nuevoEstado: string) {
+  const { userId } = await auth();
+  if (!userId) return { error: "No autorizado" };
+
+  try {
+    await prisma.transaccion.update({
+      where: { id: id, userId: userId },
+      data: { estado_pago: nuevoEstado }
+    });
+    return { success: true };
+  } catch (error: any) {
+    return { error: "Error al cambiar estado" };
+  }
+}
+
+// ==========================================
+// 6. ESCÁNER DE FACTURAS CON IA (HIPERVITAMINADO)
 // ==========================================
 export async function escanearFacturaIA(formData: FormData) {
   const { userId } = await auth();
@@ -151,17 +193,19 @@ export async function escanearFacturaIA(formData: FormData) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    // 🚀 AÑADIDO: Instrucción estricta para Confianza y Evidencia
+    // 🚀 AÑADIDO: Ahora Gemini lee el nombre de la empresa y su NIF/CIF
     const prompt = `
       Eres un auditor financiero experto. Analiza este ticket o factura.
-      Devuelve SOLO y EXCLUSIVAMENTE este JSON exacto:
+      Devuelve SOLO y EXCLUSIVAMENTE este JSON exacto (sin bloques de código, solo el texto JSON):
       {
         "categoria": "Elige la que mejor encaje de esta lista: [${categorias}] o pon 'General'",
         "base_imponible": (el subtotal sin IVA en número),
         "iva": (el porcentaje de IVA en número, ej: 21, 10 o 0),
         "fecha": "YYYY-MM-DD",
-        "confianza": (tu nivel de seguridad en la lectura de estos datos del 0 al 100 en formato número, ej: 98),
-        "evidencia": "Breve justificación técnica de 1 línea de dónde has extraído los importes (ej: Extraído de la línea 'Total Base' y desglose de cuota en la parte inferior)."
+        "cliente_nombre": "Nombre de la empresa, restaurante, comercio o proveedor que emite el ticket",
+        "cliente_nif": "CIF o NIF del proveedor (si aparece)",
+        "confianza": (tu nivel de seguridad en la lectura del 0 al 100 en número),
+        "evidencia": "Breve justificación de 1 línea de dónde has extraído la base y el IVA."
       }
     `;
 
