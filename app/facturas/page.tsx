@@ -574,6 +574,7 @@ export default function GeneradorFacturas() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // 🚀 FUNCIÓN: MARCAR COMO COBRADA
   const marcarCobrada = async (fac: any) => {
      try {
          const res = await editarDatoSupabase({
@@ -596,7 +597,7 @@ export default function GeneradorFacturas() {
 
   const getDatosPdfHistorico = (fac: any) => {
       let conceptoStr = fac.concepto_detalle || "Servicios prestados";
-      conceptoStr = conceptoStr.replace(/\[ESTADO: COBRADA\]/g, '').trim(); 
+      conceptoStr = conceptoStr.replace(/\[ESTADO: COBRADA\]/g, '').trim(); // Limpiamos tag visual
       
       let irpf = "0";
       const matchIrpf = conceptoStr.match(/\(Retención IRPF: -(\d+)%\)/);
@@ -726,6 +727,7 @@ export default function GeneradorFacturas() {
 
   const clientesFiltrados = clientesCRM.filter(c => c.nombre.toLowerCase().includes(clienteNombre.toLowerCase()));
   
+  // 🚀 LÓGICA RADAR DE MOROSIDAD
   const ahora = new Date().getTime();
   const facturasPendientesArr = historialFacturas.filter((f: any) => {
       const isPresu = f.numero_factura?.startsWith('P-');
@@ -869,7 +871,6 @@ export default function GeneradorFacturas() {
                   {planActivo === 'pro' || planActivo === 'autonomo' ? 'Gestionar' : 'Activar'}
                 </span>
               </Link>
-              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>

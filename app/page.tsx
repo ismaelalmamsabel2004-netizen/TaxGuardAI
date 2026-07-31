@@ -122,6 +122,11 @@ export default function Home() {
   const [confianzaIA, setConfianzaIA] = useState<number | null>(null);
   const [evidenciaIA, setEvidenciaIA] = useState<string | null>(null);
   
+  // 🚀 NUEVOS ESTADOS PARA ARCHIVOS ADJUNTOS EN LA NUBE
+  const [urlArchivoTemporal, setUrlArchivoTemporal] = useState<string | null>(null);
+  const [nombreArchivoTemporal, setNombreArchivoTemporal] = useState<string | null>(null);
+  const [tipoArchivoTemporal, setTipoArchivoTemporal] = useState<string | null>(null);
+  
   const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos" | "proyectos">("all");
   const [subFiltroProyecto, setSubFiltroProyecto] = useState<"all" | "ingresos" | "gastos">("all");
   const [proyectoSeleccionadoFiltro, setProyectoSeleccionadoFiltro] = useState<string>("todos");
@@ -172,7 +177,6 @@ export default function Home() {
   const proyMargen = proyIngresosNumTotal - proyGastosNumTotal;
   const proyMargenPorcentaje = proyIngresosNumTotal > 0 ? (proyMargen / proyIngresosNumTotal) * 100 : 0;
 
-  // 🚀 FUNCIÓN GESTIONAR SUSCRIPCIÓN MEJORADA PARA ADMINISTRADORES
   const gestionarSuscripcion = async () => {
     try {
       const res = await fetch('/api/portal', { method: 'POST' });
@@ -562,6 +566,11 @@ export default function Home() {
         if (res.data.confianza) setConfianzaIA(res.data.confianza);
         if (res.data.evidencia) setEvidenciaIA(res.data.evidencia);
 
+        // 🚀 NUEVO: Guardar URL del archivo subido temporalmente para la Base de Datos
+        if (res.data.url_archivo) setUrlArchivoTemporal(res.data.url_archivo);
+        if (res.data.nombre_archivo) setNombreArchivoTemporal(res.data.nombre_archivo);
+        if (res.data.tipo_archivo) setTipoArchivoTemporal(res.data.tipo_archivo);
+
       } else {
         alert("Error de la IA: " + (res.error || "Fallo desconocido"));
       }
@@ -705,7 +714,11 @@ export default function Home() {
         empresaId: empresaId,
         isRecurrent: isRecurrent,
         frecuencia: isRecurrent ? frecuencia : null,
-        concepto_detalle: detalleAdicional + tagProyecto
+        concepto_detalle: detalleAdicional + tagProyecto,
+        // 🚀 NUEVO: Pasar la url y metadatos del archivo a Supabase
+        url_archivo: urlArchivoTemporal,
+        nombre_archivo: nombreArchivoTemporal,
+        tipo_archivo: tipoArchivoTemporal
       });
 
       if (res.success) {
@@ -718,8 +731,12 @@ export default function Home() {
         setFrecuencia('Mensual');
         setIvaSeleccionado("21"); 
         
+        // 🚀 LIMPIEZA TRAS GUARDAR CON ÉXITO
         setConfianzaIA(null);
         setEvidenciaIA(null);
+        setUrlArchivoTemporal(null);
+        setNombreArchivoTemporal(null);
+        setTipoArchivoTemporal(null);
 
       } else {
         alert("⚠️ Fallo en el servidor de la nube. Inténtalo de nuevo.");
@@ -995,7 +1012,7 @@ export default function Home() {
                         const actuales: any = await res.json(); 
                         await syncSettingsToCloud({ ...actuales, empresaActiva: newId });
                       }} 
-                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none"
+                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none truncate"
                     >
                         {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
@@ -1245,6 +1262,14 @@ export default function Home() {
                       </div>
                     )}
                     {/* 🚀 FIN BADGE CONFIANZA IA */}
+
+                    {/* 🚀 NUEVO: INDICADOR DE DOCUMENTO ADJUNTO SUBIDO */}
+                    {urlArchivoTemporal && (
+                      <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-bold animate-fade-in-up">
+                        <span>📎 {nombreArchivoTemporal || 'Documento adjunto'} listo para guardar</span>
+                        <button type="button" onClick={() => {setUrlArchivoTemporal(null); setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);}} className="ml-auto text-rose-500 hover:text-rose-700">✖</button>
+                      </div>
+                    )}
                   </div>
 
                   <form onSubmit={guardarDato} className="space-y-4">
@@ -1823,7 +1848,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* 🚀 NUEVO MODAL DE SOPORTE VIP */}
+        {/* 🚀 MODAL DE SOPORTE VIP UNIFICADO */}
         {showSupportModal && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
@@ -1893,7 +1918,6 @@ export default function Home() {
                       </div>
                    </div>
                 </div>
-
              </div>
           </div>
         )}

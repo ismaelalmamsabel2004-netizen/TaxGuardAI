@@ -3,6 +3,16 @@
 import { prisma } from '../lib/prisma';
 import { auth } from '@clerk/nextjs/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+// 🚀 INYECTADO: Cliente de Supabase para guardar los archivos
+import { createClient } from '@supabase/supabase-js';
+
+// ==========================================
+// 0. CONFIGURACIÓN SUPABASE STORAGE
+// ==========================================
+// Necesitas añadir estas dos variables a tu archivo .env.local y en Vercel
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
 // 1. OBTENER DATOS (CEREBRO CENTRALIZADO MEJORADO)
@@ -176,7 +186,7 @@ export async function actualizarEstadoPago(id: number, nuevoEstado: string) {
 }
 
 // ==========================================
-// 6. ESCÁNER DE FACTURAS CON IA (HIPERVITAMINADO)
+// 6. ESCÁNER DE FACTURAS CON IA (HIPERVITAMINADO CON STORAGE)
 // ==========================================
 export async function escanearFacturaIA(formData: FormData) {
   const { userId } = await auth();
@@ -189,11 +199,37 @@ export async function escanearFacturaIA(formData: FormData) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString('base64');
+    
+    // 🚀 PASO 1: SUBIR EL ARCHIVO AL STORAGE DE SUPABASE
+    let urlArchivoSubido = null;
+    let nombreArchivoUnico = `${userId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
 
+    try {
+        const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('facturas') // <-- IMPORTANTE: DEBES CREAR ESTE BUCKET PÚBLICO EN TU PANEL DE SUPABASE
+            .upload(nombreArchivoUnico, buffer, {
+                contentType: file.type,
+                upsert: false
+            });
+
+        if (uploadError) {
+            console.error("Error al subir a Supabase Storage:", uploadError);
+        } else if (uploadData) {
+            // Obtenemos la URL pública para guardarla en la base de datos
+            const { data: publicUrlData } = supabase.storage
+                .from('facturas')
+                .getPublicUrl(nombreArchivoUnico);
+            
+            urlArchivoSubido = publicUrlData.publicUrl;
+        }
+    } catch (e) {
+        console.log("No se pudo subir la imagen al Storage. Verifica la conexión.");
+    }
+
+    // 🚀 PASO 2: PROCESAMIENTO CON GEMINI (Como lo tenías)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    // 🚀 AÑADIDO: Ahora Gemini lee el nombre de la empresa y su NIF/CIF
     const prompt = `
       Eres un auditor financiero experto. Analiza este ticket o factura.
       Devuelve SOLO y EXCLUSIVAMENTE este JSON exacto (sin bloques de código, solo el texto JSON):
@@ -215,8 +251,19 @@ export async function escanearFacturaIA(formData: FormData) {
     ]);
 
     const texto = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
-    return { success: true, data: JSON.parse(texto) };
+    const datosParseados = JSON.parse(texto);
+    
+    // 🚀 PASO 3: DEVOLVER LOS DATOS DE GEMINI + LA URL DE LA FOTO
+    return { 
+        success: true, 
+        data: {
+            ...datosParseados,
+            url_archivo: urlArchivoSubido,
+            nombre_archivo: file.name,
+            tipo_archivo: file.type
+        }
+    };
   } catch (error: any) {
-    return { error: error.message || "Fallo de conexión con IA" };
+    return { error: error.message || "Fallo de conexión con IA o Storage" };
   }
 }
