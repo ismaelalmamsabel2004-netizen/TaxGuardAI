@@ -119,11 +119,9 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [filtro, setFiltro] = useState("all");
 
-  // 🚀 ESTADOS PARA LA CONFIANZA IA
   const [confianzaIA, setConfianzaIA] = useState<number | null>(null);
   const [evidenciaIA, setEvidenciaIA] = useState<string | null>(null);
   
-  // 🚀 ESTADOS PARA EL LIBRO MAYOR DE PROYECTOS
   const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos" | "proyectos">("all");
   const [subFiltroProyecto, setSubFiltroProyecto] = useState<"all" | "ingresos" | "gastos">("all");
   const [proyectoSeleccionadoFiltro, setProyectoSeleccionadoFiltro] = useState<string>("todos");
@@ -169,25 +167,24 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
 
-  // 🚀 LÓGICA DE CÁLCULO PARA EL CREADOR DE PROYECTOS
   const proyIngresosNumTotal = proyectoIngresos.reduce((acc, i) => acc + (parseFloat(i.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
   const proyGastosNumTotal = proyectoGastos.reduce((acc, g) => acc + (parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
   const proyMargen = proyIngresosNumTotal - proyGastosNumTotal;
   const proyMargenPorcentaje = proyIngresosNumTotal > 0 ? (proyMargen / proyIngresosNumTotal) * 100 : 0;
 
-  // 🚀 FUNCIÓN PARA IR AL PORTAL DE STRIPE (CANCELAR/GESTIONAR)
+  // 🚀 FUNCIÓN GESTIONAR SUSCRIPCIÓN MEJORADA PARA ADMINISTRADORES
   const gestionarSuscripcion = async () => {
     try {
       const res = await fetch('/api/portal', { method: 'POST' });
       const data = await res.json();
       if (data.url) {
-        window.location.href = data.url; // Te manda a Stripe
+        window.location.href = data.url; 
       } else {
-        alert("⚠️ No se pudo cargar el portal. Asegúrate de tener una suscripción activa.");
+        alert("⚠️ No se pudo cargar el portal de Stripe.\n\nNota del sistema: Como estás usando una cuenta de Administrador (Modo Dios), no has registrado ninguna tarjeta de crédito real, por lo que Stripe no tiene un portal de facturación que mostrarte. ¡A los clientes reales sí les funcionará!");
       }
     } catch (error) {
       console.error(error);
-      alert("⚠️ Error de conexión.");
+      alert("⚠️ Error de conexión con la pasarela.");
     }
   };
 
@@ -424,7 +421,6 @@ export default function Home() {
     return new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime() - new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
   });
 
-  // 🚀 OBTENER LISTA DE PROYECTOS ÚNICOS PARA EL FILTRO DEL LIBRO MAYOR
   const proyectosUnicos = Array.from(new Set(datosTabla.map(item => {
       const match = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
       return match ? match[1] : null;
@@ -461,7 +457,6 @@ export default function Home() {
     if (filtroDoc === 'presupuestos' && !isPresupuesto) return false;
     if (filtroDoc === 'abonos' && !isAbono) return false;
     
-    // 🚀 LÓGICA DEL FILTRO EXCLUSIVO DE PROYECTOS
     if (filtroDoc === 'proyectos') {
         const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
         if (!matchProy) return false; 
@@ -547,7 +542,7 @@ export default function Home() {
     if (!file) return;
 
     setIsScanning(true);
-    setConfianzaIA(null); // Reseteamos la confianza al escanear de nuevo
+    setConfianzaIA(null); 
     setEvidenciaIA(null);
     
     const formData = new FormData();
@@ -564,7 +559,6 @@ export default function Home() {
         if (res.data.iva !== undefined) setIvaSeleccionado(res.data.iva.toString());
         if (res.data.categoria && categoriasGasto.includes(res.data.categoria)) setCategoria(res.data.categoria);
         
-        // 🚀 GUARDAMOS LA CONFIANZA Y LA EVIDENCIA DE LA IA
         if (res.data.confianza) setConfianzaIA(res.data.confianza);
         if (res.data.evidencia) setEvidenciaIA(res.data.evidencia);
 
@@ -633,7 +627,6 @@ export default function Home() {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
 
-      // 🚀 LÓGICA DE GUARDADO PARA PROYECTOS COMPLETOS (MULTIPLES LÍNEAS)
       if (tipoTransaccion === 'proyecto') {
           const proyName = proyecto.trim().toUpperCase();
           if (!proyName) { setIsSaving(false); return alert("⚠️ Debe indicar el Nombre del Proyecto."); }
@@ -642,7 +635,6 @@ export default function Home() {
           const promesas = [];
           const tagProyecto = ` [PROYECTO: ${proyName}]`;
 
-          // 1. Guardamos todos los Ingresos añadidos
           for (const ing of proyectoIngresos) {
               const numI = parseFloat(ing.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
               if (!isNaN(numI) && numI > 0) {
@@ -659,7 +651,6 @@ export default function Home() {
               }
           }
 
-          // 2. Guardamos todos los Gastos añadidos
           for (const g of proyectoGastos) {
               const numG = parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
               if (!isNaN(numG) && numG > 0) {
@@ -688,7 +679,6 @@ export default function Home() {
           return;
       }
       
-      // LÓGICA DE GUARDADO NORMAL (INGRESO O GASTO SIMPLE)
       const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
       const numeroLimpio = parseFloat(textoLimpio);
 
@@ -728,7 +718,6 @@ export default function Home() {
         setFrecuencia('Mensual');
         setIvaSeleccionado("21"); 
         
-        // 🚀 LIMPIAR EL BADGE DE CONFIANZA TRAS GUARDAR CON ÉXITO
         setConfianzaIA(null);
         setEvidenciaIA(null);
 
@@ -1039,6 +1028,12 @@ export default function Home() {
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/facturas" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Facturación PDF
+                </Link>
+
+                {/* 🚀 NUEVO ENLACE: GESTOR DOCUMENTAL AÑADIDO AQUÍ */}
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/documentos" onClick={() => setIsSidebarOpen(false)}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                  Gestor Documental
                 </Link>
 
                 {/* 🚀 BOTÓN SOPORTE VIP */}
@@ -1621,6 +1616,12 @@ export default function Home() {
                                     <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200" title="Solo 50% del IVA deducido por ley">
                                         🚘 50%
                                     </span>
+                                )}
+                                {/* 🚀 NUEVO BADGE DE DOCUMENTO ADJUNTO PARA LA TABLA */}
+                                {item.url_archivo && (
+                                    <a href={item.url_archivo} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100 transition flex items-center" title="Ver documento adjunto">
+                                        📎 Doc
+                                    </a>
                                 )}
                             </div>
                           </td>
