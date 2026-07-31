@@ -83,7 +83,7 @@ const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
 
 export default function Home() {
   const router = useRouter(); 
-  const { isSignedIn, isLoaded } = useUser(); 
+  const { isSignedIn, isLoaded, user } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +23,30 @@ export async function GET(request: Request) {
       userId
     );
     
+    let configuracion: any = {};
     if (rows && rows.length > 0) {
-      return NextResponse.json(rows[0].data);
-    } else {
-      return NextResponse.json({}); // Si es un usuario nuevo, devolvemos vacío
+      configuracion = rows[0].data || {};
     }
+
+    // 🚀 MODO DIOS (ADMIN BYPASS) EN EL BACKEND 🚀
+    // Extraemos el email real del usuario desde Clerk
+    const clerk = await clerkClient();
+    const user = await clerk.users.getUser(userId);
+    const userEmail = user.emailAddresses[0]?.emailAddress;
+
+    // Si el email coincide con los administradores, forzamos el plan PRO
+    if (
+      userEmail === 'ialmansabeltran@gmail.com' || 
+      userEmail === 'ismaelalmamsabel2004@gmail.com' || 
+      userEmail === 'sandra66773535@gmail.com'
+    ) {
+      configuracion = {
+        ...configuracion,
+        planSuscripcion: 'pro' // Rompemos el candado automáticamente
+      };
+    }
+
+    return NextResponse.json(configuracion);
   } catch (error) {
     console.error("Error obteniendo ajustes:", error);
     return NextResponse.json({ error: "Error del servidor" }, { status: 500 });

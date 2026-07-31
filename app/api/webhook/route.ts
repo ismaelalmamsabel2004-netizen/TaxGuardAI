@@ -3,6 +3,8 @@ import Stripe from 'stripe';
 import { prisma } from '../../../lib/prisma';
 import { clerkClient } from '@clerk/nextjs/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const stripeKey = process.env.STRIPE_SECRET_KEY || '';
@@ -22,7 +24,7 @@ export async function POST(request: Request) {
 
     const clerk = await clerkClient();
 
-    // 1️⃣ CASO A: PRIMERA COMPRA (CHECKOUT COMPLETADO)
+    // 1️⃣ CASO A: PRIMERA COMPRA O INICIO DE PRUEBA (CHECKOUT COMPLETADO)
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.client_reference_id || session.metadata?.userId;
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
           `INSERT INTO user_settings (user_id, data) VALUES ($1, $2::jsonb) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data;`,
           userId, JSON.stringify(actuales)
         );
-        console.log(`💰 Pago nuevo de ${userId} ascendido a ${planNombre}`);
+        console.log(`💰 Checkout de ${userId} completado. Ascendido a ${planNombre} (Incluye Trials)`);
       }
     }
 
@@ -62,7 +64,8 @@ export async function POST(request: Request) {
     if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object as Stripe.Subscription;
       const stripeCustomerId = subscription.customer as string;
-      const status = subscription.status; // 'active', 'past_due', 'canceled', etc.
+      // 🚀 Estados posibles: 'active', 'trialing', 'past_due', 'canceled', 'unpaid'
+      const status = subscription.status; 
       
       // Buscamos al usuario en Supabase a través de su Customer ID de Stripe
       const rows = await prisma.$queryRawUnsafe<any[]>(
@@ -73,17 +76,20 @@ export async function POST(request: Request) {
           const userId = rows[0].user_id;
           let actuales = rows[0].data;
 
-          if (status === 'canceled' || status === 'unpaid' || event.type === 'customer.subscription.deleted') {
-             // ❌ EL CLIENTE HA CANCELADO O DEJADO DE PAGAR
+          // 🚀 CORRECCIÓN: Si cancela, no paga, o su tarjeta no tiene fondos (past_due)
+          if (status === 'canceled' || status === 'unpaid' || status === 'past_due' || event.type === 'customer.subscription.deleted') {
              actuales.planSuscripcion = 'free';
              actuales.pagoVerificado = false;
-             console.log(`🚫 Suscripción cancelada para el usuario ${userId}. Revertido al plan Free.`);
-          } else if (status === 'active') {
-             // 🔄 EL CLIENTE HA HECHO UN UPGRADE O DOWNGRADE (Cambio de plan)
+             console.log(`🚫 Suscripción detenida (Estado: ${status}) para el usuario ${userId}. Revertido al plan Free.`);
+          
+          // 🚀 CORRECCIÓN VITAL: Aceptamos 'active' Y TAMBIÉN 'trialing' (Prueba de 7 días)
+          } else if (status === 'active' || status === 'trialing') {
              const priceId = subscription.items.data[0].price.id;
              if (priceId === 'price_1Tsjz1JhA316XLs0dk9307W2') actuales.planSuscripcion = 'autonomo';
              else if (priceId === 'price_1Tsk0EJhA316XLs049Nl6hka') actuales.planSuscripcion = 'pro';
-             console.log(`🔄 Cambio de plan detectado para ${userId}: Ahora es ${actuales.planSuscripcion}`);
+             
+             actuales.pagoVerificado = true;
+             console.log(`🔄 Suscripción operativa para ${userId}: Ahora es ${actuales.planSuscripcion} (Estado: ${status})`);
           }
 
           await prisma.$executeRawUnsafe(
