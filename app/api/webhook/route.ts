@@ -33,9 +33,10 @@ export async function POST(request: Request) {
       const stripeSubscriptionId = session.subscription as string;
 
       if (userId) {
+        // 🚀 IDs DEFINITIVOS APLICADOS
         let planNombre = 'free';
-        if (priceId === 'price_1Tsjz1JhA316XLs0dk9307W2') planNombre = 'autonomo';
-        if (priceId === 'price_1Tsk0EJhA316XLs049Nl6hka') planNombre = 'pro';
+        if (priceId === 'price_1TwN2RJADsdd8EhemCpvJbef') planNombre = 'autonomo';
+        if (priceId === 'price_1TwN54JADsdd8EheCYnGZuaZ') planNombre = 'pro';
 
         if (stripeCustomerId && stripeSubscriptionId) {
             await clerk.users.updateUserMetadata(userId, {
@@ -85,8 +86,10 @@ export async function POST(request: Request) {
           // 🚀 CORRECCIÓN VITAL: Aceptamos 'active' Y TAMBIÉN 'trialing' (Prueba de 7 días)
           } else if (status === 'active' || status === 'trialing') {
              const priceId = subscription.items.data[0].price.id;
-             if (priceId === 'price_1Tsjz1JhA316XLs0dk9307W2') actuales.planSuscripcion = 'autonomo';
-             else if (priceId === 'price_1Tsk0EJhA316XLs049Nl6hka') actuales.planSuscripcion = 'pro';
+             
+             // 🚀 IDs DEFINITIVOS APLICADOS
+             if (priceId === 'price_1TwN2RJADsdd8EhemCpvJbef') actuales.planSuscripcion = 'autonomo';
+             else if (priceId === 'price_1TwN54JADsdd8EheCYnGZuaZ') actuales.planSuscripcion = 'pro';
              
              actuales.pagoVerificado = true;
              console.log(`🔄 Suscripción operativa para ${userId}: Ahora es ${actuales.planSuscripcion} (Estado: ${status})`);

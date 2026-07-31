@@ -45,7 +45,7 @@ export async function POST(request: Request) {
              proration_behavior: 'create_prorations',
            });
 
-           // 🚀 Actualizamos tu Base de Datos directamente aquí
+           // 🚀 Actualizamos tu Base de Datos con los IDs limpios y definitivos
            let planNombre = 'free';
            if (priceId === 'price_1TwN2RJADsdd8EhemCpvJbef') planNombre = 'autonomo';
            if (priceId === 'price_1TwN54JADsdd8EheCYnGZuaZ') planNombre = 'pro';
@@ -68,12 +68,14 @@ export async function POST(request: Request) {
 
         } catch (errorIntento) {
            console.log("⚠️ Cliente con suscripción rota o borrada en Stripe. Se le enviará al checkout nuevo.");
-           // Como dio error, la variable necesitaCheckoutNuevo sigue siendo true, y bajará al PASO 3 sin colapsar.
         }
     }
 
     // 🚀 PASO 3: SI ES CLIENTE NUEVO O SU SUSCRIPCIÓN FUE BORRADA (Pasarela normal)
     if (necesitaCheckoutNuevo) {
+        // Extraer email para autocompletar
+        const userEmail = user.emailAddresses[0]?.emailAddress;
+
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ['card'],
           client_reference_id: userId,
@@ -83,6 +85,17 @@ export async function POST(request: Request) {
           subscription_data: {
             trial_period_days: 7, // 🚀 EL TRUCO: Stripe pide tarjeta pero cobra 0€ hoy, y 89€ en 7 días
           },
+          // 🌟 MEJORAS EXCLUSIVAS B2B AÑADIDAS 🌟
+          customer_email: stripeCustomerId ? undefined : userEmail, // Autocompleta el email
+          tax_id_collection: {
+            enabled: true, // Recopila el CIF/NIF automáticamente
+          },
+          billing_address_collection: 'required', // Exige dirección fiscal de empresa
+          phone_number_collection: {
+            enabled: true, // 🚀 NUEVO: Recopila el teléfono para soporte VIP y ventas
+          },
+          allow_promotion_codes: true, // Habilita la casilla de "Añadir cupón"
+          
           success_url: `${baseUrl}/?pago=exito`,
           cancel_url: `${baseUrl}/precios?pago=cancelado`,
         });
