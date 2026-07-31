@@ -36,6 +36,11 @@ export default function AnalisisAvanzado() {
 
   const [planActivo, setPlanActivo] = useState('loading');
 
+  // 🚀 ESTADOS PARA EL MODAL DE SOPORTE
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [faqSearch, setFaqSearch] = useState("");
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
   useEffect(() => {
     setIsMounted(true);
     
@@ -92,6 +97,29 @@ export default function AnalisisAvanzado() {
     obtenerDatosSupabase(nuevaEmpresa).then(d => setAllData(d));
   };
 
+  const gestionarSuscripcion = async () => {
+    try {
+      const res = await fetch('/api/portal', { method: 'POST' });
+      const portalData = await res.json();
+      if (portalData.url) window.location.href = portalData.url; 
+      else alert("⚠️ No se pudo cargar el portal de Stripe. (Nota: Modo Administrador activo sin tarjeta vinculada).");
+    } catch (error) {
+      alert("⚠️ Error de conexión con la pasarela.");
+    }
+  };
+
+  const abrirGmailWeb = (tipo: string) => {
+      const email = "soporte.taxguard@gmail.com";
+      const subject = tipo === "ayuda" ? `Asistencia Técnica TaxGuard AI - ${empresaId}` : `Sugerencia de Mejora - TaxGuard AI - ${empresaId}`;
+      const body = `Hola equipo de TaxGuard AI,%0A%0AEscribe aquí tu ${tipo === 'ayuda' ? 'consulta o problema' : 'idea para mejorar la plataforma'}:%0A%0A`;
+      window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${subject}&body=${body}`, '_blank');
+  };
+
+  const copiarCorreoSoporte = () => {
+      navigator.clipboard.writeText("soporte.taxguard@gmail.com");
+      alert("✅ ¡Correo copiado al portapapeles!");
+  };
+
   useEffect(() => {
     if (!allData || allData.length === 0) {
        setChartDataEvolucion([]); 
@@ -113,7 +141,6 @@ export default function AnalisisAvanzado() {
     const categoriasGastos: Record<string, number> = {};
     const proyectosMap: Record<string, { Ingresos: number, Gastos: number }> = {};
 
-    // 🚀 LÓGICA GLOBAL PARA BLINDAR LA SUPERVIVENCIA CONTRA LOS FILTROS DE TIEMPO
     let globalIngresos = 0; let globalGastos = 0; let globalIvaRep = 0; let globalIvaSop = 0;
     const globalMesesActivos = new Set<string>();
 
@@ -128,14 +155,12 @@ export default function AnalisisAvanzado() {
         
         const [d, m, y] = item.name.split('/');
         
-        // CÁLCULO GLOBAL (Sin importar el filtro de tiempo)
         globalIngresos += ingresoAbsoluto;
         globalGastos += gastoAbsoluto;
         if (valor > 0) globalIvaRep += ingresoAbsoluto * (iva / 100);
         else globalIvaSop += gastoAbsoluto * (iva / 100);
         globalMesesActivos.add(`${y}-${m}`);
 
-        // CÁLCULO ESPECÍFICO DEL PERIODO FILTRADO
         const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
         const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
 
@@ -186,10 +211,7 @@ export default function AnalisisAvanzado() {
         const gas = proyectosMap[key].Gastos;
         const marg = ing - gas;
         return {
-            name: key,
-            ingresos: ing,
-            gastos: gas,
-            margen: marg,
+            name: key, ingresos: ing, gastos: gas, margen: marg,
             rentabilidad: ing > 0 ? (marg / ing) * 100 : (gas > 0 ? -100 : 0)
         };
     }).sort((a, b) => b.margen - a.margen);
@@ -198,7 +220,6 @@ export default function AnalisisAvanzado() {
     setChartDataGastos(gastosArray);
     setChartDataProyectos(proyectosArray);
     
-    // MÉTRICAS DE LA PANTALLA (Basadas en el filtro)
     const beneficio = totalIngresos - totalGastos;
     const margen = totalIngresos > 0 ? (beneficio / totalIngresos) * 100 : 0;
     const prevBeneficio = prevIngresos - prevGastos;
@@ -207,7 +228,6 @@ export default function AnalisisAvanzado() {
     const provisionImpuestos = (liquidacionIva > 0 ? liquidacionIva : 0) + provisionIRPF;
     const beneficioLiquido = beneficio - provisionImpuestos;
 
-    // 🚀 SUPERVIVENCIA BLINDADA (Dinero Total / Gasto Medio Histórico Real)
     const globalBeneficio = globalIngresos - globalGastos;
     const globalProvision = Math.max(0, globalIvaRep - globalIvaSop) + (globalBeneficio > 0 ? globalBeneficio * 0.15 : 0);
     const globalCajaLibre = globalBeneficio - globalProvision;
@@ -217,13 +237,8 @@ export default function AnalisisAvanzado() {
     const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
 
     setKpis({ 
-        ingresos: totalIngresos, 
-        gastos: totalGastos, 
-        beneficio, 
-        margen, 
-        beneficioLiquido, 
-        provisionImpuestos, 
-        runwayMeses: globalRunway // El Runway ya nunca fallará
+        ingresos: totalIngresos, gastos: totalGastos, beneficio, margen, beneficioLiquido, provisionImpuestos, 
+        runwayMeses: globalRunway
     });
     
     setTrends({ 
@@ -247,10 +262,7 @@ export default function AnalisisAvanzado() {
     const datosLimpios = allData
       .filter(d => d.categoria !== 'Presupuestos' && !d.numero_factura?.startsWith('P-'))
       .map(d => ({
-        fecha: d.name,
-        categoria: d.categoria || 'General',
-        importe: d.total,
-        tipo: d.isRecurrent ? `Recurrente` : 'Puntual'
+        fecha: d.name, categoria: d.categoria || 'General', importe: d.total, tipo: d.isRecurrent ? `Recurrente` : 'Puntual'
       }));
 
     let promptEspecial = "";
@@ -300,6 +312,13 @@ export default function AnalisisAvanzado() {
       );
   };
   
+  const faqs = [
+    { q: "🧠 ¿Para qué sirve el Centro de Inteligencia?", a: "Es tu Director Financiero Privado. Analiza tus datos y te ayuda a detectar fugas de capital o simular escenarios de precios." },
+    { q: "📈 ¿Cómo se calcula el Runway (Supervivencia)?", a: "Calcula cuántos meses podría sobrevivir tu empresa si hoy mismo dejaras de ingresar dinero, basándose en tus gastos medios y el dinero libre de impuestos." },
+    { q: "💰 ¿La Hucha de Hacienda es exacta?", a: "Es una provisión muy precisa basada en tus ingresos y gastos registrados. Reserva siempre ese dinero, no es tuyo." }
+  ];
+  const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
+
   if (!isMounted) return null;
   if (planActivo === 'loading' && isSignedIn) {
      return (
@@ -336,7 +355,7 @@ export default function AnalisisAvanzado() {
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
-               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
+               <img src="/icon-192x192.png" alt="Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
                <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
             </div>
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-2">
@@ -344,11 +363,12 @@ export default function AnalisisAvanzado() {
             </button>
           </div>
 
+          {/* 🚀 SIDEBAR UNIFICADO Y CORREGIDO */}
           <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
             <div>
               <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
                 <div className="flex items-center gap-3">
-                  <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
+                  <img src="/icon-192x192.png" alt="Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md" />
                   <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
                 </div>
                 <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
@@ -356,11 +376,19 @@ export default function AnalisisAvanzado() {
                 </button>
               </div>
               
+              {/* SELECTOR DE EMPRESA CORREGIDO (NO SE CORTA EL TEXTO) */}
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
-                <select value={empresaId} onChange={(e) => cambiarEmpresa(e.target.value)} className="w-full mt-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none focus:ring-2 focus:ring-blue-500/50 transition">
-                    {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-                </select>
+                <div className="flex gap-2 mt-1">
+                    <select 
+                      value={empresaId} 
+                      onChange={(e) => cambiarEmpresa(e.target.value)} 
+                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none truncate"
+                    >
+                        {empresas.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                    <button onClick={() => { alert("⚙️ Ve a la Consola General para configurar este espacio."); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                </div>
               </div>
               
               <nav className="space-y-1">
@@ -380,21 +408,29 @@ export default function AnalisisAvanzado() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Facturación PDF
                 </Link>
+                <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/documentos" onClick={() => setIsSidebarOpen(false)}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                  Gestor Documental
+                </Link>
+
+                <div className="pt-4 mt-4 border-t border-slate-800">
+                    <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
+                      <span className="text-lg group-hover:scale-110 transition-transform">🎧</span> Soporte VIP
+                    </button>
+                </div>
               </nav>
             </div>
             
             <div className="mt-auto">
-              <Link href={planActivo === 'pro' || planActivo === 'autonomo' ? "#" : "/precios"} className={`w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'}`}>
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full animate-pulse ${planActivo === 'pro' || planActivo === 'autonomo' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                  <span className={`text-xs font-bold ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                    {planActivo === 'pro' ? 'Plan Empresa PRO' : planActivo === 'autonomo' ? 'Plan Autónomo' : 'Suscripción Inactiva'}
-                  </span>
-                </div>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${planActivo === 'pro' || planActivo === 'autonomo' ? 'text-emerald-300 bg-emerald-900/50' : 'text-slate-800 bg-white'}`}>
-                  {planActivo === 'pro' || planActivo === 'autonomo' ? 'Activa' : 'Activar'}
-                </span>
-              </Link>
+              {planActivo === 'pro' || planActivo === 'autonomo' ? (
+                <button onClick={gestionarSuscripcion} className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full animate-pulse bg-emerald-500"></span>
+                    <span className="text-xs font-bold text-emerald-400">{planActivo === 'pro' ? 'Plan Empresa PRO' : 'Plan Autónomo'}</span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-md text-emerald-300 bg-emerald-900/50 hover:bg-emerald-800/80 transition">Gestionar</span>
+                </button>
+              ) : null}
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
@@ -711,6 +747,65 @@ export default function AnalisisAvanzado() {
             )}
             <div className="h-10"></div>
           </main>
+
+          {/* 🚀 MODAL DE SOPORTE VIP UNIFICADO */}
+          {showSupportModal && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
+               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">🎧 Centro de Soporte VIP</h3>
+                    <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-rose-500 transition">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                  
+                  <div className="p-6 space-y-8 overflow-y-auto bg-slate-50/30">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                         <button onClick={() => abrirGmailWeb('ayuda')} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left shadow-sm">
+                             <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">📨</span>
+                             <h4 className="text-sm font-black text-blue-900 mb-1">Contactar a Soporte</h4>
+                             <p className="text-xs text-blue-700 font-medium">Resolvemos tus dudas en menos de 24h laborables.</p>
+                         </button>
+                         <button onClick={() => abrirGmailWeb('sugerencia')} className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl hover:bg-emerald-100 transition group flex flex-col items-start text-left shadow-sm">
+                             <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">💡</span>
+                             <h4 className="text-sm font-black text-emerald-900 mb-1">Buzón de Sugerencias</h4>
+                             <p className="text-xs text-emerald-700 font-medium">¿Echas en falta alguna función? Escríbenos.</p>
+                         </button>
+                     </div>
+                     
+                     <div className="flex justify-center">
+                         <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            Copiar correo (soporte.taxguard@gmail.com)
+                         </button>
+                     </div>
+  
+                     <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                            <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
+                            <input type="text" placeholder="Buscar..." value={faqSearch} onChange={(e) => setFaqSearch(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none w-full sm:w-64" />
+                        </div>
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                           {faqsFiltradas.length === 0 ? (
+                               <p className="text-center text-xs text-slate-400 py-4">Sin resultados.</p>
+                           ) : (
+                               faqsFiltradas.map((faq, idx) => (
+                                  <div key={idx} className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
+                                     <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="w-full text-left p-4 flex justify-between items-center hover:bg-slate-50 transition">
+                                        <span className="text-xs font-bold text-slate-700 pr-4">{faq.q}</span>
+                                        <span className={`text-slate-400 transition-transform ${openFaq === idx ? 'rotate-180' : ''}`}>▼</span>
+                                     </button>
+                                     {openFaq === idx && <div className="p-4 pt-0 text-[11px] text-slate-500 leading-relaxed bg-white border-t border-slate-100">{faq.a}</div>}
+                                  </div>
+                               ))
+                           )}
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
         </div>
       </Show>
 
