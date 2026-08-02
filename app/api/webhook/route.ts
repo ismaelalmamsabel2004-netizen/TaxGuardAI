@@ -19,7 +19,8 @@ export async function POST(request: Request) {
     try {
       event = stripe.webhooks.constructEvent(payload, sig, endpointSecret);
     } catch (err: any) {
-      return NextResponse.json({ error: "Firma inválida" }, { status: 400 });
+      console.error(`⚠️ Webhook error de firma: ${err.message}`);
+      return NextResponse.json({ error: "Firma inválida de Stripe" }, { status: 400 });
     }
 
     const clerk = await clerkClient();
@@ -38,26 +39,38 @@ export async function POST(request: Request) {
         if (priceId === 'price_1TwN2RJADsdd8EhemCpvJbef') planNombre = 'autonomo';
         if (priceId === 'price_1TwN54JADsdd8EheCYnGZuaZ') planNombre = 'pro';
 
+        // 🛡️ BLINDAJE B2B: Aislamos Clerk. Si Clerk falla, la BD se actualiza igual.
         if (stripeCustomerId && stripeSubscriptionId) {
-            await clerk.users.updateUserMetadata(userId, {
-              privateMetadata: { stripeCustomerId, stripeSubscriptionId }
-            });
+            try {
+                await clerk.users.updateUserMetadata(userId, {
+                  privateMetadata: { stripeCustomerId, stripeSubscriptionId }
+                });
+            } catch (clerkError) {
+                console.error(`⚠️ Aviso: Falló la sincronización con Clerk para ${userId}, pero continuamos con la BD.`, clerkError);
+            }
         }
 
-        const row = await prisma.$queryRawUnsafe<any[]>(`SELECT data FROM user_settings WHERE user_id = $1`, userId);
-        let actuales: any = {};
-        if (row && row.length > 0) actuales = row[0].data;
+        try {
+            const row = await prisma.$queryRawUnsafe<any[]>(`SELECT data FROM user_settings WHERE user_id = $1`, userId);
+            let actuales: any = {};
+            if (row && row.length > 0) actuales = row[0].data;
 
-        actuales.planSuscripcion = planNombre;
-        actuales.pagoVerificado = true;
-        actuales.stripeCustomerId = stripeCustomerId;
-        actuales.stripeSubscriptionId = stripeSubscriptionId;
+            actuales.planSuscripcion = planNombre;
+            actuales.pagoVerificado = true;
+            actuales.stripeCustomerId = stripeCustomerId;
+            actuales.stripeSubscriptionId = stripeSubscriptionId;
 
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO user_settings (user_id, data) VALUES ($1, $2::jsonb) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data;`,
-          userId, JSON.stringify(actuales)
-        );
-        console.log(`💰 Checkout de ${userId} completado. Ascendido a ${planNombre} (Incluye Trials)`);
+            await prisma.$executeRawUnsafe(
+              `INSERT INTO user_settings (user_id, data) VALUES ($1, $2::jsonb) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data;`,
+              userId, JSON.stringify(actuales)
+            );
+            console.log(`✅ ÉXITO: Checkout de ${userId} completado. Ascendido a ${planNombre} (Suscripción: ${stripeSubscriptionId})`);
+        } catch (dbError) {
+            console.error(`🚨 CRÍTICO: Error al guardar la suscripción de ${userId} en la Base de Datos:`, dbError);
+            // Aunque falle la BD, devolvemos 200 a Stripe para que no reintente en bucle infinito bloqueando el servidor.
+        }
+      } else {
+        console.error("⚠️ Aviso: Checkout completado pero no se recibió userId en los metadatos.");
       }
     }
 
@@ -68,43 +81,51 @@ export async function POST(request: Request) {
       // 🚀 Estados posibles: 'active', 'trialing', 'past_due', 'canceled', 'unpaid'
       const status = subscription.status; 
       
-      // Buscamos al usuario en Supabase a través de su Customer ID de Stripe
-      const rows = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT user_id, data FROM user_settings WHERE data->>'stripeCustomerId' = $1`, stripeCustomerId
-      );
-
-      if (rows && rows.length > 0) {
-          const userId = rows[0].user_id;
-          let actuales = rows[0].data;
-
-          // 🚀 CORRECCIÓN: Si cancela, no paga, o su tarjeta no tiene fondos (past_due)
-          if (status === 'canceled' || status === 'unpaid' || status === 'past_due' || event.type === 'customer.subscription.deleted') {
-             actuales.planSuscripcion = 'free';
-             actuales.pagoVerificado = false;
-             console.log(`🚫 Suscripción detenida (Estado: ${status}) para el usuario ${userId}. Revertido al plan Free.`);
-          
-          // 🚀 CORRECCIÓN VITAL: Aceptamos 'active' Y TAMBIÉN 'trialing' (Prueba de 7 días)
-          } else if (status === 'active' || status === 'trialing') {
-             const priceId = subscription.items.data[0].price.id;
-             
-             // 🚀 IDs DEFINITIVOS APLICADOS
-             if (priceId === 'price_1TwN2RJADsdd8EhemCpvJbef') actuales.planSuscripcion = 'autonomo';
-             else if (priceId === 'price_1TwN54JADsdd8EheCYnGZuaZ') actuales.planSuscripcion = 'pro';
-             
-             actuales.pagoVerificado = true;
-             console.log(`🔄 Suscripción operativa para ${userId}: Ahora es ${actuales.planSuscripcion} (Estado: ${status})`);
-          }
-
-          await prisma.$executeRawUnsafe(
-            `UPDATE user_settings SET data = $1::jsonb WHERE user_id = $2`, JSON.stringify(actuales), userId
+      try {
+          // Buscamos al usuario en Supabase a través de su Customer ID de Stripe
+          const rows = await prisma.$queryRawUnsafe<any[]>(
+            `SELECT user_id, data FROM user_settings WHERE data->>'stripeCustomerId' = $1`, stripeCustomerId
           );
+
+          if (rows && rows.length > 0) {
+              const userId = rows[0].user_id;
+              let actuales = rows[0].data;
+
+              // 🚀 Lógica de cancelación o impago
+              if (status === 'canceled' || status === 'unpaid' || status === 'past_due' || event.type === 'customer.subscription.deleted') {
+                  actuales.planSuscripcion = 'free';
+                  actuales.pagoVerificado = false;
+                  console.log(`🚫 BAJA: Suscripción detenida (Estado: ${status}) para el usuario ${userId}. Revertido al plan Free.`);
+              
+              // 🚀 Lógica de reactivación o periodo de prueba
+              } else if (status === 'active' || status === 'trialing') {
+                  const priceId = subscription.items.data[0].price.id;
+                  
+                  // IDs DEFINITIVOS APLICADOS
+                  if (priceId === 'price_1TwN2RJADsdd8EhemCpvJbef') actuales.planSuscripcion = 'autonomo';
+                  else if (priceId === 'price_1TwN54JADsdd8EheCYnGZuaZ') actuales.planSuscripcion = 'pro';
+                  else actuales.planSuscripcion = 'free'; // Por si en el futuro creas otro precio y no está aquí
+                  
+                  actuales.pagoVerificado = true;
+                  console.log(`🔄 RENOVACIÓN: Suscripción operativa para ${userId}: Ahora es ${actuales.planSuscripcion} (Estado: ${status})`);
+              }
+
+              await prisma.$executeRawUnsafe(
+                `UPDATE user_settings SET data = $1::jsonb WHERE user_id = $2`, JSON.stringify(actuales), userId
+              );
+          } else {
+              console.log(`⚠️ Aviso: Se actualizó la suscripción del cliente Stripe ${stripeCustomerId} pero no se encontró en la base de datos local.`);
+          }
+      } catch (updateError) {
+          console.error(`🚨 CRÍTICO: Error al procesar el evento de suscripción en la BD:`, updateError);
       }
     }
 
+    // Siempre devolvemos 200 a Stripe si la firma es válida para confirmar recepción.
     return NextResponse.json({ received: true });
     
   } catch (error: any) {
-    console.error("🔴 Error en Webhook:", error);
-    return NextResponse.json({ error: "Error del servidor" }, { status: 500 });
+    console.error("🔴 Error general no capturado en Webhook:", error);
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });
   }
 }

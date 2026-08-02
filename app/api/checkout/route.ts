@@ -38,6 +38,12 @@ export async function POST(request: Request) {
            }
 
            const subItemId = subscription.items.data[0].id;
+           const currentPriceId = subscription.items.data[0].price.id;
+
+           // 🛡️ BLINDAJE B2B: Si el cliente intenta suscribirse al mismo plan que ya tiene, lo redirigimos sin tocar Stripe.
+           if (currentPriceId === priceId) {
+              return NextResponse.json({ url: `${baseUrl}/?pago=exito` });
+           }
 
            // Le decimos a Stripe: "Cámbiate a este precio y hazle el prorrateo automático"
            await stripe.subscriptions.update(stripeSubscriptionId, {
@@ -86,7 +92,9 @@ export async function POST(request: Request) {
             trial_period_days: 7, // 🚀 EL TRUCO: Stripe pide tarjeta pero cobra 0€ hoy, y 89€ en 7 días
           },
           // 🌟 MEJORAS EXCLUSIVAS B2B AÑADIDAS 🌟
-          customer_email: stripeCustomerId ? undefined : userEmail, // Autocompleta el email
+          // 🛡️ BLINDAJE B2B: Si el cliente ya existe en Stripe pero no tiene suscripción activa, no duplicamos su perfil.
+          customer: stripeCustomerId ? stripeCustomerId : undefined,
+          customer_email: stripeCustomerId ? undefined : userEmail, // Autocompleta el email (solo si es cliente nuevo)
           tax_id_collection: {
             enabled: true, // Recopila el CIF/NIF automáticamente
           },
