@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
+import { Toaster, toast } from 'sonner';
 
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA } from './actions';
 
@@ -30,8 +31,9 @@ const pdfStyles = StyleSheet.create({
   colFecha: { width: '15%', fontSize: 9, color: '#475569' },
   colCat: { width: '30%', fontSize: 9, fontWeight: 700, color: '#334155' },
   colProy: { width: '15%', fontSize: 9, color: '#8b5cf6', fontWeight: 700 },
-  colImporte: { width: '20%', fontSize: 9, textAlign: 'right', fontWeight: 700 },
-  colIva: { width: '20%', fontSize: 9, textAlign: 'right', color: '#64748b' },
+  colImporte: { width: '15%', fontSize: 9, textAlign: 'right', fontWeight: 700 },
+  colIva: { width: '10%', fontSize: 9, textAlign: 'right', color: '#64748b' },
+  colTotal: { width: '15%', fontSize: 9, textAlign: 'right', fontWeight: 700, color: '#0f172a' },
   footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
   footerText: { fontSize: 7, color: '#94a3b8' },
 });
@@ -49,13 +51,19 @@ const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
         <Text style={pdfStyles.colFecha}>FECHA</Text>
         <Text style={pdfStyles.colCat}>CATEGORÍA / DOC.</Text>
         <Text style={pdfStyles.colProy}>PROYECTO</Text>
-        <Text style={pdfStyles.colImporte}>BASE IMPONIBLE</Text>
-        <Text style={pdfStyles.colIva}>IMPUESTOS</Text>
+        <Text style={pdfStyles.colImporte}>BASE IMP.</Text>
+        <Text style={pdfStyles.colIva}>IVA</Text>
+        <Text style={pdfStyles.colTotal}>TOTAL</Text>
       </View>
 
       {datos.map((item: any, i: number) => {
          const isGasto = Number(item.total) < 0;
-         const importeText = `${isGasto ? '-' : '+'}${Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
+         const baseNum = Math.abs(Number(item.total));
+         const ivaNum = Number(item.iva) || 0;
+         const totalOperacion = baseNum * (1 + ivaNum / 100);
+
+         const importeText = `${baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
+         const totalText = `${isGasto ? '-' : '+'}${totalOperacion.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
          const colorImporte = isGasto ? '#e11d48' : '#10b981';
          const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
          const proyText = matchProy ? matchProy[1] : "-";
@@ -67,8 +75,9 @@ const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
                {item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}
             </Text>
             <Text style={pdfStyles.colProy}>{proyText}</Text>
-            <Text style={[pdfStyles.colImporte, { color: colorImporte }]}>{importeText}</Text>
-            <Text style={pdfStyles.colIva}>{item.iva === 0 || item.iva === "0" ? "Exento" : `IVA ${item.iva}%`}</Text>
+            <Text style={pdfStyles.colImporte}>{importeText}</Text>
+            <Text style={pdfStyles.colIva}>{item.iva === 0 || item.iva === "0" ? "Exento" : `${item.iva}%`}</Text>
+            <Text style={[pdfStyles.colTotal, { color: colorImporte }]}>{totalText}</Text>
           </View>
          );
       })}
@@ -122,7 +131,6 @@ export default function Home() {
   const [confianzaIA, setConfianzaIA] = useState<number | null>(null);
   const [evidenciaIA, setEvidenciaIA] = useState<string | null>(null);
   
-  // 🚀 NUEVOS ESTADOS PARA ARCHIVOS ADJUNTOS EN LA NUBE
   const [urlArchivoTemporal, setUrlArchivoTemporal] = useState<string | null>(null);
   const [nombreArchivoTemporal, setNombreArchivoTemporal] = useState<string | null>(null);
   const [tipoArchivoTemporal, setTipoArchivoTemporal] = useState<string | null>(null);
@@ -177,6 +185,12 @@ export default function Home() {
   const proyMargen = proyIngresosNumTotal - proyGastosNumTotal;
   const proyMargenPorcentaje = proyIngresosNumTotal > 0 ? (proyMargen / proyIngresosNumTotal) * 100 : 0;
 
+  // LÓGICA DE LA CALCULADORA EN TIEMPO REAL
+  const currentBase = parseFloat(ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
+  const currentIva = Number(ivaSeleccionado) || 0;
+  const currentIvaAmount = tipoTransaccion === 'gasto' && isVehiculo ? currentBase * ((currentIva/2)/100) : currentBase * (currentIva/100);
+  const currentTotal = currentBase + currentIvaAmount;
+
   const gestionarSuscripcion = async () => {
     try {
       const res = await fetch('/api/portal', { method: 'POST' });
@@ -184,11 +198,11 @@ export default function Home() {
       if (data.url) {
         window.location.href = data.url; 
       } else {
-        alert("⚠️ No se pudo cargar el portal de Stripe.\n\nNota del sistema: Como estás usando una cuenta de Administrador (Modo Dios), no has registrado ninguna tarjeta de crédito real, por lo que Stripe no tiene un portal de facturación que mostrarte. ¡A los clientes reales sí les funcionará!");
+        toast.info("Modo Administrador", { description: "Como estás usando una cuenta de Administrador, no has registrado tarjeta. ¡A los clientes reales sí les funcionará!" });
       }
     } catch (error) {
       console.error(error);
-      alert("⚠️ Error de conexión con la pasarela.");
+      toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
   };
 
@@ -251,6 +265,7 @@ export default function Home() {
       const res = await fetch('/api/settings');
       const actuales: any = await res.json();
       await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaEmpresa });
+      toast.success("Espacio creado", { description: `Se ha creado el espacio: ${nuevaEmpresa}` });
     }
   };
 
@@ -270,6 +285,7 @@ export default function Home() {
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
     await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaActiva, papelera: nuevaPapelera });
+    toast.info("Espacio borrado", { description: `El espacio ${nombre} se movió a la papelera.` });
   };
 
   const recuperarDePapelera = async (nombre: string) => {
@@ -283,7 +299,7 @@ export default function Home() {
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
     await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nombre, papelera: nuevaPapelera });
-    alert(`✅ El espacio "${nombre}" ha sido restaurado con éxito.`);
+    toast.success("Restaurado", { description: `El espacio "${nombre}" ha sido restaurado con éxito.` });
   };
 
   useEffect(() => {
@@ -335,6 +351,7 @@ export default function Home() {
       const metasObj = actuales.metas || {};
       metasObj[empresaId] = nuevaMetaNum;
       await syncSettingsToCloud({ ...actuales, metas: metasObj });
+      toast.success("Meta Guardada", { description: "El objetivo de ingresos se actualizó correctamente." });
     }
     setEditandoMeta(false);
   };
@@ -363,6 +380,7 @@ export default function Home() {
     
     await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj });
     setShowConfig(false);
+    toast.success("Configuración Guardada", { description: "Perfil de IA y categorías actualizados." });
   };
 
   const determinarRangoDias = (tipoFiltro: string) => {
@@ -566,16 +584,17 @@ export default function Home() {
         if (res.data.confianza) setConfianzaIA(res.data.confianza);
         if (res.data.evidencia) setEvidenciaIA(res.data.evidencia);
 
-        // 🚀 NUEVO: Guardar URL del archivo subido temporalmente para la Base de Datos
         if (res.data.url_archivo) setUrlArchivoTemporal(res.data.url_archivo);
         if (res.data.nombre_archivo) setNombreArchivoTemporal(res.data.nombre_archivo);
         if (res.data.tipo_archivo) setTipoArchivoTemporal(res.data.tipo_archivo);
+        
+        toast.success("Documento Escaneado", { description: "La IA ha procesado tu ticket con éxito." });
 
       } else {
-        alert("Error de la IA: " + (res.error || "Fallo desconocido"));
+        toast.error("Error de Auditoría IA", { description: res.error || "Fallo desconocido" });
       }
     } catch (err) {
-      alert("Error de conexión al escanear.");
+      toast.error("Error de Conexión", { description: "No se pudo conectar con el escáner OCR." });
     } finally {
       setIsScanning(false);
       if (fileInputRef.current) fileInputRef.current.value = ''; 
@@ -601,14 +620,14 @@ export default function Home() {
         const dataRes = await res.json();
 
         if (res.ok && dataRes.success) {
-          alert(`✅ ¡Éxito! Se han importado y clasificado automáticamente ${dataRes.count} movimientos bancarios.`);
+          toast.success("Importación Exitosa", { description: `Se han importado y clasificado ${dataRes.count} movimientos bancarios.` });
           const actualizadosBD = await obtenerDatosSupabase(empresaId);
           setData(actualizadosBD);
         } else {
-          alert("Error del servidor al importar: " + (dataRes.error || "Fallo desconocido"));
+          toast.error("Error de Importación", { description: dataRes.error || "Fallo desconocido" });
         }
       } catch (err) {
-        alert("Error de conexión al procesar el archivo bancario.");
+        toast.error("Error de Conexión", { description: "No se pudo procesar el archivo bancario." });
       } finally {
         setIsImporting(false);
         if (fileInputCsvRef.current) fileInputCsvRef.current.value = '';
@@ -622,11 +641,11 @@ export default function Home() {
     e.preventDefault(); 
     
     if (!empresaId) {
-       alert("⚠️ Por favor, selecciona o crea un Espacio de Trabajo arriba a la izquierda.");
+       toast.warning("Espacio Requerido", { description: "Por favor, selecciona o crea un Espacio de Trabajo." });
        return;
     }
     if (!mes) {
-       alert("⚠️ Por favor, selecciona una fecha operativa.");
+       toast.warning("Fecha Requerida", { description: "Por favor, selecciona una fecha operativa." });
        return;
     }
 
@@ -638,8 +657,8 @@ export default function Home() {
 
       if (tipoTransaccion === 'proyecto') {
           const proyName = proyecto.trim().toUpperCase();
-          if (!proyName) { setIsSaving(false); return alert("⚠️ Debe indicar el Nombre del Proyecto."); }
-          if (proyIngresosNumTotal <= 0 && proyGastosNumTotal <= 0) { setIsSaving(false); return alert("⚠️ El proyecto no tiene importes válidos."); }
+          if (!proyName) { setIsSaving(false); return toast.warning("Dato Obligatorio", { description: "Debe indicar el Nombre del Proyecto." }); }
+          if (proyIngresosNumTotal <= 0 && proyGastosNumTotal <= 0) { setIsSaving(false); return toast.warning("Datos Inválidos", { description: "El proyecto no tiene importes válidos." }); }
 
           const promesas = [];
           const tagProyecto = ` [PROYECTO: ${proyName}]`;
@@ -684,7 +703,7 @@ export default function Home() {
           setProyectoIngresos([{ id: Date.now(), concepto: "", importe: "", categoria: categoriasIngreso[0] || "Ventas", iva: "21" }]);
           setProyectoGastos([{ id: Date.now() + 1, concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }]);
           setIsSaving(false);
-          alert("✅ Proyecto registrado correctamente con sus ingresos y gastos.");
+          toast.success("Proyecto Registrado", { description: "El proyecto y todos sus movimientos han sido guardados." });
           return;
       }
       
@@ -693,7 +712,7 @@ export default function Home() {
 
       if (isNaN(numeroLimpio)) {
          setIsSaving(false);
-         alert("⚠️ El importe introducido no es válido. Usa solo números y comas/puntos.");
+         toast.error("Importe Inválido", { description: "Usa solo números y comas/puntos." });
          return;
       }
 
@@ -715,7 +734,6 @@ export default function Home() {
         isRecurrent: isRecurrent,
         frecuencia: isRecurrent ? frecuencia : null,
         concepto_detalle: detalleAdicional + tagProyecto,
-        // 🚀 NUEVO: Pasar la url y metadatos del archivo a Supabase
         url_archivo: urlArchivoTemporal,
         nombre_archivo: nombreArchivoTemporal,
         tipo_archivo: tipoArchivoTemporal
@@ -731,19 +749,20 @@ export default function Home() {
         setFrecuencia('Mensual');
         setIvaSeleccionado("21"); 
         
-        // 🚀 LIMPIEZA TRAS GUARDAR CON ÉXITO
         setConfianzaIA(null);
         setEvidenciaIA(null);
         setUrlArchivoTemporal(null);
         setNombreArchivoTemporal(null);
         setTipoArchivoTemporal(null);
+        
+        toast.success("Movimiento Guardado", { description: "La transacción se ha registrado en el Libro Mayor." });
 
       } else {
-        alert("⚠️ Fallo en el servidor de la nube. Inténtalo de nuevo.");
+        toast.error("Fallo de Servidor", { description: "Error al guardar en la nube. Inténtalo de nuevo." });
       }
     } catch (error) {
       console.error(error);
-      alert("⚠️ Error de conexión a internet al intentar guardar.");
+      toast.error("Sin Conexión", { description: "Revisa tu conexión a internet al intentar guardar." });
     } finally {
       setIsSaving(false);
     }
@@ -757,6 +776,7 @@ export default function Home() {
     if (res.success) {
       const restantes = data.filter(item => item.id !== id);
       setData(restantes);
+      toast.success("Registro Eliminado", { description: "La transacción se ha borrado correctamente." });
     }
   };
 
@@ -783,7 +803,7 @@ export default function Home() {
       const fecha = `${d}/${m}/${y}`;
       const numeroLimpio = parseFloat(editFormData.ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
       
-      if (isNaN(numeroLimpio)) return alert("⚠️ El importe introducido no es válido.");
+      if (isNaN(numeroLimpio)) return toast.error("Importe Inválido", { description: "El importe introducido no es válido." });
 
       const valorFinal = editFormData.tipo === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
 
@@ -805,9 +825,10 @@ export default function Home() {
         const actualizadosBD = await obtenerDatosSupabase(empresaId);
         setData(actualizadosBD);
         setEditingId(null);
+        toast.success("Movimiento Actualizado", { description: "Los cambios se han guardado correctamente." });
       }
     } catch (error) {
-      alert("⚠️ Error al actualizar el dato");
+      toast.error("Error", { description: "Error al actualizar el dato en el servidor." });
     }
   };
 
@@ -857,7 +878,7 @@ export default function Home() {
   };
 
   const exportarAExcel = () => {
-    if (datosTablaFiltrados.length === 0) return alert("No hay datos para exportar.");
+    if (datosTablaFiltrados.length === 0) return toast.info("Sin datos", { description: "No hay datos para exportar con los filtros actuales." });
     
     let csvContent = "\uFEFFFecha;Nº Documento;Proyecto;Categoría;Recurrencia;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
     
@@ -902,7 +923,7 @@ export default function Home() {
 
   const copiarCorreoSoporte = () => {
       navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      alert("✅ ¡Correo de soporte (soporte.taxguard@gmail.com) copiado al portapapeles!");
+      toast.success("¡Copiado!", { description: "Correo de soporte copiado al portapapeles." });
   };
 
   const faqs = [
@@ -974,6 +995,7 @@ export default function Home() {
 
   return (
     <>
+      <Toaster position="bottom-right" richColors theme="light" />
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
           
@@ -1046,25 +1068,20 @@ export default function Home() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Facturación PDF
                 </Link>
-
-                {/* 🚀 NUEVO ENLACE: GESTOR DOCUMENTAL AÑADIDO AQUÍ */}
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/documentos" onClick={() => setIsSidebarOpen(false)}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
                   Gestor Documental
                 </Link>
 
-                {/* 🚀 BOTÓN SOPORTE VIP */}
                 <div className="pt-4 mt-4 border-t border-slate-800">
                     <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
-                      <span className="text-lg group-hover:scale-110 transition-transform">🎧</span>
-                      Soporte VIP
+                      <span className="text-lg group-hover:scale-110 transition-transform">🎧</span> Soporte VIP
                     </button>
                 </div>
               </nav>
             </div>
             
             <div className="mt-auto">
-              {/* 🚀 BOTÓN INTELIGENTE: SI TIENE PLAN VA A STRIPE, SI NO, VA A PRECIOS */}
               {planActivo === 'pro' || planActivo === 'autonomo' ? (
                 <button onClick={gestionarSuscripcion} className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40">
                   <div className="flex items-center gap-2">
@@ -1263,7 +1280,7 @@ export default function Home() {
                     )}
                     {/* 🚀 FIN BADGE CONFIANZA IA */}
 
-                    {/* 🚀 NUEVO: INDICADOR DE DOCUMENTO ADJUNTO SUBIDO */}
+                    {/* 🚀 INDICADOR DE DOCUMENTO ADJUNTO SUBIDO */}
                     {urlArchivoTemporal && (
                       <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-bold animate-fade-in-up">
                         <span>📎 {nombreArchivoTemporal || 'Documento adjunto'} listo para guardar</span>
@@ -1315,6 +1332,14 @@ export default function Home() {
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta (Opc.)</label>
                               <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                             </div>
+                        </div>
+
+                        {/* 🚀 CALCULADORA EN TIEMPO REAL AÑADIDA AQUÍ */}
+                        <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex justify-between items-center mt-2 shadow-sm">
+                           <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Total Operación (Con IVA)</span>
+                           <span className="text-sm font-black text-blue-600">
+                               {currentTotal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                           </span>
                         </div>
                         
                         {tipoTransaccion === 'gasto' && (
@@ -1489,7 +1514,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* TABLA DE LIBRO MAYOR CON ETIQUETAS DE PROYECTO */}
+            {/* 🚀 TABLA DE LIBRO MAYOR CON ETIQUETAS DE PROYECTO */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
               <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
                 <div className="flex items-center gap-3">
@@ -1563,8 +1588,10 @@ export default function Home() {
                     <tr>
                       <th className="px-4 md:px-6 py-3">Fecha</th>
                       <th className="px-4 md:px-6 py-3">Categoría / Doc</th>
+                      {/* 🚀 NUEVAS COLUMNAS PROFESIONALES */}
                       <th className="px-4 md:px-6 py-3">Base Imponible</th>
                       <th className="px-4 md:px-6 py-3">Impuestos</th>
+                      <th className="px-4 md:px-6 py-3">Total Final</th>
                       <th className="px-4 md:px-6 py-3 text-right">Acciones</th>
                     </tr>
                   </thead>
@@ -1573,12 +1600,19 @@ export default function Home() {
                       const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
                       const isAbono = item.numero_factura?.startsWith('R-');
                       const isIngreso = Number(item.total) > 0 && !isPresupuesto;
+                      const isGasto = Number(item.total) < 0 && !isPresupuesto && !isAbono;
                       
-                      let colorText = isPresupuesto ? 'text-amber-500' : (isAbono ? 'text-rose-500' : (isIngreso ? 'text-emerald-500' : 'text-rose-500'));
+                      let colorText = isPresupuesto ? 'text-amber-600' : (isAbono || isGasto ? 'text-rose-600' : 'text-emerald-600');
                       let bgBadge = isPresupuesto ? 'bg-amber-100 text-amber-700' : (isAbono ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600');
                       let tagLabel = isPresupuesto ? 'PRESUPUESTO' : (isAbono ? 'ABONO' : (item.categoria || 'General'));
 
-                      // Extracción visual del tag de proyecto
+                      // 🚀 LÓGICA DE MATEMÁTICAS VISUALES
+                      const baseNum = Math.abs(Number(item.total));
+                      const ivaPorcentaje = Number(item.iva) || 0;
+                      const cuotaIva = baseNum * (ivaPorcentaje / 100);
+                      const totalFinal = baseNum + cuotaIva;
+                      const signoVisual = isPresupuesto ? '+' : (isGasto || isAbono ? '-' : '+');
+
                       const tagProyectoMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
                       const proyectoEtiqueta = tagProyectoMatch ? tagProyectoMatch[1] : null;
 
@@ -1605,6 +1639,7 @@ export default function Home() {
                                   <option value="0">0%</option>
                                </select>
                             </td>
+                            <td className="px-4 py-2 text-slate-400 text-xs italic">Auto</td>
                             <td className="px-4 py-2 text-right space-x-2">
                                <button onClick={() => guardarEdicion(item.id)} className="text-emerald-600 font-bold text-xs hover:underline">Guardar</button>
                                <button onClick={() => setEditingId(null)} className="text-slate-500 font-bold text-xs hover:underline">Cancelar</button>
@@ -1642,7 +1677,6 @@ export default function Home() {
                                         🚘 50%
                                     </span>
                                 )}
-                                {/* 🚀 NUEVO BADGE DE DOCUMENTO ADJUNTO PARA LA TABLA */}
                                 {item.url_archivo && (
                                     <a href={item.url_archivo} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100 transition flex items-center" title="Ver documento adjunto">
                                         📎 Doc
@@ -1650,14 +1684,18 @@ export default function Home() {
                                 )}
                             </div>
                           </td>
-                          <td className={`px-4 md:px-6 py-3.5 font-black ${colorText}`}>
-                             {isPresupuesto || isIngreso ? '+' : '-'}{Math.abs(Number(item.total)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                          </td>
                           
+                          {/* 🚀 NUEVAS COLUMNAS MATEMÁTICAS */}
+                          <td className="px-4 md:px-6 py-3.5 font-bold text-slate-700">
+                             {baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                          </td>
                           <td className="px-4 md:px-6 py-3.5">
-                             <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
-                                {item.iva === 0 || item.iva === "0" ? "Exento" : `IVA ${item.iva}%`}
+                             <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200 block w-fit">
+                                {ivaPorcentaje === 0 ? "Exento" : `+${cuotaIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} € (${ivaPorcentaje}%)`}
                              </span>
+                          </td>
+                          <td className={`px-4 md:px-6 py-3.5 font-black text-base ${colorText}`}>
+                             {signoVisual}{totalFinal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                           </td>
 
                           <td className="px-4 md:px-6 py-3.5 text-right space-x-2">
@@ -1674,7 +1712,7 @@ export default function Home() {
                       );
                     })}
                     {datosTablaFiltrados.length === 0 && (
-                      <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">No se encontraron registros para esta búsqueda o filtro.</td></tr>
+                      <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">No se encontraron registros para esta búsqueda o filtro.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1763,7 +1801,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* BOTÓN PARA ABRIR/CERRAR EL CHAT (CON ICONO DE IA) */}
           <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-12 h-12 md:w-14 md:h-14 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-transform z-50">
             {isChatOpen ? (
               <svg className="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1778,7 +1815,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* 🚀 MODAL DE CONFIGURACIÓN DE ESPACIO */}
+        {/* MODAL CONFIGURACIÓN */}
         {showConfig && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
@@ -1848,83 +1885,9 @@ export default function Home() {
           </div>
         )}
 
-        {/* 🚀 MODAL DE SOPORTE VIP UNIFICADO */}
-        {showSupportModal && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">🎧 Centro de Soporte VIP</h3>
-                  <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-rose-500 transition">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                
-                <div className="p-6 space-y-8 overflow-y-auto bg-slate-50/30">
-                   
-                   {/* BOTONES RÁPIDOS DE CORREO */}
-                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <button onClick={() => abrirGmailWeb('ayuda')} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left shadow-sm">
-                           <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">📨</span>
-                           <h4 className="text-sm font-black text-blue-900 mb-1">Contactar a Soporte</h4>
-                           <p className="text-xs text-blue-700 font-medium">Resolvemos tus dudas en menos de 24h laborables.</p>
-                       </button>
-                       <button onClick={() => abrirGmailWeb('sugerencia')} className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl hover:bg-emerald-100 transition group flex flex-col items-start text-left shadow-sm">
-                           <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">💡</span>
-                           <h4 className="text-sm font-black text-emerald-900 mb-1">Buzón de Sugerencias</h4>
-                           <p className="text-xs text-emerald-700 font-medium">¿Echas en falta alguna función? Escríbenos.</p>
-                       </button>
-                   </div>
-                   
-                   <div className="flex justify-center">
-                       <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                          Copiar correo (soporte.taxguard@gmail.com)
-                       </button>
-                   </div>
-
-                   {/* MINI FAQ INCORPORADO CON ACORDEÓN */}
-                   <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-                          <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
-                          <input 
-                             type="text" 
-                             placeholder="Buscar en preguntas frecuentes..." 
-                             value={faqSearch}
-                             onChange={(e) => setFaqSearch(e.target.value)}
-                             className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-64"
-                          />
-                      </div>
-                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                         {faqsFiltradas.length === 0 ? (
-                             <p className="text-center text-xs text-slate-400 py-4">No se encontraron respuestas para tu búsqueda.</p>
-                         ) : (
-                             faqsFiltradas.map((faq, idx) => (
-                                <div key={idx} className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
-                                   <button 
-                                      onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
-                                      className="w-full text-left p-4 flex justify-between items-center hover:bg-slate-50 transition"
-                                   >
-                                      <span className="text-xs font-bold text-slate-700 pr-4">{faq.q}</span>
-                                      <span className={`text-slate-400 transition-transform ${openFaq === idx ? 'rotate-180' : ''}`}>▼</span>
-                                   </button>
-                                   {openFaq === idx && (
-                                      <div className="p-4 pt-0 text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 bg-white">
-                                         {faq.a}
-                                      </div>
-                                   )}
-                                </div>
-                             ))
-                         )}
-                      </div>
-                   </div>
-                </div>
-             </div>
-          </div>
-        )}
-
       </Show>
 
-      {/* 🚀 RUTA DE ESCAPE PÚBLICA (LANDING PAGE MEJORADA) */}
+      {/* RUTA DE ESCAPE PÚBLICA */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           
