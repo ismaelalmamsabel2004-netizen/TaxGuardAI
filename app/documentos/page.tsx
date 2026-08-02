@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useUser, UserButton, Show } from "@clerk/nextjs";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Toaster, toast } from 'sonner';
 import { obtenerDatosSupabase, actualizarEstadoPago } from '../actions';
 
 export default function DocumentosPage() {
@@ -70,9 +71,9 @@ export default function DocumentosPage() {
       const res = await fetch('/api/portal', { method: 'POST' });
       const portalData = await res.json();
       if (portalData.url) window.location.href = portalData.url; 
-      else alert("⚠️ No se pudo cargar el portal de Stripe. (Nota: Modo Administrador activo sin tarjeta vinculada).");
+      else toast.info("Modo Administrador", { description: "Activo sin tarjeta vinculada. A los clientes les cargará Stripe." });
     } catch (error) {
-      alert("⚠️ Error de conexión con la pasarela.");
+      toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
   };
 
@@ -85,7 +86,7 @@ export default function DocumentosPage() {
 
   const copiarCorreoSoporte = () => {
       navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      alert("✅ ¡Correo copiado al portapapeles!");
+      toast.success("Copiado", { description: "Correo de soporte copiado al portapapeles." });
   };
 
   // 🚀 FUNCIONES DE LA TABLA
@@ -107,8 +108,42 @@ export default function DocumentosPage() {
     return matchSearch && matchEstado;
   });
 
-  const facturasPendientes = data.filter(d => d.estado_pago === "PENDIENTE").length;
-  const dineroPendiente = data.filter(d => d.estado_pago === "PENDIENTE" && d.total > 0).reduce((acc, curr) => acc + curr.total, 0);
+  const ingresosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) > 0);
+  const facturasPendientes = ingresosPendientes.length;
+  const dineroPendiente = ingresosPendientes.reduce((acc, curr) => acc + (Number(curr.total) * (1 + ((Number(curr.iva) || 0) / 100))), 0);
+
+  const gastosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) < 0);
+  const recibosPendientes = gastosPendientes.length;
+  const dineroAPagar = gastosPendientes.reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + ((Number(curr.iva) || 0) / 100))), 0);
+
+  const exportarAExcel = () => {
+    if (documentosFiltrados.length === 0) return toast.info("Sin datos", { description: "No hay datos para exportar en este filtro." });
+    
+    let csvContent = "\uFEFFDocumento;NIF;Fecha;Base Imponible;IVA;Total Operacion;Estado;Archivo\n";
+    
+    documentosFiltrados.forEach(item => {
+      const isGasto = Number(item.total) < 0;
+      const baseNum = Math.abs(Number(item.total));
+      const ivaPorcentaje = Number(item.iva) || 0;
+      const cuotaIva = baseNum * (ivaPorcentaje / 100);
+      const totalConIva = baseNum + cuotaIva;
+      
+      const signo = isGasto ? "-" : "+";
+      const doc = item.cliente_nombre || item.concepto_detalle || "Factura";
+      const nif = item.cliente_nif || "S/N";
+      const fNum = (num: number) => num.toFixed(2).replace('.', ',');
+      const archivo = item.url_archivo || "Sin adjunto";
+
+      csvContent += `${doc};${nif};${item.name};${signo}${fNum(baseNum)};${ivaPorcentaje}%;${signo}${fNum(totalConIva)};${item.estado_pago};${archivo}\n`;
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Archivo_Documental_${empresaId}.csv`;
+    link.click();
+  };
+
 
   const faqs = [
       { q: "🚀 ¿Cómo empiezo a usar TaxGuard AI por primera vez?", a: "Crea tu empresa arriba a la izquierda y pulsa la rueda dentada (⚙️) para añadir tus categorías." },
@@ -120,6 +155,8 @@ export default function DocumentosPage() {
   if (!isLoaded || planActivo === 'loading') return <div className="min-h-screen bg-[#F4F5F7] animate-pulse"></div>;
 
   return (
+    <>
+    <Toaster position="bottom-right" richColors theme="light" />
     <Show when="signed-in">
       <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
         
@@ -154,12 +191,12 @@ export default function DocumentosPage() {
                   <select 
                     value={empresaId} 
                     onChange={(e) => cambiarEmpresa(e.target.value)} 
-                    className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none"
+                    className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none truncate"
                   >
                       {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                   </select>
                   {/* Botones redirigen a Consola General para evitar duplicar código de modales */}
-                  <button onClick={() => { alert("⚙️ Ve a la Consola General para configurar este espacio."); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                  <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
               </div>
             </div>
             
@@ -220,14 +257,26 @@ export default function DocumentosPage() {
               <p className="text-sm font-medium text-slate-500 mt-1">Busca facturas pasadas y controla quién te debe dinero en <span className="font-bold text-blue-600">{empresaId}</span>.</p>
             </div>
             {/* WIDGET RADAR MOROSIDAD */}
-            <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex items-center gap-6 shadow-sm">
-                <div>
-                    <p className="text-[10px] font-black uppercase text-rose-800 tracking-widest">Radar de Morosidad</p>
-                    <p className="text-xs font-medium text-rose-600 mt-0.5">{facturasPendientes} facturas sin cobrar</p>
-                </div>
-                <div className="text-right border-l border-rose-200 pl-6">
-                    <p className="text-2xl font-black text-rose-600">{dineroPendiente.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
-                </div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex items-center gap-5 shadow-sm">
+                  <div>
+                      <p className="text-[10px] font-black uppercase text-rose-800 tracking-widest flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span> Morosidad</p>
+                      <p className="text-[11px] font-medium text-rose-600 mt-0.5">{facturasPendientes} ingresos sin cobrar</p>
+                  </div>
+                  <div className="text-right border-l border-rose-200 pl-4 min-w-[80px]">
+                      <p className="text-xl font-black text-rose-600">{dineroPendiente.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
+                  </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-5 shadow-sm">
+                  <div>
+                      <p className="text-[10px] font-black uppercase text-amber-800 tracking-widest">Cuentas por Pagar</p>
+                      <p className="text-[11px] font-medium text-amber-600 mt-0.5">{recibosPendientes} gastos sin pagar</p>
+                  </div>
+                  <div className="text-right border-l border-amber-200 pl-4 min-w-[80px]">
+                      <p className="text-xl font-black text-amber-600">{dineroAPagar.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
+                  </div>
+              </div>
             </div>
           </header>
 
@@ -241,7 +290,8 @@ export default function DocumentosPage() {
                     className="w-full sm:w-96 p-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <div className="flex gap-2 w-full sm:w-auto bg-slate-200/50 p-1.5 rounded-xl">
-                    <button onClick={() => setFiltroEstado("ALL")} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${filtroEstado === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Todas</button>
+                    <button onClick={exportarAExcel} className="hidden lg:block px-4 py-2 bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-100 transition shadow-sm mr-2">↓ Descargar CSV</button>
+                    <button onClick={() => setFiltroEstado("ALL")} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${filtroEstado === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Todos</button>
                     <button onClick={() => setFiltroEstado("PENDIENTE")} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${filtroEstado === 'PENDIENTE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-rose-600'}`}>Pendientes</button>
                     <button onClick={() => setFiltroEstado("COBRADO")} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${filtroEstado === 'COBRADO' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-emerald-600'}`}>Completadas</button>
                 </div>
@@ -252,54 +302,100 @@ export default function DocumentosPage() {
                 <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   <tr>
                     <th className="px-6 py-4">Documento / Cliente</th>
-                    <th className="px-6 py-4">Importe Total</th>
-                    <th className="px-6 py-4">Emisión</th>
-                    <th className="px-6 py-4">Archivo</th>
+                    <th className="px-6 py-4">Fecha Op.</th>
+                    <th className="px-6 py-4">Base Imponible</th>
+                    <th className="px-6 py-4">IVA</th>
+                    <th className="px-6 py-4">Total Operación</th>
+                    <th className="px-6 py-4 text-center">Archivo</th>
                     <th className="px-6 py-4 text-right">Estado Financiero</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
-                  {documentosFiltrados.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80 transition">
-                      <td className="px-6 py-4">
-                        <p className="font-bold text-slate-900">{item.cliente_nombre || item.concepto_detalle || "Factura / Ticket"}</p>
-                        <p className="text-[10px] font-bold text-slate-400 mt-1">Nº: {item.numero_factura || "S/N"} {item.cliente_nif ? `| NIF: ${item.cliente_nif}` : ""}</p>
-                      </td>
-                      <td className={`px-6 py-4 font-black ${item.total >= 0 ? 'text-slate-900' : 'text-slate-500'}`}>
-                        {Math.abs(item.total).toLocaleString('es-ES')} €
-                      </td>
-                      <td className="px-6 py-4 text-slate-500 font-semibold">{item.name}</td>
-                      <td className="px-6 py-4">
-                        {item.url_archivo ? (
-                            <a href={item.url_archivo} target="_blank" className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-100 hover:bg-blue-100 transition flex items-center gap-2 w-fit">
-                                📎 Ver Fichero
-                            </a>
-                        ) : (
-                            <span className="text-slate-300 text-xs italic">Sin adjunto</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        {item.estado_pago === "PENDIENTE" ? (
-                            <div className="flex items-center justify-end gap-3">
-                                <span className="text-rose-600 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest animate-pulse">Pendiente</span>
-                                <button onClick={() => cambiarEstado(item.id, "COBRADO")} className="text-xs font-bold text-emerald-600 hover:underline">Marcar Cobrado ✓</button>
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-end gap-3">
-                                <span className="text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Cobrado</span>
-                                <button onClick={() => cambiarEstado(item.id, "PENDIENTE")} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 hover:underline">Revertir</button>
-                            </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {documentosFiltrados.map((item, idx) => {
+                    const isGasto = Number(item.total) < 0;
+                    const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
+                    const isAbono = item.numero_factura?.startsWith('R-');
+                    
+                    const baseNum = Math.abs(item.total);
+                    const ivaPorcentaje = Number(item.iva) || 0;
+                    const cuotaIva = baseNum * (ivaPorcentaje / 100);
+                    const totalConIva = baseNum + cuotaIva;
+
+                    const signoOperacion = isPresupuesto ? '+' : (isGasto || isAbono ? '-' : '+');
+                    const colorSigno = isPresupuesto ? 'text-amber-600' : (isGasto || isAbono ? 'text-rose-600' : 'text-emerald-600');
+
+                    // 🚨 Alerta visual si la factura pendiente tiene más de 30 días
+                    const [d, m, y] = item.name.split('/');
+                    const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+                    const diasDesdeEmision = (new Date().getTime() - fechaEmision) / (1000 * 3600 * 24);
+                    const isVencida = item.estado_pago === 'PENDIENTE' && diasDesdeEmision > 30;
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition">
+                        <td className="px-6 py-4">
+                          <p className="font-bold text-slate-900">{item.cliente_nombre || item.concepto_detalle || "Factura / Ticket"}</p>
+                          <p className="text-[10px] font-bold text-slate-400 mt-1">
+                            {item.numero_factura ? `Nº: ${item.numero_factura} | ` : ""} {item.categoria || 'General'}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-semibold">
+                           {item.name}
+                           {isVencida && <span title="¡Documento vencido (+30 días)!" className="ml-2 text-rose-500 animate-pulse text-base cursor-help">🚨</span>}
+                        </td>
+                        
+                        <td className="px-6 py-4 font-bold text-slate-700">
+                          {baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                        </td>
+                        <td className="px-6 py-4">
+                           <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200">
+                              {ivaPorcentaje === 0 ? "Exento" : `+${cuotaIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} € (${ivaPorcentaje}%)`}
+                           </span>
+                        </td>
+                        <td className={`px-6 py-4 font-black ${colorSigno}`}>
+                          {signoOperacion}{totalConIva.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                        </td>
+
+                        <td className="px-6 py-4 text-center">
+                          {item.url_archivo ? (
+                              <a href={item.url_archivo} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-100 hover:bg-blue-100 transition shadow-sm">
+                                  📎 Ver Doc
+                              </a>
+                          ) : (
+                              <span className="text-slate-300 text-xs italic">Sin adjunto</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {item.estado_pago === "PENDIENTE" ? (
+                              <div className="flex items-center justify-end gap-3">
+                                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${isGasto ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-rose-600 bg-rose-50 border border-rose-200 animate-pulse'}`}>
+                                      {isGasto ? 'Por Pagar' : 'Pendiente Cobro'}
+                                  </span>
+                                  <button onClick={() => cambiarEstado(item.id, "COBRADO")} className={`text-xs font-bold hover:underline ${isGasto ? 'text-blue-600' : 'text-emerald-600'}`}>
+                                      {isGasto ? 'Marcar Pagado ✓' : 'Marcar Cobrado ✓'}
+                                  </button>
+                              </div>
+                          ) : (
+                              <div className="flex items-center justify-end gap-3">
+                                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${isGasto ? 'text-blue-700 bg-blue-50 border border-blue-200' : 'text-emerald-600 bg-emerald-50 border border-emerald-200'}`}>
+                                      {isGasto ? 'Pagado' : 'Cobrado'}
+                                  </span>
+                                  <button onClick={() => cambiarEstado(item.id, "PENDIENTE")} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 hover:underline">
+                                      Revertir
+                                  </button>
+                              </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {documentosFiltrados.length === 0 && (
-                    <tr><td colSpan={5} className="px-6 py-16 text-center text-sm font-bold text-slate-400">No hay documentos registrados para la empresa {empresaId}.</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-16 text-center text-sm font-bold text-slate-400">No hay documentos en este filtro.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
+
         </main>
 
         {/* 🚀 MODAL DE SOPORTE VIP UNIFICADO */}
@@ -329,7 +425,7 @@ export default function DocumentosPage() {
                    
                    <div className="flex justify-center">
                        <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                           Copiar correo (soporte.taxguard@gmail.com)
                        </button>
                    </div>
@@ -362,5 +458,6 @@ export default function DocumentosPage() {
 
       </div>
     </Show>
+    </>
   );
 }
