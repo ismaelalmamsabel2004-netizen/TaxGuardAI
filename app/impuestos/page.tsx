@@ -5,6 +5,7 @@ import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
+import { Toaster, toast } from 'sonner';
 
 import { obtenerDatosSupabase } from '../actions';
 
@@ -482,9 +483,9 @@ export default function ModelosTributarios() {
       const res = await fetch('/api/portal', { method: 'POST' });
       const portalData = await res.json();
       if (portalData.url) window.location.href = portalData.url; 
-      else alert("⚠️ No se pudo cargar el portal de Stripe. (Nota: Modo Administrador activo sin tarjeta vinculada).");
+      else toast.info("Modo Administrador", { description: "Activo sin tarjeta vinculada. A los clientes les cargará Stripe." });
     } catch (error) {
-      alert("⚠️ Error de conexión con la pasarela.");
+      toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
   };
 
@@ -497,7 +498,7 @@ export default function ModelosTributarios() {
 
   const copiarCorreoSoporte = () => {
       navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      alert("✅ ¡Correo copiado al portapapeles!");
+      toast.success("Copiado", { description: "Correo de soporte copiado al portapapeles." });
   };
 
   const getDatosValidos = () => {
@@ -522,11 +523,11 @@ export default function ModelosTributarios() {
     const ingresos = datosTrimestre.filter(d => Number(d.total) > 0);
     const gastos = datosTrimestre.filter(d => Number(d.total) < 0);
 
-    const base21 = ingresos.filter(i => Number(i.iva) === 21).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const base21 = ingresos.filter(i => Number(i.iva) === 21).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const cuota21 = base21 * 0.21;
-    const base10 = ingresos.filter(i => Number(i.iva) === 10).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const base10 = ingresos.filter(i => Number(i.iva) === 10).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const cuota10 = base10 * 0.10;
-    const base4 = ingresos.filter(i => Number(i.iva) === 4).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const base4 = ingresos.filter(i => Number(i.iva) === 4).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const cuota4 = base4 * 0.04;
     const totalCuotaDevengada = cuota21 + cuota10 + cuota4;
 
@@ -555,7 +556,7 @@ export default function ModelosTributarios() {
       return m >= 1 && m <= maxMes;
     });
 
-    const ingresosTotales = datosAcumulados.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const ingresosTotales = datosAcumulados.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const gastosTotales = datosAcumulados.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
 
     const rendimientoNeto = ingresosTotales - gastosTotales;
@@ -576,13 +577,13 @@ export default function ModelosTributarios() {
     const ingresos = datosAnio.filter(d => Number(d.total) > 0);
     const gastos = datosAnio.filter(d => Number(d.total) < 0);
 
-    const base21 = ingresos.filter(i => Number(i.iva) === 21).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const base21 = ingresos.filter(i => Number(i.iva) === 21).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const cuota21 = base21 * 0.21;
-    const base10 = ingresos.filter(i => Number(i.iva) === 10).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const base10 = ingresos.filter(i => Number(i.iva) === 10).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const cuota10 = base10 * 0.10;
-    const base4 = ingresos.filter(i => Number(i.iva) === 4).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const base4 = ingresos.filter(i => Number(i.iva) === 4).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const cuota4 = base4 * 0.04;
-    const base0 = ingresos.filter(i => Number(i.iva) === 0).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const base0 = ingresos.filter(i => Number(i.iva) === 0).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     
     const totalIngresos = base21 + base10 + base4 + base0;
     const totalCuotaDevengada = cuota21 + cuota10 + cuota4;
@@ -662,7 +663,7 @@ export default function ModelosTributarios() {
     });
 
     const operacionesIntra = datosTrimestre.filter(d => Number(d.iva) === 0 && d.categoria !== "Nóminas" && d.categoria !== "Impuestos" && d.categoria !== "Otros");
-    const entregas = operacionesIntra.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + Number(curr.total), 0);
+    const entregas = operacionesIntra.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     const adquisiciones = operacionesIntra.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     
     return { entregas, adquisiciones };
@@ -710,6 +711,7 @@ export default function ModelosTributarios() {
 
   return (
     <>
+      <Toaster position="bottom-right" richColors theme="light" />
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
@@ -746,13 +748,13 @@ export default function ModelosTributarios() {
                     >
                         {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
-                    <button onClick={() => { alert("⚙️ Ve a la Consola General para configurar este espacio."); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
                 </div>
               </div>
               
               <nav className="space-y-1">
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/" onClick={() => setIsSidebarOpen(false)}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V16zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V16z"/></svg>
                   Consola General
                 </Link>
                 <Link className="flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 hover:text-white transition" href="/analisis" onClick={() => setIsSidebarOpen(false)}>
@@ -1388,7 +1390,7 @@ export default function ModelosTributarios() {
                      
                      <div className="flex justify-center">
                          <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                             Copiar correo (soporte.taxguard@gmail.com)
                          </button>
                      </div>
@@ -1396,7 +1398,7 @@ export default function ModelosTributarios() {
                      <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                             <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
-                            <input type="text" placeholder="Buscar..." value={faqSearch} onChange={(e) => setFaqSearch(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none w-full sm:w-64" />
+                            <input type="text" placeholder="Buscar..." value={faqSearch} onChange={(e) => setFaqSearch(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-64" />
                         </div>
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
                            {faqsFiltradas.length === 0 ? (
