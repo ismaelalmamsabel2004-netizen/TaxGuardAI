@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-// IMPORTAMOS LOS CONTROLES COMPLETOS DE CLERK
+// IMPORTAMOS LOS CONTROLES COMPLETOS DE CLERK Y SONNER
 import { SignInButton, useUser, UserButton, SignOutButton } from "@clerk/nextjs";
+import { Toaster, toast } from 'sonner';
 
 export default function Precios() {
   const [loading, setLoading] = useState<string | null>(null);
@@ -21,20 +22,22 @@ export default function Precios() {
       const data = await res.json();
       
       if (res.status === 401) {
-        alert("🔒 Acceso Denegado: Tienes que iniciar sesión o crear una cuenta primero para poder suscribirte a un plan.");
+        toast.warning("Acceso Restringido", { description: "Inicia sesión o crea una cuenta gratis primero para poder suscribirte a un plan." });
       } else if (data.url) {
         window.location.href = data.url; 
       } else {
-        alert(`⚠️ Error del servidor: ${data.error || 'Revisa que las variables STRIPE_SECRET_KEY estén puestas en Vercel.'}`);
+        toast.error("Error del servidor", { description: data.error || 'Revisa que las variables STRIPE_SECRET_KEY estén puestas en Vercel.' });
       }
     } catch (error) {
       console.error("Error al procesar el pago:", error);
+      toast.error("Sin Conexión", { description: "No se pudo conectar con la pasarela de pago de Stripe." });
     }
     setLoading(null);
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-slate-950 p-4 selection:bg-blue-500/30 font-sans relative overflow-hidden" translate="no">
+      <Toaster position="bottom-right" richColors theme="dark" />
       
       <nav className="absolute top-0 w-full z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between border-b border-white/5 bg-slate-950/50 backdrop-blur-md">
