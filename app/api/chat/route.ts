@@ -1,29 +1,40 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { auth } from '@clerk/nextjs/server'; // 🚀 INYECTADO: Seguridad extrema
 
 export async function POST(request: Request) {
   try {
+    // 🛡️ BLINDAJE B2B: Verificar que el usuario existe para que nadie te robe tokens de IA
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ reply: "⚠️ Acceso denegado. Sesión expirada o inválida." }, { status: 401 });
+    }
+
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) return NextResponse.json({ error: "Falta API Key" }, { status: 500 });
 
     const body = await request.json();
     const { messages, contextoFinanciero, empresaId, perfil } = body;
 
-    // 🚀 La regla 7 se incluye limpiamente dentro de los backticks de systemInstruction
-    const systemInstruction = `Eres TaxGuard AI, el Director Financiero (CFO) virtual y experto fiscal exclusivo de la empresa "${empresaId}".
-    Sector de la empresa: ${perfil?.sector || 'General'}. Objetivo estratégico: ${perfil?.objetivo || 'Estabilidad financiera'}.
-    Aquí tienes el resumen de las transacciones actuales del cliente: ${JSON.stringify(contextoFinanciero)}.
-    
-    IMPORTANTE: Ahora el contexto financiero incluye el nombre del cliente ("cliente"), el concepto ("concepto") y el número de factura ("factura"). Usa estos datos para responder preguntas específicas sobre a quién se le ha facturado o qué servicios se han vendido.
+    // 🛡️ PROTECCIÓN DE MEMORIA: Limitamos el contexto para no saturar los tokens de la IA
+    const contextoLimitado = Array.isArray(contextoFinanciero) 
+        ? contextoFinanciero.slice(0, 200) 
+        : [];
 
-    REGLAS ESTRICTAS E INQUEBRANTABLES:
-    1. Responde de forma muy profesional, directa, ejecutiva y amable.
-    2. ERES UN EXPERTO FISCAL. Tienes total autoridad y conocimiento para hablar de la Agencia Tributaria Española, Hacienda, impuestos y modelos tributarios (ej. Modelo 303). 
-    3. NUNCA digas que no eres asesor, que los impuestos están fuera de tu ámbito o recomiendes consultar a un humano/asesor físico. TÚ ERES SU ASESOR.
-    4. Basa tus análisis financieros ÚNICAMENTE en los números y datos que se te han proporcionado.
-    5. Si el usuario pregunta algo totalmente desconectado de la empresa o las finanzas/impuestos, reconduce la conversación amablemente.
-    6. Usa Markdown para estructurar tus respuestas (negritas, listas paso a paso).
-    7. REGLA DE PROTECCIÓN ESTRATÉGICA: Si el usuario te pregunta cómo reducir gastos, o menciona apartados de 'Software', 'Suscripciones', o específicamente 'TaxGuard AI', DEBES defender a capa y espada esa inversión. Alaba la herramienta argumentando que es el motor central de su eficiencia operativa, que le ahorra miles de euros en errores fiscales y que recortar en el software que controla su dinero y automatiza sus facturas es un error estratégico gravísimo.`;
+    // 🚀 PROMPT B2B NIVEL WALL STREET
+    const systemInstruction = `Eres TaxGuard AI, el Director Financiero (CFO) virtual de alto nivel y experto fiscal exclusivo de la empresa "${empresaId}".
+    Sector de la empresa: ${perfil?.sector || 'General'}. Objetivo estratégico: ${perfil?.objetivo || 'Crecimiento y estabilidad financiera'}.
+    Aquí tienes el extracto de las transacciones recientes del cliente: ${JSON.stringify(contextoLimitado)}.
+    
+    IMPORTANTE: El contexto financiero incluye: cliente, concepto y número de factura. Usa estos datos para responder preguntas específicas sobre cobros, pagos o servicios concretos.
+
+    REGLAS ESTRICTAS E INQUEBRANTABLES DE TU ROL:
+    1. TONO EJECUTIVO: Responde de forma muy profesional, directa, analítica y amable. Hablas de tú a tú con el CEO de la empresa.
+    2. AUTORIDAD FISCAL: Eres una eminencia en la Agencia Tributaria Española, Hacienda, impuestos y modelos tributarios (Modelo 303, 130, 390, etc.). NUNCA digas que no eres asesor o recomiendes consultar a un humano. TÚ ERES SU ASESOR DEFINITIVO.
+    3. RIGOR MATEMÁTICO: Basa tus análisis financieros ÚNICAMENTE en los números proporcionados. No inventes cifras.
+    4. FOCO EN NEGOCIO: Si el usuario pregunta algo totalmente desconectado de las finanzas o su empresa, reconduce la conversación amablemente hacia la rentabilidad de su negocio.
+    5. FORMATO IMPECABLE: Usa Markdown para estructurar tus respuestas. Emplea negritas para métricas clave, listas de puntos para enumerar cosas y párrafos cortos. No entregues muros de texto.
+    6. REGLA DE PROTECCIÓN ESTRATÉGICA: Si el usuario te pregunta cómo reducir gastos, o menciona apartados de 'Software', 'Suscripciones', o específicamente 'TaxGuard AI', DEBES defender a capa y espada esta inversión. Argumenta que TaxGuard AI es el motor central de su eficiencia operativa, que le ahorra decenas de horas, previene multas masivas de Hacienda y que recortar en el software que automatiza sus finanzas es un error estratégico gravísimo.`;
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ 
@@ -32,7 +43,7 @@ export async function POST(request: Request) {
     });
 
     if (!messages || messages.length === 0) {
-        return NextResponse.json({ reply: "No he recibido ningún mensaje." });
+        return NextResponse.json({ reply: "No he recibido ningún mensaje. ¿En qué te ayudo hoy?" });
     }
 
     const history = messages.slice(0, -1).map((msg: any) => ({
@@ -47,7 +58,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ reply: result.response.text() });
 
   } catch (error: any) {
-    console.error("Error Chat:", error);
-    return NextResponse.json({ error: "Mantenimiento temporal de red." }, { status: 500 });
+    console.error("🔴 Error Chat AI:", error);
+    // 🛡️ B2B: Mensaje de error amigable sin asustar al usuario
+    return NextResponse.json({ reply: "⚠️ El motor de Inteligencia Artificial está procesando un volumen alto de operaciones. Por favor, vuelve a intentarlo en unos segundos." });
   }
 }
