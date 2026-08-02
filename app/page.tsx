@@ -1094,7 +1094,6 @@ export default function Home() {
             </div>
             
             <div className="mt-auto">
-              {/* 🚀 BOTÓN INTELIGENTE: SI TIENE PLAN VA A STRIPE, SI NO, VA A PRECIOS */}
               {planActivo === 'pro' || planActivo === 'autonomo' ? (
                 <button onClick={gestionarSuscripcion} className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40">
                   <div className="flex items-center gap-2">
@@ -1532,7 +1531,7 @@ export default function Home() {
                       placeholder="🔍 Buscar categoría, número, importe o proyecto..." 
                       value={searchTerm}
                       onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
-                      className="w-full sm:flex-1 sm:w-80 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-700"
+                      className="w-full sm:flex-1 sm:w-80 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900"
                    />
                    <div className="flex gap-2 w-full sm:w-auto">
                        <button onClick={exportarAExcel} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
@@ -1885,7 +1884,7 @@ export default function Home() {
 
       </Show>
 
-      {/* RUTA DE ESCAPE PÚBLICA */}
+      {/* RUTA DE ESCAPE PÚBLICA TOTALMENTE RENOVADA */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
@@ -1896,34 +1895,274 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-3 sm:gap-4">
                 <SignInButton mode="modal">
-                  <button className="hidden sm:block text-sm font-bold text-slate-400 hover:text-white transition">Iniciar Sesión</button>
+                  <button className="hidden sm:block text-sm font-bold text-slate-400 hover:text-white transition cursor-pointer">Iniciar Sesión</button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm">Crear Cuenta</button>
+                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm cursor-pointer">Crear Cuenta</button>
                 </SignUpButton>
               </div>
             </div>
           </nav>
 
-          <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden border-b border-white/5">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
-            <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest mb-8">
-                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> SaaS Financiero B2B
+          {/* HERO SECTION MEJORADO B2B */}
+          <div className="relative pt-32 lg:pt-48 overflow-hidden border-b border-white/5 pb-20">
+             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
+             
+             <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest mb-8">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> SaaS Financiero B2B
+                </div>
+                <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
+                  Tu empresa merece un Director Financiero. <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">La IA te lo da por 89€.</span>
+                </h1>
+                <p className="text-lg lg:text-xl text-slate-400 mb-10 max-w-2xl mx-auto font-medium leading-relaxed">
+                  Automatiza tu contabilidad, escanea tickets en segundos, controla quién te debe dinero y genera todos tus impuestos oficiales (303, 130, 390, 115, 347, 349) sin depender de terceros.
+                </p>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+                  <SignUpButton mode="modal">
+                    <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20 flex items-center justify-center gap-2 cursor-pointer">
+                      Crear Cuenta Gratis <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                    </button>
+                  </SignUpButton>
+                </div>
+
+                {/* TRUST BADGES */}
+                <div className="mt-12 mb-8 hidden md:block">
+                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-6">Con la confianza de empresas modernas</p>
+                   <div className="flex flex-wrap justify-center items-center gap-6 sm:gap-10 opacity-40 grayscale">
+                      <span className="text-lg font-black flex items-center gap-1"><span className="text-blue-500">◆</span> NexaCorp</span>
+                      <span className="text-lg font-black flex items-center gap-1"><span className="text-emerald-500">▲</span> VertexSL</span>
+                      <span className="text-lg font-black flex items-center gap-1"><span className="text-rose-500">●</span> Kroma.io</span>
+                      <span className="text-lg font-black flex items-center gap-1"><span className="text-amber-500">■</span> Zenith</span>
+                   </div>
+                </div>
+
+                {/* CSS DASHBOARD MOCKUP */}
+                <div className="relative mx-auto max-w-5xl mt-16 perspective-1000 hidden md:block">
+                   <div className="absolute inset-0 bg-gradient-to-b from-transparent via-slate-950/80 to-slate-950 z-20 pointer-events-none"></div>
+                   <div className="rounded-t-2xl border border-slate-800 bg-slate-900/50 p-2 shadow-2xl backdrop-blur-md overflow-hidden" style={{ transform: 'perspective(1000px) rotateX(10deg) scale(0.95)', transformOrigin: 'bottom' }}>
+                      <div className="bg-slate-950 rounded-xl border border-slate-800 p-4 sm:p-6 h-[400px] flex flex-col gap-4">
+                         <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+                            <div className="w-32 h-6 bg-slate-800 rounded-md"></div>
+                            <div className="w-10 h-10 bg-slate-800 rounded-full"></div>
+                         </div>
+                         <div className="grid grid-cols-3 gap-4">
+                            <div className="h-24 bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 flex flex-col justify-center">
+                               <div className="w-16 h-3 bg-slate-700 rounded-md mb-3"></div>
+                               <div className="w-24 h-6 bg-emerald-500/20 rounded-md"></div>
+                            </div>
+                            <div className="h-24 bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 flex flex-col justify-center">
+                               <div className="w-16 h-3 bg-slate-700 rounded-md mb-3"></div>
+                               <div className="w-24 h-6 bg-rose-500/20 rounded-md"></div>
+                            </div>
+                            <div className="h-24 bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 flex flex-col justify-center">
+                               <div className="w-16 h-3 bg-slate-700 rounded-md mb-3"></div>
+                               <div className="w-24 h-6 bg-blue-500/20 rounded-md"></div>
+                            </div>
+                         </div>
+                         <div className="flex-1 bg-slate-800/30 rounded-xl border border-slate-700/50 flex items-end p-4 gap-2">
+                            <div className="w-full bg-emerald-500/20 rounded-t-md h-[40%]"></div>
+                            <div className="w-full bg-emerald-500/40 rounded-t-md h-[60%]"></div>
+                            <div className="w-full bg-rose-500/20 rounded-t-md h-[30%]"></div>
+                            <div className="w-full bg-emerald-500/60 rounded-t-md h-[80%]"></div>
+                            <div className="w-full bg-emerald-500/80 rounded-t-md h-[100%]"></div>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+
+             </div>
+          </div>
+
+          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10 border-b border-white/5">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-4">¿Cómo TaxGuard AI multiplica tu rentabilidad?</h2>
+              <p className="text-slate-400 max-w-2xl mx-auto text-lg">Seis pilares diseñados para eliminar el error humano y maximizar tu tiempo operativo.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-blue-500/20 text-blue-400 flex items-center justify-center rounded-2xl text-xl mb-6">📸</div>
+                <h3 className="text-lg font-bold text-white mb-3">Escáner OCR Inteligente</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Convierte montañas de tickets en asientos contables con una simple foto. La IA lee el IVA, la base y clasifica el gasto al instante.</p>
               </div>
-              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
-                Tu empresa merece un Director Financiero. <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">La IA te lo da por 89€.</span>
-              </h1>
-              <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
-                Automatiza tu contabilidad, escanea tickets en segundos, controla quién te debe dinero y genera todos tus impuestos oficiales (303, 130, 390, 115, 347, 349) sin depender de terceros.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <SignUpButton mode="modal">
-                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">Crear Cuenta Gratis</button>
-                </SignUpButton>
+              
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 flex items-center justify-center rounded-2xl text-xl mb-6">📊</div>
+                <h3 className="text-lg font-bold text-white mb-3">Rentabilidad por Eventos</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Etiqueta tus ingresos y gastos para saber exactamente cuánto dinero limpio te deja cada proyecto, servicio o evento individual.</p>
               </div>
+              
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-rose-500/20 text-rose-400 flex items-center justify-center rounded-2xl text-xl mb-6">🚨</div>
+                <h3 className="text-lg font-bold text-white mb-3">Radar de Morosidad</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">No dejes que jueguen con tu dinero. Control automático de facturas vencidas (+30 días) y alertas de liquidez pendiente de cobro.</p>
+              </div>
+
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-purple-500/20 text-purple-400 flex items-center justify-center rounded-2xl text-xl mb-6">🏛️</div>
+                <h3 className="text-lg font-bold text-white mb-3">Fiscalidad Total</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Olvídate del miedo a Hacienda. Generamos los modelos 303, 130, 390, 115, 347 y 349 listos para calcar en la Agencia Tributaria.</p>
+              </div>
+
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-amber-500/20 text-amber-400 flex items-center justify-center rounded-2xl text-xl mb-6">🪄</div>
+                <h3 className="text-lg font-bold text-white mb-3">Facturación B2B</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Crea facturas con tu logo, emite presupuestos elegantes y conviértelos a oficiales con un solo clic. Control total de tu flujo de caja.</p>
+              </div>
+
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
+                <div className="w-14 h-14 bg-indigo-500/20 text-indigo-400 flex items-center justify-center rounded-2xl text-xl mb-6">🧠</div>
+                <h3 className="text-lg font-bold text-white mb-3">CFO Virtual AI</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Un auditor de IA que detecta fugas de capital, analiza tus márgenes operativos y te avisa de problemas antes de que ocurran.</p>
+              </div>
+
             </div>
           </div>
+
+          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10 border-b border-white/5">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl md:text-4xl font-black text-white mb-4">La Inversión que se paga sola</h2>
+              <p className="text-slate-400 max-w-2xl mx-auto text-lg">
+                No contrates un software. Contrata tiempo. TaxGuard AI está diseñado para ahorrarte más de <span className="text-blue-400 font-bold">30 horas al mes</span> en gestión administrativa y cientos de euros en errores fiscales.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+              
+              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 hover:border-slate-600 transition flex flex-col relative">
+                <div className="mb-6">
+                   <h3 className="text-2xl font-bold text-white mb-2">Plan Autónomo</h3>
+                   <p className="text-slate-400 text-sm">El reemplazo perfecto a la gestoría tradicional de picar datos.</p>
+                </div>
+                <div className="mb-8 pb-8 border-b border-white/10">
+                   <span className="text-5xl font-black text-white">49€</span><span className="text-slate-500 font-medium">/mes</span>
+                </div>
+                <ul className="space-y-4 mb-8 flex-1">
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Escáner OCR Ilimitado con IA (Sube tickets y olvídate).</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Modelos Trimestrales (303 IVA y 130 IRPF) listos para la AEAT.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Creador de Facturas PDF y Presupuestos con tu logo.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-emerald-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium">Libro Mayor Excel/PDF y 'Escudo 50%' para vehículos.</span>
+                   </li>
+                </ul>
+                <SignUpButton mode="modal">
+                  <button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition flex flex-col items-center cursor-pointer">
+                    <span>Empezar 7 días gratis</span>
+                    <span className="text-[10px] font-medium text-slate-400 font-normal mt-0.5">Cancela cuando quieras</span>
+                  </button>
+                </SignUpButton>
+              </div>
+
+              {/* TARJETA EMPRESA PRO */}
+              <div className="bg-slate-900 p-8 rounded-3xl border-2 border-blue-500 shadow-2xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg">
+                  MÁS RECOMENDADO
+                </div>
+                <div className="mb-6">
+                   <h3 className="text-2xl font-bold text-white mb-2">Plan Empresa Pro</h3>
+                   <p className="text-blue-300 text-sm font-medium">Un departamento financiero entero dentro de tu pantalla.</p>
+                </div>
+                <div className="mb-8 pb-8 border-b border-white/10">
+                   <span className="text-5xl font-black text-blue-400">89€</span><span className="text-slate-500 font-medium">/mes</span>
+                </div>
+                <ul className="space-y-4 mb-8 flex-1">
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-white text-sm font-bold">Todo lo incluido en el Plan Autónomo.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Gestión Fiscal Total:</strong> Modelos 303, 130, 390, 115, 347 y 349 automáticos.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Visión de Caja Libre:</strong> Separación inteligente del beneficio real y la provisión intocable de Hacienda.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Rentabilidad por Proyecto/Evento:</strong> Etiqueta ingresos y gastos para conocer tu margen exacto.</span>
+                   </li>
+                   <li className="flex items-start gap-3">
+                     <span className="text-blue-400 mt-0.5">✓</span>
+                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Radar de Morosidad:</strong> Control de clientes impagados y facturas vencidas en tiempo real.</span>
+                   </li>
+                </ul>
+                <SignUpButton mode="modal">
+                  <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition flex flex-col items-center cursor-pointer">
+                    <span>Probar PRO 7 días gratis</span>
+                    <span className="text-[10px] text-blue-200 font-normal mt-0.5">Sin compromiso de permanencia</span>
+                  </button>
+                </SignUpButton>
+              </div>
+
+            </div>
+          </div>
+
+          <div className="max-w-3xl mx-auto px-6 py-24 relative z-10">
+             <h3 className="text-3xl font-black text-white text-center mb-10">Dudas antes de empezar</h3>
+             
+             <div className="space-y-4">
+                
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Mis datos y facturas están seguros?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Máxima seguridad. TaxGuard AI utiliza bases de datos aisladas (Supabase) y cifradas de extremo a extremo. Nadie, ni siquiera nosotros, puede leer tus reportes financieros ni los datos de tus clientes.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿El borrador de impuestos me sirve para presentarlo de verdad?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Sí. Nuestros PDFs generan exactamente las mismas casillas numeradas que la Agencia Tributaria. Solo tienes que abrir su Sede Electrónica, buscar el modelo correspondiente, y copiar los valores en dos minutos. Sin gestores, sin esperas.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Cómo funciona la Rentabilidad por Proyecto o Eventos?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Es una función exclusiva del Plan Pro. Por ejemplo, si alquilas material para eventos o haces una consultoría, puedes etiquetar todos los gastos (gasolina, personal, compras) y la factura de cobro bajo el nombre "Evento Madrid". El Centro de Inteligencia calculará automáticamente el porcentaje de beneficio limpio de esa operación.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Qué pasa si un cliente no me paga a tiempo?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">El Radar de Morosidad (Plan Pro) vigila tus facturas emitidas. Si pasan 30 días sin que marques la factura como "Cobrada", el sistema la marcará en rojo como "Vencida" y sumará el importe a tu panel de riesgo para que sepas exactamente quién te debe dinero.</p>
+                </details>
+
+                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
+                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
+                      ¿Puedo cambiar del Plan Autónomo al Pro más adelante?
+                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
+                   </summary>
+                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Por supuesto. Puedes hacer el upgrade desde tu panel en cualquier momento. Nuestro sistema calculará automáticamente la diferencia prorrateada (solo pagarás la parte proporcional del mes que queda).</p>
+                </details>
+
+             </div>
+          </div>
+
+          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
+            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
+            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs y Autónomos.</p>
+            <p className="mt-6 text-xs text-slate-600">Contacto comercial y soporte: soporte.taxguard@gmail.com</p>
+          </footer>
         </div>
       </Show>
     </>
