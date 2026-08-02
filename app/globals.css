@@ -97,7 +97,58 @@
   * {
     @apply border-border outline-ring/50;
   }
+  
+  /* 🚀 B2B: Suavizado de tipografía para lectura ejecutiva */
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  /* 🚀 B2B: Color de selección de texto corporativo */
+  ::selection {
+    background-color: var(--gold);
+    color: var(--primary-foreground);
+  }
+}
+
+/* =========================================================
+   🚀 B2B: SCROLLBARS PREMIUM ESTILO APPLE / MAC
+   ========================================================= */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #334155; /* slate-700 - discreto en fondos oscuros y claros */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #475569; /* slate-600 - iluminación al pasar el ratón */
+}
+
+/* Para Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+/* =========================================================
+   🚀 B2B: UTILIDADES DE UI
+   ========================================================= */
+
+/* Permite hacer scroll horizontal en menús sin mostrar la barra */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
