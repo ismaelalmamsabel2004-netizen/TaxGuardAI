@@ -421,17 +421,18 @@ export default function Home() {
     }
 
     const existente = acc.find((item: any) => item.name === clave);
-    const valorNum = Number(curr.total); 
+    const valorNum = Math.abs(Number(curr.total)); // 🚀 CORRECCIÓN GRAFICA
+    const isIngreso = Number(curr.total) > 0;
     
     if (existente) {
-      if (valorNum > 0) existente.Ingresos += valorNum;
-      else existente.Gastos += Math.abs(valorNum);
+      if (isIngreso) existente.Ingresos += valorNum;
+      else existente.Gastos += valorNum;
     } else {
       acc.push({ 
         name: clave, 
         rawDate: curr.name,
-        Ingresos: valorNum > 0 ? valorNum : 0, 
-        Gastos: valorNum < 0 ? Math.abs(valorNum) : 0 
+        Ingresos: isIngreso ? valorNum : 0, 
+        Gastos: !isIngreso ? valorNum : 0 
       });
     }
     return acc;
@@ -495,6 +496,7 @@ export default function Home() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
+  // 🚀 CORRECCIÓN TOTALES SUPERIORES
   const gastosPorCategoria = datosFinancieros
     .filter(d => Number(d.total) < 0)
     .reduce((acc: {name: string, value: number}[], curr: any) => {
@@ -511,7 +513,8 @@ export default function Home() {
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
-  const ivaRepercutido = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Number(item.total) * ((Number(item.iva) || 0) / 100)), 0);
+  // 🚀 CÁLCULO DE IMPUESTOS EN BASE A LA BASE IMPONIBLE REAL
+  const ivaRepercutido = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const ivaSoportado = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const liquidacionIva = ivaRepercutido - ivaSoportado;
 
@@ -825,7 +828,7 @@ export default function Home() {
         const actualizadosBD = await obtenerDatosSupabase(empresaId);
         setData(actualizadosBD);
         setEditingId(null);
-        toast.success("Movimiento Actualizado", { description: "Los cambios se han guardado correctamente." });
+        toast.success("Actualizado", { description: "El registro ha sido modificado con éxito." });
       }
     } catch (error) {
       toast.error("Error", { description: "Error al actualizar el dato en el servidor." });
@@ -885,25 +888,25 @@ export default function Home() {
     datosTablaFiltrados.forEach(row => {
       const isPresupuesto = row.categoria === 'Presupuestos' || row.numero_factura?.startsWith('P-');
       const isAbono = row.numero_factura?.startsWith('R-');
-      const valorNum = Number(row.total);
+      const baseNum = Math.abs(Number(row.total));
       
       let tipoTxt = "Ingreso";
       if (isPresupuesto) tipoTxt = "PRESUPUESTO";
       else if (isAbono) tipoTxt = "ABONO";
-      else if (valorNum < 0) tipoTxt = "Gasto";
+      else if (Number(row.total) < 0) tipoTxt = "Gasto";
 
       const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
       const ivaPorcentaje = Number(row.iva) || 0;
       
-      const cuotaIva = Math.abs(valorNum) * (ivaPorcentaje / 100);
-      const totalFinal = Math.abs(valorNum) + cuotaIva;
+      const cuotaIva = baseNum * (ivaPorcentaje / 100);
+      const totalFinal = baseNum + cuotaIva;
 
       const tagMatch = row.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
       const proyectoStr = tagMatch ? tagMatch[1] : "-";
 
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
 
-      csvContent += `${row.name};${row.numero_factura || 'S/N'};${proyectoStr};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(Math.abs(valorNum))};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
+      csvContent += `${row.name};${row.numero_factura || 'S/N'};${proyectoStr};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(baseNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1215,7 +1218,9 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="flex flex-col items-start lg:items-end cursor-pointer group" onClick={() => setEditandoMeta(true)}>
-                      <span className="text-2xl font-black text-slate-900">{ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € <span className="text-sm font-medium text-slate-400">/ {metaMensual.toLocaleString('es-ES')} €</span></span>
+                      <span className="text-2xl font-black text-slate-900">
+                         {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € <span className="text-sm font-medium text-slate-400">/ {metaMensual.toLocaleString('es-ES')} €</span>
+                      </span>
                       <span className="text-[10px] font-bold text-blue-500 uppercase group-hover:underline mt-1">Editar Meta</span>
                     </div>
                   )}
@@ -1261,7 +1266,6 @@ export default function Home() {
                       </button>
                     </div>
                     
-                    {/* 🚀 INICIO BADGE CONFIANZA IA */}
                     {confianzaIA !== null && evidenciaIA && (
                       <div className="mt-1 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl animate-fade-in-up">
                         <div className="flex items-center gap-2 mb-1">
@@ -1278,9 +1282,7 @@ export default function Home() {
                         </p>
                       </div>
                     )}
-                    {/* 🚀 FIN BADGE CONFIANZA IA */}
 
-                    {/* 🚀 INDICADOR DE DOCUMENTO ADJUNTO SUBIDO */}
                     {urlArchivoTemporal && (
                       <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-bold animate-fade-in-up">
                         <span>📎 {nombreArchivoTemporal || 'Documento adjunto'} listo para guardar</span>
@@ -1290,14 +1292,12 @@ export default function Home() {
                   </div>
 
                   <form onSubmit={guardarDato} className="space-y-4">
-                    {/* 🚀 BOTONES DE TIPO DE TRANSACCIÓN ACTUALIZADOS */}
                     <div className="grid grid-cols-3 gap-3 mb-2 bg-slate-100 p-1.5 rounded-2xl">
                       <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
                       <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
                       <button type="button" onClick={() => setTipoTransaccion('proyecto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
                     </div>
 
-                    {/* 🚀 RENDERIZADO CONDICIONAL: FORMULARIO NORMAL VS PROYECTO */}
                     {tipoTransaccion !== 'proyecto' ? (
                       <>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -1334,7 +1334,6 @@ export default function Home() {
                             </div>
                         </div>
 
-                        {/* 🚀 CALCULADORA EN TIEMPO REAL AÑADIDA AQUÍ */}
                         <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex justify-between items-center mt-2 shadow-sm">
                            <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Total Operación (Con IVA)</span>
                            <span className="text-sm font-black text-blue-600">
@@ -1372,7 +1371,6 @@ export default function Home() {
                         </div>
                       </>
                     ) : (
-                      // 🚀 NUEVO FORMULARIO: PROYECTO COMPLETO (MÚLTIPLES INGRESOS Y GASTOS)
                       <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
                          <div>
                             <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">Nombre del Proyecto / Evento *</label>
@@ -1384,7 +1382,6 @@ export default function Home() {
                              <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 text-slate-900 rounded-lg text-xs font-bold outline-none" />
                          </div>
 
-                         {/* MÚLTIPLES INGRESOS */}
                          <div className="border-t border-emerald-100 pt-3 mt-2">
                              <div className="flex justify-between items-center mb-3">
                                 <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Ingresos Asociados (Ventas, Propinas...)</span>
@@ -1415,7 +1412,6 @@ export default function Home() {
                              </div>
                          </div>
 
-                         {/* MÚLTIPLES GASTOS */}
                          <div className="border-t border-rose-100 pt-3 mt-2">
                              <div className="flex justify-between items-center mb-3">
                                 <span className="text-[10px] font-black text-rose-700 uppercase tracking-widest">Gastos Asociados (Compras, Nóminas...)</span>
@@ -1446,7 +1442,6 @@ export default function Home() {
                              </div>
                          </div>
                          
-                         {/* BENEFICIO LIMPIO ESPERADO */}
                          <div className="bg-purple-100/50 p-4 rounded-xl border border-purple-200 flex justify-between items-center mt-2 shadow-sm">
                              <div>
                                  <span className="text-[10px] font-black text-purple-900 uppercase block">Beneficio Limpio Esperado</span>
@@ -1514,7 +1509,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 🚀 TABLA DE LIBRO MAYOR CON ETIQUETAS DE PROYECTO */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
               <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
                 <div className="flex items-center gap-3">
@@ -1552,20 +1546,17 @@ export default function Home() {
               </div>
               
               <div className="px-4 md:px-6 pt-4 pb-2 bg-slate-50/50 border-b border-slate-100 flex flex-col">
-                  {/* FILTROS PRINCIPALES */}
                   <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                      <button onClick={() => {setFiltroDoc('all'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas las Op.</button>
                      <button onClick={() => {setFiltroDoc('ingresos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'ingresos' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>Ingresos Reales</button>
                      <button onClick={() => {setFiltroDoc('gastos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'gastos' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Gastos / Compras</button>
                      
-                     {/* 🚀 NUEVA PESTAÑA: MODO PROYECTOS */}
                      <button onClick={() => {setFiltroDoc('proyectos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'proyectos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>🎯 Modo Proyectos</button>
                      
                      <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>Presupuestos (Ocultos)</button>
                      <button onClick={() => {setFiltroDoc('abonos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'abonos' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}>Abonos / Rectif.</button>
                   </div>
 
-                  {/* 🚀 SUB-FILTROS DE PROYECTOS */}
                   {filtroDoc === 'proyectos' && (
                      <div className="flex flex-col sm:flex-row gap-3 mt-3 p-3 bg-purple-50/50 border border-purple-100 rounded-xl animate-fade-in-up">
                          <select value={proyectoSeleccionadoFiltro} onChange={(e) => {setProyectoSeleccionadoFiltro(e.target.value); setCurrentPage(1);}} className="p-2 bg-white border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 outline-none focus:ring-2 focus:ring-purple-500/20">
@@ -1588,7 +1579,6 @@ export default function Home() {
                     <tr>
                       <th className="px-4 md:px-6 py-3">Fecha</th>
                       <th className="px-4 md:px-6 py-3">Categoría / Doc</th>
-                      {/* 🚀 NUEVAS COLUMNAS PROFESIONALES */}
                       <th className="px-4 md:px-6 py-3">Base Imponible</th>
                       <th className="px-4 md:px-6 py-3">Impuestos</th>
                       <th className="px-4 md:px-6 py-3">Total Final</th>
@@ -1685,7 +1675,6 @@ export default function Home() {
                             </div>
                           </td>
                           
-                          {/* 🚀 NUEVAS COLUMNAS MATEMÁTICAS */}
                           <td className="px-4 md:px-6 py-3.5 font-bold text-slate-700">
                              {baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                           </td>
@@ -1890,7 +1879,6 @@ export default function Home() {
       {/* RUTA DE ESCAPE PÚBLICA */}
       <Show when="signed-out">
         <div className="min-h-screen bg-slate-950 text-slate-50 selection:bg-blue-500/30" translate="no">
-          
           <nav className="border-b border-white/5 bg-slate-950/50 backdrop-blur-md fixed top-0 w-full z-50">
             <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1899,14 +1887,10 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-3 sm:gap-4">
                 <SignInButton mode="modal">
-                  <button className="hidden sm:block text-sm font-bold text-slate-400 hover:text-white transition">
-                    Iniciar Sesión
-                  </button>
+                  <button className="hidden sm:block text-sm font-bold text-slate-400 hover:text-white transition">Iniciar Sesión</button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm">
-                    Crear Cuenta
-                  </button>
+                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm">Crear Cuenta</button>
                 </SignUpButton>
               </div>
             </div>
@@ -1914,228 +1898,23 @@ export default function Home() {
 
           <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden border-b border-white/5">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/20 rounded-full blur-[120px] opacity-50 pointer-events-none"></div>
-            <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
-            
             <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest mb-8">
-                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                SaaS Financiero B2B
+                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> SaaS Financiero B2B
               </div>
-              
               <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-8 max-w-4xl mx-auto">
                 Tu empresa merece un Director Financiero. <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">La IA te lo da por 89€.</span>
               </h1>
-              
               <p className="text-lg lg:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
                 Automatiza tu contabilidad, escanea tickets en segundos, controla quién te debe dinero y genera todos tus impuestos oficiales (303, 130, 390, 115, 347, 349) sin depender de terceros.
               </p>
-              
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <SignUpButton mode="modal">
-                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">
-                    Crear Cuenta Gratis
-                  </button>
-                </SignUpButton>
-
-                <SignInButton mode="modal">
-                  <button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl border border-slate-700">
-                    Iniciar Sesión
-                  </button>
-                </SignInButton>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10 border-b border-white/5">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-black text-white mb-4">¿Cómo TaxGuard AI multiplica tu rentabilidad?</h2>
-              <p className="text-slate-400 max-w-2xl mx-auto text-lg">Seis pilares diseñados para eliminar el error humano y maximizar tu tiempo operativo.</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
-                <div className="w-14 h-14 bg-blue-500/20 text-blue-400 flex items-center justify-center rounded-2xl text-xl mb-6">📸</div>
-                <h3 className="text-lg font-bold text-white mb-3">Escáner OCR Inteligente</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Convierte montañas de tickets en asientos contables con una simple foto. La IA lee el IVA, la base y clasifica el gasto al instante.</p>
-              </div>
-              
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
-                <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 flex items-center justify-center rounded-2xl text-xl mb-6">📊</div>
-                <h3 className="text-lg font-bold text-white mb-3">Rentabilidad por Eventos</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Etiqueta tus ingresos y gastos para saber exactamente cuánto dinero limpio te deja cada proyecto, servicio o evento individual.</p>
-              </div>
-              
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
-                <div className="w-14 h-14 bg-rose-500/20 text-rose-400 flex items-center justify-center rounded-2xl text-xl mb-6">🚨</div>
-                <h3 className="text-lg font-bold text-white mb-3">Radar de Morosidad</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">No dejes que jueguen con tu dinero. Control automático de facturas vencidas (+30 días) y alertas de liquidez pendiente de cobro.</p>
-              </div>
-
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
-                <div className="w-14 h-14 bg-purple-500/20 text-purple-400 flex items-center justify-center rounded-2xl text-xl mb-6">🏛️</div>
-                <h3 className="text-lg font-bold text-white mb-3">Fiscalidad Total</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Olvídate del miedo a Hacienda. Generamos los modelos 303, 130, 390, 115, 347 y 349 listos para calcar en la Agencia Tributaria.</p>
-              </div>
-
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
-                <div className="w-14 h-14 bg-amber-500/20 text-amber-400 flex items-center justify-center rounded-2xl text-xl mb-6">🪄</div>
-                <h3 className="text-lg font-bold text-white mb-3">Facturación B2B</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Crea facturas con tu logo, emite presupuestos elegantes y conviértelos a oficiales con un solo clic. Control total de tu flujo de caja.</p>
-              </div>
-
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 transition hover:border-slate-600">
-                <div className="w-14 h-14 bg-indigo-500/20 text-indigo-400 flex items-center justify-center rounded-2xl text-xl mb-6">🧠</div>
-                <h3 className="text-lg font-bold text-white mb-3">CFO Virtual AI</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Un auditor de IA que detecta fugas de capital, analiza tus márgenes operativos y te avisa de problemas antes de que ocurran.</p>
-              </div>
-
-            </div>
-          </div>
-
-          <div className="max-w-7xl mx-auto px-6 py-24 relative z-10 border-b border-white/5">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-black text-white mb-4">La Inversión que se paga sola</h2>
-              <p className="text-slate-400 max-w-2xl mx-auto text-lg">
-                No contrates un software. Contrata tiempo. TaxGuard AI está diseñado para ahorrarte más de <span className="text-blue-400 font-bold">30 horas al mes</span> en gestión administrativa y cientos de euros en errores fiscales.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-              
-              <div className="bg-slate-900/40 p-8 rounded-3xl border border-slate-800 hover:border-slate-600 transition flex flex-col relative">
-                <div className="mb-6">
-                   <h3 className="text-2xl font-bold text-white mb-2">Plan Autónomo</h3>
-                   <p className="text-slate-400 text-sm">El reemplazo perfecto a la gestoría tradicional de picar datos.</p>
-                </div>
-                <div className="mb-8 pb-8 border-b border-white/10">
-                   <span className="text-5xl font-black text-white">49€</span><span className="text-slate-500 font-medium">/mes</span>
-                </div>
-                <ul className="space-y-4 mb-8 flex-1">
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Escáner OCR Ilimitado con IA (Sube tickets y olvídate).</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Modelos Trimestrales (303 IVA y 130 IRPF) listos para la AEAT.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Creador de Facturas PDF y Presupuestos con tu logo.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-emerald-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium">Libro Mayor Excel/PDF y 'Escudo 50%' para vehículos.</span>
-                   </li>
-                </ul>
-                <SignUpButton mode="modal">
-                  <button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition flex flex-col items-center">
-                    <span>Empezar 7 días gratis</span>
-                    <span className="text-[10px] font-medium text-slate-400 font-normal mt-0.5">Cancela cuando quieras</span>
-                  </button>
+                  <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20">Crear Cuenta Gratis</button>
                 </SignUpButton>
               </div>
-
-              {/* TARJETA EMPRESA PRO */}
-              <div className="bg-slate-900 p-8 rounded-3xl border-2 border-blue-500 shadow-2xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest shadow-lg">
-                  MÁS RECOMENDADO
-                </div>
-                <div className="mb-6">
-                   <h3 className="text-2xl font-bold text-white mb-2">Plan Empresa Pro</h3>
-                   <p className="text-blue-300 text-sm font-medium">Un departamento financiero entero dentro de tu pantalla.</p>
-                </div>
-                <div className="mb-8 pb-8 border-b border-white/10">
-                   <span className="text-5xl font-black text-blue-400">89€</span><span className="text-slate-500 font-medium">/mes</span>
-                </div>
-                <ul className="space-y-4 mb-8 flex-1">
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-white text-sm font-bold">Todo lo incluido en el Plan Autónomo.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Gestión Fiscal Total:</strong> Modelos 303, 130, 390, 115, 347 y 349 automáticos.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Visión de Caja Libre:</strong> Separación inteligente del beneficio real y la provisión intocable de Hacienda.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Rentabilidad por Proyecto/Evento:</strong> Etiqueta ingresos y gastos para conocer tu margen exacto.</span>
-                   </li>
-                   <li className="flex items-start gap-3">
-                     <span className="text-blue-400 mt-0.5">✓</span>
-                     <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Radar de Morosidad:</strong> Control de clientes impagados y facturas vencidas en tiempo real.</span>
-                   </li>
-                </ul>
-                <SignUpButton mode="modal">
-                  <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition flex flex-col items-center">
-                    <span>Probar PRO 7 días gratis</span>
-                    <span className="text-[10px] text-blue-200 font-normal mt-0.5">Sin compromiso de permanencia</span>
-                  </button>
-                </SignUpButton>
-              </div>
-
             </div>
           </div>
-
-          {/* SECCIÓN PREGUNTAS FRECUENTES INTERACTIVA (SIN REACT STATE) */}
-          <div className="max-w-3xl mx-auto px-6 py-24 relative z-10">
-             <h3 className="text-3xl font-black text-white text-center mb-10">Dudas antes de empezar</h3>
-             
-             <div className="space-y-4">
-                
-                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
-                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
-                      ¿Mis datos y facturas están seguros?
-                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
-                   </summary>
-                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Máxima seguridad. TaxGuard AI utiliza bases de datos aisladas (Supabase) y cifradas de extremo a extremo. Nadie, ni siquiera nosotros, puede leer tus reportes financieros ni los datos de tus clientes.</p>
-                </details>
-
-                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
-                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
-                      ¿El borrador de impuestos me sirve para presentarlo de verdad?
-                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
-                   </summary>
-                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Sí. Nuestros PDFs generan exactamente las mismas casillas numeradas que la Agencia Tributaria. Solo tienes que abrir su Sede Electrónica, buscar el modelo correspondiente, y copiar los valores en dos minutos. Sin gestores, sin esperas.</p>
-                </details>
-
-                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
-                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
-                      ¿Cómo funciona la Rentabilidad por Proyecto o Eventos?
-                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
-                   </summary>
-                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Es una función exclusiva del Plan Pro. Por ejemplo, si alquilas material para eventos o haces una consultoría, puedes etiquetar todos los gastos (gasolina, personal, compras) y la factura de cobro bajo el nombre "Evento Madrid". El Centro de Inteligencia calculará automáticamente el porcentaje de beneficio limpio de esa operación.</p>
-                </details>
-
-                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
-                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
-                      ¿Qué pasa si un cliente no me paga a tiempo?
-                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
-                   </summary>
-                   <p className="text-slate-400 text-sm leading-relaxed mt-4">El Radar de Morosidad (Plan Pro) vigila tus facturas emitidas. Si pasan 30 días sin que marques la factura como "Cobrada", el sistema la marcará en rojo como "Vencida" y sumará el importe a tu panel de riesgo para que sepas exactamente quién te debe dinero.</p>
-                </details>
-
-                <details className="group bg-slate-900/30 p-6 rounded-2xl border border-slate-800 open:border-slate-600 transition-colors cursor-pointer">
-                   <summary className="flex justify-between items-center font-bold text-white text-sm list-none outline-none">
-                      ¿Puedo cambiar del Plan Autónomo al Pro más adelante?
-                      <span className="transition group-open:rotate-180 text-blue-500">▼</span>
-                   </summary>
-                   <p className="text-slate-400 text-sm leading-relaxed mt-4">Por supuesto. Puedes hacer el upgrade desde tu panel en cualquier momento. Nuestro sistema calculará automáticamente la diferencia prorrateada (solo pagarás la parte proporcional del mes que queda).</p>
-                </details>
-
-             </div>
-          </div>
-
-          <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
-            <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
-            <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs y Autónomos.</p>
-            <p className="mt-6 text-xs text-slate-600">Contacto comercial y soporte: soporte.taxguard@gmail.com</p>
-          </footer>
         </div>
       </Show>
     </>
