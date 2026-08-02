@@ -110,10 +110,12 @@ export default function DocumentosPage() {
 
   const ingresosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) > 0);
   const facturasPendientes = ingresosPendientes.length;
-  const dineroPendiente = ingresosPendientes.reduce((acc, curr) => acc + (Number(curr.total) * (1 + ((Number(curr.iva) || 0) / 100))), 0);
+  // 🚀 CORRECCIÓN CÁLCULO WIDGET SUPERIOR
+  const dineroPendiente = ingresosPendientes.reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + ((Number(curr.iva) || 0) / 100))), 0);
 
   const gastosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) < 0);
   const recibosPendientes = gastosPendientes.length;
+  // 🚀 CORRECCIÓN CÁLCULO WIDGET SUPERIOR
   const dineroAPagar = gastosPendientes.reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + ((Number(curr.iva) || 0) / 100))), 0);
 
   const exportarAExcel = () => {
@@ -282,12 +284,13 @@ export default function DocumentosPage() {
 
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/50">
+                {/* 🚀 CORRECCIÓN COLOR BUSCADOR */}
                 <input 
                     type="text" 
                     placeholder="🔍 Buscar por nombre, NIF o Nº factura..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full sm:w-96 p-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full sm:w-96 p-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900"
                 />
                 <div className="flex gap-2 w-full sm:w-auto bg-slate-200/50 p-1.5 rounded-xl">
                     <button onClick={exportarAExcel} className="hidden lg:block px-4 py-2 bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-100 transition shadow-sm mr-2">↓ Descargar CSV</button>
