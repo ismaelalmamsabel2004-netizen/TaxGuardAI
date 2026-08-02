@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
+import { Toaster, toast } from 'sonner';
 
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase } from '../actions';
 
@@ -342,9 +343,9 @@ export default function GeneradorFacturas() {
       const res = await fetch('/api/portal', { method: 'POST' });
       const portalData = await res.json();
       if (portalData.url) window.location.href = portalData.url; 
-      else alert("⚠️ No se pudo cargar el portal de Stripe. (Nota: Modo Administrador activo sin tarjeta vinculada).");
+      else toast.info("Modo Administrador", { description: "Activo sin tarjeta vinculada. A los clientes les cargará Stripe." });
     } catch (error) {
-      alert("⚠️ Error de conexión con la pasarela.");
+      toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
   };
 
@@ -357,7 +358,7 @@ export default function GeneradorFacturas() {
 
   const copiarCorreoSoporte = () => {
       navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      alert("✅ ¡Correo copiado al portapapeles!");
+      toast.success("Copiado", { description: "Correo copiado al portapapeles." });
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -407,7 +408,7 @@ export default function GeneradorFacturas() {
       await fetch('/api/settings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
       });
-      alert(`✅ Los datos fiscales de ${empresaId} se han guardado por defecto.`);
+      toast.success("Datos Fiscales Guardados", { description: `Los datos de ${empresaId} se guardaron por defecto.` });
   };
 
   const addLinea = () => setLineasFactura([...lineasFactura, { id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
@@ -437,9 +438,9 @@ export default function GeneradorFacturas() {
   };
 
   const guardarDocumento = async () => {
-    if (!empresaId) return alert("⚠️ Por favor, selecciona un Espacio de Trabajo.");
-    if (lineasFactura.some(l => !l.concepto)) return alert("⚠️ Rellena la descripción de todos los conceptos.");
-    if (baseNum <= 0) return alert("⚠️ Introduce un importe válido mayor a 0.");
+    if (!empresaId) return toast.warning("Falta Espacio", { description: "Por favor, selecciona un Espacio de Trabajo." });
+    if (lineasFactura.some(l => !l.concepto)) return toast.warning("Campos Incompletos", { description: "Rellena la descripción de todos los conceptos." });
+    if (baseNum <= 0) return toast.warning("Importe Inválido", { description: "Introduce un importe válido mayor a 0." });
     
     setIsSaving(true);
     
@@ -479,12 +480,13 @@ export default function GeneradorFacturas() {
         setFacturaGuardada(true);
         setFacturaBloqueada(true); 
         setRefreshTrigger(prev => prev + 1); 
+        toast.success("Documento Registrado", { description: "Guardado correctamente en el Libro Mayor." });
         setTimeout(() => setFacturaGuardada(false), 4000);
       } else {
-        alert("⚠️ Error al guardar en la nube.");
+        toast.error("Error en la nube", { description: "No se pudo guardar el documento." });
       }
     } catch (error) {
-      alert("⚠️ Error de conexión al guardar.");
+      toast.error("Sin conexión", { description: "Error de conexión al intentar guardar." });
     } finally {
       setIsSaving(false);
     }
@@ -492,7 +494,7 @@ export default function GeneradorFacturas() {
 
   const generarFacturaRectificativa = async (facOriginal: any) => {
       if (facOriginal.numero_factura?.startsWith('R-')) {
-          return alert("⚠️ No puedes emitir un abono de una factura que ya es rectificativa.");
+          return toast.error("Operación no permitida", { description: "No puedes emitir un abono de una factura rectificativa." });
       }
 
       const confirmar = window.confirm(`⚠️ Vas a emitir una Factura Rectificativa (Abono) para la factura ${facOriginal.numero_factura || 'S/N'}.\n\nEsto anulará su importe en el Libro Mayor creando un registro en negativo. ¿Deseas continuar?`);
@@ -522,13 +524,13 @@ export default function GeneradorFacturas() {
           });
 
           if (res.success) {
-              alert(`✅ Factura Rectificativa ${numeroRectificativa} generada y registrada con éxito en el Libro Mayor.`);
+              toast.success("Abono Creado", { description: `Factura Rectificativa ${numeroRectificativa} generada con éxito.` });
               setRefreshTrigger(prev => prev + 1);
           } else {
-              alert("⚠️ Error al generar la factura rectificativa.");
+              toast.error("Error", { description: "Error al generar la factura rectificativa." });
           }
       } catch (e) {
-          alert("⚠️ Error de conexión.");
+          toast.error("Error", { description: "Error de conexión." });
       } finally {
           setIsSaving(false);
       }
@@ -566,10 +568,10 @@ export default function GeneradorFacturas() {
       
       if (aFactura) {
           setModoActivo("factura");
-          alert("🪄 ¡Presupuesto cargado! Revisa los datos y pulsa 'Registrar en Libro Mayor' para crear la Factura Oficial.");
+          toast.info("Presupuesto Cargado", { description: "Revisa los datos y pulsa 'Registrar' para crear la Factura." });
       } else {
           setModoActivo(fac.numero_factura?.startsWith('P-') ? 'presupuesto' : 'factura');
-          alert("♻️ Datos copiados al formulario con éxito.");
+          toast.success("Datos Copiados", { description: "Formulario rellenado con los datos del documento." });
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -589,10 +591,11 @@ export default function GeneradorFacturas() {
          });
          if (res.success) {
              setRefreshTrigger(prev => prev + 1);
+             toast.success("Estado Actualizado", { description: "Documento marcado como COBRADO." });
          } else {
-             alert("Error al marcar como cobrada.");
+             toast.error("Error", { description: "No se pudo actualizar el estado." });
          }
-     } catch (e) { alert("Error de conexión"); }
+     } catch (e) { toast.error("Error", { description: "Error de conexión." }); }
   };
 
   const getDatosPdfHistorico = (fac: any) => {
@@ -642,7 +645,7 @@ export default function GeneradorFacturas() {
   };
 
   const guardarNuevoClienteCRM = async () => {
-      if (!nuevoClienteData.nombre) return alert("El nombre del cliente es obligatorio.");
+      if (!nuevoClienteData.nombre) return toast.warning("Dato Obligatorio", { description: "El nombre del cliente es obligatorio." });
       const newSettings = { ...allSettings };
       if (!newSettings.crm) newSettings.crm = {};
       if (!newSettings.crm[empresaId]) newSettings.crm[empresaId] = [];
@@ -654,6 +657,7 @@ export default function GeneradorFacturas() {
       
       setShowNuevoCliente(false);
       setNuevoClienteData({ nombre: "", nif: "", direccion: "" });
+      toast.success("Contacto Añadido", { description: "Cliente guardado en la agenda CRM." });
   };
 
   const guardarCRMEditado = async () => {
@@ -664,6 +668,7 @@ export default function GeneradorFacturas() {
       setAllSettings(newSettings);
       await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
       setEditandoClienteIndex(null);
+      toast.success("Contacto Actualizado", { description: "Los cambios se guardaron correctamente." });
   };
 
   const eliminarClienteCRM = async (index: number) => {
@@ -677,6 +682,7 @@ export default function GeneradorFacturas() {
       
       setAllSettings(newSettings);
       await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+      toast.info("Contacto Eliminado", { description: "El cliente ha sido borrado de la agenda." });
   };
 
   const iniciarEdicionCliente = (fac: any) => {
@@ -693,8 +699,9 @@ export default function GeneradorFacturas() {
           if (res.success) {
               setEditandoHistorialId(null);
               setRefreshTrigger(prev => prev + 1);
+              toast.success("Documento Actualizado", { description: "Los datos del cliente han sido modificados." });
           }
-      } catch(e) { alert("Error al actualizar"); }
+      } catch(e) { toast.error("Error", { description: "Error al actualizar." }); }
   };
 
   const eliminarDato = async (id: any) => {
@@ -704,6 +711,7 @@ export default function GeneradorFacturas() {
     const res = await borrarDatoSupabase(id.toString());
     if (res.success) {
       setRefreshTrigger(prev => prev + 1);
+      toast.success("Documento Eliminado", { description: "El registro ha sido borrado del historial." });
     }
   };
 
@@ -790,12 +798,14 @@ export default function GeneradorFacturas() {
 
   return (
     <>
+      <Toaster position="bottom-right" richColors theme="light" />
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
+          {/* 🚀 SIDEBAR MÓVIL (TOP BAR) */}
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
             <div className="flex items-center gap-2">
-               <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
+               <img src="/icon-192x192.png" alt="Logo" className="w-8 h-8 bg-white rounded-lg p-1 object-contain" />
                <span className="font-bold text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></span>
             </div>
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-2">
@@ -803,11 +813,12 @@ export default function GeneradorFacturas() {
             </button>
           </div>
 
+          {/* 🚀 SIDEBAR PRINCIPAL UNIFICADO */}
           <aside className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-400 p-6 flex flex-col justify-between border-r border-slate-800 transition-transform duration-300 ease-in-out`}>
             <div>
               <div className="flex items-center justify-between mb-10 px-2 mt-4 lg:mt-0">
                 <div className="flex items-center gap-3">
-                  <img src="/icon-192x192.png" alt="TaxGuard AI Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md shadow-blue-500/20" />
+                  <img src="/icon-192x192.png" alt="Logo" className="w-9 h-9 bg-white rounded-xl p-1 object-contain shadow-md" />
                   <h2 className="text-xl font-black text-white tracking-tight">TaxGuard<span className="text-blue-500">AI</span></h2>
                 </div>
                 <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
@@ -815,6 +826,7 @@ export default function GeneradorFacturas() {
                 </button>
               </div>
               
+              {/* SELECTOR DE EMPRESA */}
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1">
@@ -825,7 +837,7 @@ export default function GeneradorFacturas() {
                     >
                         {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
-                    <button onClick={() => { alert("⚙️ Ve a la Consola General para configurar este espacio."); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
                 </div>
               </div>
               
@@ -880,6 +892,7 @@ export default function GeneradorFacturas() {
 
           {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
+          {/* 🚀 MAIN CONTENT */}
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 gap-6">
@@ -899,7 +912,7 @@ export default function GeneradorFacturas() {
                  </button>
                  {facturaBloqueada && (
                     <span className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm">
-                       ✅ Documento Guardado
+                        ✅ Documento Guardado
                     </span>
                  )}
               </div>
@@ -1240,12 +1253,13 @@ export default function GeneradorFacturas() {
                     <table className="min-w-full divide-y divide-slate-100 text-left whitespace-nowrap">
                        <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                           <tr>
-                             <th className="px-6 py-4">Nº Documento</th>
-                             <th className="px-6 py-4">Fecha</th>
-                             <th className="px-6 py-4">Cliente / NIF</th>
-                             <th className="px-6 py-4">Total</th>
-                             <th className="px-6 py-4">Estado</th>
-                             <th className="px-6 py-4 text-right">Acciones</th>
+                             <th className="px-4 py-3">Documento</th>
+                             <th className="px-4 py-3">Cliente / NIF</th>
+                             <th className="px-4 py-3">Base Imponible</th>
+                             <th className="px-4 py-3">Impuestos</th>
+                             <th className="px-4 py-3">Total Final</th>
+                             <th className="px-4 py-3 text-center">Estado</th>
+                             <th className="px-4 py-3 text-right">Acciones</th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
@@ -1254,6 +1268,21 @@ export default function GeneradorFacturas() {
                              const isPresupuesto = fac.numero_factura?.startsWith('P-');
                              const isCobrada = fac.concepto_detalle?.includes('[ESTADO: COBRADA]');
                              
+                             // 🚀 CÁLCULO VISUAL REAL (3 COLUMNAS)
+                             const baseReal = Math.abs(Number(fac.total));
+                             const ivaPorc = Number(fac.iva) || 0;
+                             
+                             let irpfPorc = 0;
+                             const matchIrpf = (fac.concepto_detalle || "").match(/\(Retención IRPF: -(\d+)%\)/);
+                             if (matchIrpf) { irpfPorc = Number(matchIrpf[1]); }
+                             
+                             const cuotaIvaReal = baseReal * (ivaPorc / 100);
+                             const cuotaIrpfReal = baseReal * (irpfPorc / 100);
+                             const totalRealFinal = baseReal + cuotaIvaReal - cuotaIrpfReal;
+
+                             const signoOpe = isPresupuesto ? '+' : (isRectificativa ? '-' : '+');
+                             const colorSig = isPresupuesto ? 'text-amber-600' : (isRectificativa ? 'text-rose-600' : 'text-emerald-600');
+
                              const [d, m, y] = fac.name.split('/');
                              const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
                              const diasDesdeEmision = (ahora - fechaEmision) / (1000 * 3600 * 24);
@@ -1262,15 +1291,19 @@ export default function GeneradorFacturas() {
                              if (editandoHistorialId === fac.id) {
                                  return (
                                      <tr key={fac.id} className="bg-blue-50/30">
-                                         <td className={`px-6 py-3 font-bold ${isRectificativa ? 'text-rose-600' : isPresupuesto ? 'text-amber-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
-                                         <td className="px-6 py-3">{fac.name}</td>
-                                         <td className="px-6 py-3 space-y-1">
+                                         <td className="px-4 py-3">
+                                            <div className={`font-bold ${isRectificativa ? 'text-rose-600' : isPresupuesto ? 'text-amber-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</div>
+                                            <div className="text-[10px] text-slate-500 mt-0.5">{fac.name}</div>
+                                         </td>
+                                         <td className="px-4 py-3 space-y-1">
                                              <input type="text" value={editClientData.nombre} onChange={(e) => setEditClientData({...editClientData, nombre: e.target.value})} placeholder="Nombre Cliente" className="w-full p-1 border border-blue-300 rounded text-xs outline-none block" />
                                              <input type="text" value={editClientData.nif} onChange={(e) => setEditClientData({...editClientData, nif: e.target.value})} placeholder="NIF Cliente" className="w-full p-1 border border-blue-300 rounded text-xs outline-none block" />
                                          </td>
-                                         <td className="px-6 py-3 font-bold">{fac.total} €</td>
-                                         <td className="px-6 py-3">En edición</td>
-                                         <td className="px-6 py-3 text-right space-x-3">
+                                         <td className="px-4 py-3 font-bold text-slate-700">{baseReal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
+                                         <td className="px-4 py-3 text-xs text-slate-400 italic">Auto</td>
+                                         <td className="px-4 py-3 font-bold text-slate-700">{totalRealFinal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</td>
+                                         <td className="px-4 py-3 text-center text-slate-400 text-xs">En edición</td>
+                                         <td className="px-4 py-3 text-right space-x-3">
                                             <button onClick={() => guardarEdicionHistorial(fac)} className="text-emerald-600 font-bold text-xs hover:underline">Guardar</button>
                                             <button onClick={() => setEditandoHistorialId(null)} className="text-slate-500 font-bold text-xs hover:underline">Cancelar</button>
                                          </td>
@@ -1280,16 +1313,34 @@ export default function GeneradorFacturas() {
 
                              return (
                                  <tr key={fac.id} className="hover:bg-slate-50/80 transition">
-                                     <td className={`px-6 py-4 font-bold ${isRectificativa ? 'text-rose-600' : isPresupuesto ? 'text-amber-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</td>
-                                     <td className="px-6 py-4 text-slate-500">{fac.name}</td>
-                                     <td className="px-6 py-4">
+                                     <td className="px-4 py-3">
+                                        <div className={`font-bold ${isRectificativa ? 'text-rose-600' : isPresupuesto ? 'text-amber-600' : 'text-slate-900'}`}>{fac.numero_factura || 'S/N'}</div>
+                                        <div className="text-[10px] text-slate-500 mt-0.5">{fac.name}</div>
+                                     </td>
+                                     <td className="px-4 py-3">
                                         <div className="font-bold text-slate-800">{fac.cliente_nombre || 'Sin asignar'}</div>
                                         <div className="text-[10px] text-slate-400">NIF: {fac.cliente_nif || '-'}</div>
                                      </td>
-                                     <td className={`px-6 py-4 font-black ${isRectificativa ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                        {Number(fac.total) > 0 && !isRectificativa ? '+' : ''}{Number(fac.total).toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                                     
+                                     {/* 🚀 3 COLUMNAS MATEMÁTICAS */}
+                                     <td className="px-4 py-3 font-bold text-slate-700">
+                                        {baseReal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
                                      </td>
-                                     <td className="px-6 py-4">
+                                     <td className="px-4 py-3">
+                                        <div className="text-[10px] text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200 w-fit">
+                                           {ivaPorc === 0 && irpfPorc === 0 ? "Exento" : (
+                                               <>
+                                                   {ivaPorc > 0 && <span>+IVA {ivaPorc}% </span>}
+                                                   {irpfPorc > 0 && <span className="text-rose-500">-IRPF {irpfPorc}%</span>}
+                                               </>
+                                           )}
+                                        </div>
+                                     </td>
+                                     <td className={`px-4 py-3 font-black text-base ${colorSig}`}>
+                                        {signoOpe}{totalRealFinal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                                     </td>
+
+                                     <td className="px-4 py-3 text-center">
                                         {isRectificativa ? (
                                            <span className="bg-rose-100 text-rose-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-rose-200">Abono</span>
                                         ) : isPresupuesto ? (
@@ -1302,12 +1353,12 @@ export default function GeneradorFacturas() {
                                            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-[4px] text-[9px] font-black uppercase tracking-wider border border-blue-200">Pendiente</span>
                                         )}
                                      </td>
-                                     <td className="px-6 py-4 text-right">
+                                     <td className="px-4 py-3 text-right">
                                          <div className="flex items-center justify-end gap-2">
                                              {/* 🚀 BOTÓN COBRAR */}
                                              {!isPresupuesto && !isRectificativa && !isCobrada && (
                                                  <button onClick={() => marcarCobrada(fac)} className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] uppercase tracking-wider bg-emerald-50 px-2 py-1.5 rounded-md transition border border-emerald-200" title="Marcar como cobrada">
-                                                    💰 Cobrar
+                                                     💰 Cobrar
                                                  </button>
                                              )}
 
@@ -1329,11 +1380,11 @@ export default function GeneradorFacturas() {
                                              {/* BOTÓN CONVERTIR O DUPLICAR */}
                                              {isPresupuesto ? (
                                                 <button onClick={() => duplicarFactura(fac, true)} className="text-amber-600 hover:text-amber-700 font-bold text-[10px] uppercase tracking-wider bg-amber-50 px-2 py-1.5 rounded-md transition border border-amber-200 flex items-center gap-1" title="Convertir a Factura Oficial">
-                                                   🪄 Convertir
+                                                    🪄 Convertir
                                                 </button>
                                              ) : (
                                                 <button onClick={() => duplicarFactura(fac, false)} className="text-blue-500 hover:text-blue-700 font-bold text-[10px] uppercase tracking-wider bg-blue-50 px-2 py-1.5 rounded-md transition border border-blue-100" title="Copiar datos para nueva factura">
-                                                   Duplicar
+                                                    Duplicar
                                                 </button>
                                              )}
 
@@ -1352,13 +1403,16 @@ export default function GeneradorFacturas() {
                                                     Rectificar
                                                  </button>
                                              )}
+                                             <button onClick={() => eliminarDato(fac.id)} className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md transition border border-transparent hover:border-rose-100 hover:bg-rose-50" title="Eliminar documento">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                             </button>
                                          </div>
                                      </td>
                                  </tr>
                              );
                           })}
                           {filteredHistorial.length === 0 && (
-                             <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">No hay documentos que coincidan con este filtro.</td></tr>
+                             <tr><td colSpan={7} className="px-6 py-10 text-center text-xs text-slate-400">No hay documentos que coincidan con este filtro.</td></tr>
                           )}
                        </tbody>
                     </table>
@@ -1484,64 +1538,6 @@ export default function GeneradorFacturas() {
                          </div>
                       ))
                    )}
-                </div>
-             </div>
-          </div>
-        )}
-
-        {/* 🚀 MODAL DE SOPORTE VIP UNIFICADO */}
-        {showSupportModal && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">🎧 Centro de Soporte VIP</h3>
-                  <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-rose-500 transition">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                
-                <div className="p-6 space-y-8 overflow-y-auto bg-slate-50/30">
-                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <button onClick={() => abrirGmailWeb('ayuda')} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left shadow-sm">
-                           <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">📨</span>
-                           <h4 className="text-sm font-black text-blue-900 mb-1">Contactar a Soporte</h4>
-                           <p className="text-xs text-blue-700 font-medium">Resolvemos tus dudas en menos de 24h laborables.</p>
-                       </button>
-                       <button onClick={() => abrirGmailWeb('sugerencia')} className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl hover:bg-emerald-100 transition group flex flex-col items-start text-left shadow-sm">
-                           <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">💡</span>
-                           <h4 className="text-sm font-black text-emerald-900 mb-1">Buzón de Sugerencias</h4>
-                           <p className="text-xs text-emerald-700 font-medium">¿Echas en falta alguna función? Escríbenos.</p>
-                       </button>
-                   </div>
-                   
-                   <div className="flex justify-center">
-                       <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                          Copiar correo (soporte.taxguard@gmail.com)
-                       </button>
-                   </div>
-
-                   <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-                          <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
-                          <input type="text" placeholder="Buscar..." value={faqSearch} onChange={(e) => setFaqSearch(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none w-full sm:w-64" />
-                      </div>
-                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                         {faqsFiltradas.length === 0 ? (
-                             <p className="text-center text-xs text-slate-400 py-4">Sin resultados.</p>
-                         ) : (
-                             faqsFiltradas.map((faq, idx) => (
-                                <div key={idx} className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
-                                   <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="w-full text-left p-4 flex justify-between items-center hover:bg-slate-50 transition">
-                                      <span className="text-xs font-bold text-slate-700 pr-4">{faq.q}</span>
-                                      <span className={`text-slate-400 transition-transform ${openFaq === idx ? 'rotate-180' : ''}`}>▼</span>
-                                   </button>
-                                   {openFaq === idx && <div className="p-4 pt-0 text-[11px] text-slate-500 leading-relaxed bg-white border-t border-slate-100">{faq.a}</div>}
-                                </div>
-                             ))
-                         )}
-                      </div>
-                   </div>
                 </div>
              </div>
           </div>
