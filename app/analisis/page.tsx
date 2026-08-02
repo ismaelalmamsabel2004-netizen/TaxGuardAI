@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { Toaster, toast } from 'sonner';
 
 import { obtenerDatosSupabase } from '../actions';
 
@@ -102,9 +103,9 @@ export default function AnalisisAvanzado() {
       const res = await fetch('/api/portal', { method: 'POST' });
       const portalData = await res.json();
       if (portalData.url) window.location.href = portalData.url; 
-      else alert("⚠️ No se pudo cargar el portal de Stripe. (Nota: Modo Administrador activo sin tarjeta vinculada).");
+      else toast.info("Modo Administrador", { description: "Activo sin tarjeta vinculada. A los clientes les cargará Stripe." });
     } catch (error) {
-      alert("⚠️ Error de conexión con la pasarela.");
+      toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
   };
 
@@ -117,7 +118,7 @@ export default function AnalisisAvanzado() {
 
   const copiarCorreoSoporte = () => {
       navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      alert("✅ ¡Correo copiado al portapapeles!");
+      toast.success("Copiado", { description: "Correo copiado al portapapeles!" });
   };
 
   useEffect(() => {
@@ -148,17 +149,21 @@ export default function AnalisisAvanzado() {
         if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
         if (!item.name || !item.name.includes('/')) return;
 
-        const valor = Number(item.total);
-        const gastoAbsoluto = valor < 0 ? Math.abs(valor) : 0;
-        const ingresoAbsoluto = valor > 0 ? valor : 0;
+        const baseVal = Number(item.total);
         const iva = Number(item.iva) || 0;
+        
+        // 🚀 CORRECCIÓN: CÁLCULO DE TOTALES REALES (Base + IVA)
+        const totalOperacion = Math.abs(baseVal) * (1 + (iva / 100));
+
+        const gastoAbsoluto = baseVal < 0 ? totalOperacion : 0;
+        const ingresoAbsoluto = baseVal > 0 ? totalOperacion : 0;
         
         const [d, m, y] = item.name.split('/');
         
         globalIngresos += ingresoAbsoluto;
         globalGastos += gastoAbsoluto;
-        if (valor > 0) globalIvaRep += ingresoAbsoluto * (iva / 100);
-        else globalIvaSop += gastoAbsoluto * (iva / 100);
+        if (baseVal > 0) globalIvaRep += Math.abs(baseVal) * (iva / 100);
+        else globalIvaSop += Math.abs(baseVal) * (iva / 100);
         globalMesesActivos.add(`${y}-${m}`);
 
         const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
@@ -168,18 +173,18 @@ export default function AnalisisAvanzado() {
             totalIngresos += ingresoAbsoluto;
             totalGastos += gastoAbsoluto;
 
-            if (valor > 0) ivaRepercutido += ingresoAbsoluto * (iva / 100);
-            else ivaSoportado += gastoAbsoluto * (iva / 100);
+            if (baseVal > 0) ivaRepercutido += Math.abs(baseVal) * (iva / 100);
+            else ivaSoportado += Math.abs(baseVal) * (iva / 100);
 
             const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
             const mesLlave = `${nombresMeses[Number(m) - 1]} ${y}`;
             const sortKey = Number(y) * 100 + Number(m); 
 
             if (!mensualidades[mesLlave]) mensualidades[mesLlave] = { Ingresos: 0, Gastos: 0, sortKey };
-            if (valor > 0) mensualidades[mesLlave].Ingresos += valor;
+            if (baseVal > 0) mensualidades[mesLlave].Ingresos += ingresoAbsoluto;
             else mensualidades[mesLlave].Gastos += gastoAbsoluto;
 
-            if (valor < 0) {
+            if (baseVal < 0) {
                 const cat = item.categoria || 'General';
                 categoriasGastos[cat] = (categoriasGastos[cat] || 0) + gastoAbsoluto;
             }
@@ -188,7 +193,7 @@ export default function AnalisisAvanzado() {
             if (matchProy && matchProy[1]) {
                 const pName = matchProy[1];
                 if (!proyectosMap[pName]) proyectosMap[pName] = { Ingresos: 0, Gastos: 0 };
-                if (valor > 0) proyectosMap[pName].Ingresos += ingresoAbsoluto;
+                if (baseVal > 0) proyectosMap[pName].Ingresos += ingresoAbsoluto;
                 else proyectosMap[pName].Gastos += gastoAbsoluto;
             }
         } 
@@ -351,6 +356,7 @@ export default function AnalisisAvanzado() {
 
   return (
     <>
+      <Toaster position="bottom-right" richColors theme="light" />
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           <div className="lg:hidden flex items-center justify-between bg-slate-900 p-4 border-b border-slate-800 fixed top-0 w-full z-40">
@@ -387,7 +393,7 @@ export default function AnalisisAvanzado() {
                     >
                         {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
-                    <button onClick={() => { alert("⚙️ Ve a la Consola General para configurar este espacio."); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
                 </div>
               </div>
               
@@ -504,7 +510,7 @@ export default function AnalisisAvanzado() {
               </div>
             ) : (
               <>
-                {/* 🚀 FILA 1: KPIs GENERALES */}
+                {/* 🚀 FILA 1: KPIs GENERALES (AHORA MUESTRAN EL TOTAL REAL) */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
                       <div className="flex items-center mb-1">
@@ -677,7 +683,7 @@ export default function AnalisisAvanzado() {
                                   <tr key={idx} className="hover:bg-slate-50/80 transition">
                                      <td className="px-4 py-4">
                                         <span className="text-[10px] bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md font-black border border-purple-200 shadow-sm tracking-wide">
-                                           🎯 {p.name}
+                                            🎯 {p.name}
                                         </span>
                                      </td>
                                      <td className="px-4 py-4 text-right text-emerald-600">+{p.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</td>
@@ -775,7 +781,7 @@ export default function AnalisisAvanzado() {
                      
                      <div className="flex justify-center">
                          <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                             Copiar correo (soporte.taxguard@gmail.com)
                          </button>
                      </div>
@@ -783,7 +789,7 @@ export default function AnalisisAvanzado() {
                      <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
                             <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
-                            <input type="text" placeholder="Buscar..." value={faqSearch} onChange={(e) => setFaqSearch(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none w-full sm:w-64" />
+                            <input type="text" placeholder="Buscar..." value={faqSearch} onChange={(e) => setFaqSearch(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-64" />
                         </div>
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
                            {faqsFiltradas.length === 0 ? (
