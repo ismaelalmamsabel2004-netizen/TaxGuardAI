@@ -9,15 +9,16 @@ export async function GET(request: Request) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Acceso denegado" }, { status: 401 });
 
-    // 1. Nos aseguramos de que la tabla maestra de configuración exista en Supabase
+    // 1. Nos aseguramos de que la tabla maestra exista y le añadimos auditoría de tiempo (Valor B2B)
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS user_settings (
         user_id VARCHAR(255) PRIMARY KEY,
-        data JSONB
+        data JSONB,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // 2. Buscamos los ajustes del usuario en la nube usando Prisma de forma segura
+    // 2. Buscamos los ajustes del usuario
     const rows = await prisma.$queryRawUnsafe<any[]>(
       `SELECT data FROM user_settings WHERE user_id = $1`,
       userId
@@ -25,16 +26,23 @@ export async function GET(request: Request) {
     
     let configuracion: any = {};
     if (rows && rows.length > 0) {
-      configuracion = rows[0].data || {};
+      // 🚀 BLINDAJE VERCEL: Evitamos el borrado fantasma asegurando que el JSONB se lea bien siempre
+      configuracion = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : (rows[0].data || {});
+    } else {
+      // 🚀 VALOR B2B: Si el cliente es nuevo, le damos una estructura por defecto en vez de un panel vacío
+      configuracion = {
+        empresas: ["Mi Empresa Principal"],
+        empresaActiva: "Mi Empresa Principal",
+        planSuscripcion: 'free'
+      };
     }
 
     // 🚀 MODO DIOS (ADMIN BYPASS) EN EL BACKEND 🚀
-    // Extraemos el email real del usuario desde Clerk
     const clerk = await clerkClient();
     const user = await clerk.users.getUser(userId);
     const userEmail = user.emailAddresses[0]?.emailAddress;
 
-    // Si el email coincide con los administradores, forzamos el plan PRO
+    // Directiva VIP: Acceso sin restricciones
     if (
       userEmail === 'ialmansabeltran@gmail.com' || 
       userEmail === 'ismaelalmamsabel2004@gmail.com' || 
@@ -42,14 +50,21 @@ export async function GET(request: Request) {
     ) {
       configuracion = {
         ...configuracion,
-        planSuscripcion: 'pro' // Rompemos el candado automáticamente
+        planSuscripcion: 'pro', // Rompemos el candado automáticamente
+        is_admin: true
       };
     }
 
     return NextResponse.json(configuracion);
   } catch (error) {
-    console.error("Error obteniendo ajustes:", error);
-    return NextResponse.json({ error: "Error del servidor" }, { status: 500 });
+    console.error("🚨 Error obteniendo ajustes:", error);
+    // Si la BD de Vercel se desconecta momentáneamente, salvamos los muebles devolviendo la estructura básica
+    return NextResponse.json({ 
+        empresas: ["Entorno de Seguridad"], 
+        empresaActiva: "Entorno de Seguridad",
+        planSuscripcion: 'free',
+        error_bd: true 
+    });
   }
 }
 
@@ -64,23 +79,24 @@ export async function POST(request: Request) {
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS user_settings (
         user_id VARCHAR(255) PRIMARY KEY,
-        data JSONB
+        data JSONB,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // 3. Guardamos o actualizamos (Upsert) los ajustes vinculados a tu cuenta de Clerk
+    // 3. Guardamos o actualizamos (Upsert) actualizando el sello de tiempo
     await prisma.$executeRawUnsafe(
-      `INSERT INTO user_settings (user_id, data)
-       VALUES ($1, $2::jsonb)
+      `INSERT INTO user_settings (user_id, data, updated_at)
+       VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
        ON CONFLICT (user_id) 
-       DO UPDATE SET data = EXCLUDED.data;`,
+       DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;`,
       userId,
       JSON.stringify(newSettings)
     );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, timestamp: new Date().toISOString() });
   } catch (error) {
-    console.error("Error guardando ajustes:", error);
-    return NextResponse.json({ error: "Error del servidor" }, { status: 500 });
+    console.error("🚨 Error guardando ajustes:", error);
+    return NextResponse.json({ error: "Error de escritura en servidor" }, { status: 500 });
   }
 }
