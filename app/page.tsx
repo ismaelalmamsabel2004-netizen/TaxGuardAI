@@ -411,6 +411,7 @@ export default function Home() {
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
+  // 🚀 CORRECCIÓN: GRAFICAR TOTALES REALES, NO BASES
   const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
     const [d, m, y] = curr.name.split('/');
     let clave = curr.name; 
@@ -420,19 +421,23 @@ export default function Home() {
       clave = `${nombresMeses[Number(m) - 1]} ${y}`; 
     }
 
-    const existente = acc.find((item: any) => item.name === clave);
-    const valorNum = Math.abs(Number(curr.total)); // 🚀 CORRECCIÓN GRAFICA
+    const baseVal = Math.abs(Number(curr.total));
+    const ivaVal = Number(curr.iva) || 0;
+    const totalConIva = baseVal * (1 + ivaVal / 100);
+    
     const isIngreso = Number(curr.total) > 0;
     
+    const existente = acc.find((item: any) => item.name === clave);
+    
     if (existente) {
-      if (isIngreso) existente.Ingresos += valorNum;
-      else existente.Gastos += valorNum;
+      if (isIngreso) existente.Ingresos += totalConIva;
+      else existente.Gastos += totalConIva;
     } else {
       acc.push({ 
         name: clave, 
         rawDate: curr.name,
-        Ingresos: isIngreso ? valorNum : 0, 
-        Gastos: !isIngreso ? valorNum : 0 
+        Ingresos: isIngreso ? totalConIva : 0, 
+        Gastos: !isIngreso ? totalConIva : 0 
       });
     }
     return acc;
@@ -496,24 +501,28 @@ export default function Home() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
-  // 🚀 CORRECCIÓN TOTALES SUPERIORES
+  // 🚀 CORRECCIÓN TOTALES SUPERIORES: SUMAN EL TOTAL REAL (BASE + IVA)
   const gastosPorCategoria = datosFinancieros
     .filter(d => Number(d.total) < 0)
     .reduce((acc: {name: string, value: number}[], curr: any) => {
       const cat = curr.categoria || 'General';
+      const baseReal = Math.abs(Number(curr.total));
+      const ivaC = Number(curr.iva) || 0;
+      const totalC = baseReal * (1 + ivaC / 100);
+
       const existente = acc.find((item: any) => item.name === cat);
-      if (existente) existente.value += Math.abs(Number(curr.total));
-      else acc.push({ name: cat, value: Math.abs(Number(curr.total)) });
+      if (existente) existente.value += totalC;
+      else acc.push({ name: cat, value: totalC });
       return acc;
     }, [])
     .sort((a, b) => b.value - a.value);
 
-  const ingresosTotales = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + Number(item.total), 0);
-  const gastosTotales = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + Math.abs(Number(item.total)), 0);
+  const ingresosTotales = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
+  const gastosTotales = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
-  // 🚀 CÁLCULO DE IMPUESTOS EN BASE A LA BASE IMPONIBLE REAL
+  // 🚀 LIQUIDACIÓN IVA BASADA EN BASES
   const ivaRepercutido = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const ivaSoportado = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const liquidacionIva = ivaRepercutido - ivaSoportado;
@@ -828,7 +837,7 @@ export default function Home() {
         const actualizadosBD = await obtenerDatosSupabase(empresaId);
         setData(actualizadosBD);
         setEditingId(null);
-        toast.success("Actualizado", { description: "El registro ha sido modificado con éxito." });
+        toast.success("Movimiento Actualizado", { description: "Los cambios se han guardado correctamente." });
       }
     } catch (error) {
       toast.error("Error", { description: "Error al actualizar el dato en el servidor." });
@@ -1085,6 +1094,7 @@ export default function Home() {
             </div>
             
             <div className="mt-auto">
+              {/* 🚀 BOTÓN INTELIGENTE: SI TIENE PLAN VA A STRIPE, SI NO, VA A PRECIOS */}
               {planActivo === 'pro' || planActivo === 'autonomo' ? (
                 <button onClick={gestionarSuscripcion} className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40">
                   <div className="flex items-center gap-2">
@@ -1234,16 +1244,16 @@ export default function Home() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Base (Ingresos)</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Ingresos)</span>
                 <span className="text-2xl md:text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Base (Gastos)</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Gastos)</span>
                 <span className="text-2xl md:text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
               </div>
               <div className="col-span-1 sm:col-span-2 lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
                 <div className={`absolute top-0 left-0 w-1 h-full ${beneficioNeto >= 0 ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Beneficio Neto (Antes Impuestos)</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Flujo de Caja Libre</span>
                 <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
               </div>
             </div>
@@ -1596,7 +1606,6 @@ export default function Home() {
                       let bgBadge = isPresupuesto ? 'bg-amber-100 text-amber-700' : (isAbono ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600');
                       let tagLabel = isPresupuesto ? 'PRESUPUESTO' : (isAbono ? 'ABONO' : (item.categoria || 'General'));
 
-                      // 🚀 LÓGICA DE MATEMÁTICAS VISUALES
                       const baseNum = Math.abs(Number(item.total));
                       const ivaPorcentaje = Number(item.iva) || 0;
                       const cuotaIva = baseNum * (ivaPorcentaje / 100);
