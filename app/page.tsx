@@ -38,57 +38,61 @@ const pdfStyles = StyleSheet.create({
   footerText: { fontSize: 7, color: '#94a3b8' },
 });
 
-const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => (
-  <Document>
-    <Page size="A4" style={pdfStyles.page}>
-      <View style={pdfStyles.header}>
-        <Text style={pdfStyles.title}>Libro Mayor - {empresaId}</Text>
-        <Text style={pdfStyles.subtitle}>Extracto de operaciones. Filtro aplicado: {filtro}</Text>
-        <Text style={{ fontSize: 8, color: '#94a3b8', marginTop: 4 }}>Fecha de emisión: {new Date().toLocaleDateString('es-ES')}</Text>
-      </View>
+const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => {
+  const nombreLimpio = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
 
-      <View style={pdfStyles.tableHeader}>
-        <Text style={pdfStyles.colFecha}>FECHA</Text>
-        <Text style={pdfStyles.colCat}>CATEGORÍA / DOC.</Text>
-        <Text style={pdfStyles.colProy}>PROYECTO</Text>
-        <Text style={pdfStyles.colImporte}>BASE IMP.</Text>
-        <Text style={pdfStyles.colIva}>IVA</Text>
-        <Text style={pdfStyles.colTotal}>TOTAL</Text>
-      </View>
+  return (
+    <Document>
+      <Page size="A4" style={pdfStyles.page}>
+        <View style={pdfStyles.header}>
+          <Text style={pdfStyles.title}>Libro Mayor - {nombreLimpio}</Text>
+          <Text style={pdfStyles.subtitle}>Extracto de operaciones. Filtro aplicado: {filtro}</Text>
+          <Text style={{ fontSize: 8, color: '#94a3b8', marginTop: 4 }}>Fecha de emisión: {new Date().toLocaleDateString('es-ES')}</Text>
+        </View>
 
-      {datos.map((item: any, i: number) => {
-         const isGasto = Number(item.total) < 0;
-         const baseNum = Math.abs(Number(item.total));
-         const ivaNum = Number(item.iva) || 0;
-         const totalOperacion = baseNum * (1 + ivaNum / 100);
+        <View style={pdfStyles.tableHeader}>
+          <Text style={pdfStyles.colFecha}>FECHA</Text>
+          <Text style={pdfStyles.colCat}>CATEGORÍA / DOC.</Text>
+          <Text style={pdfStyles.colProy}>PROYECTO</Text>
+          <Text style={pdfStyles.colImporte}>BASE IMP.</Text>
+          <Text style={pdfStyles.colIva}>IVA</Text>
+          <Text style={pdfStyles.colTotal}>TOTAL</Text>
+        </View>
 
-         const importeText = `${baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
-         const totalText = `${isGasto ? '-' : '+'}${totalOperacion.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
-         const colorImporte = isGasto ? '#e11d48' : '#10b981';
-         const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
-         const proyText = matchProy ? matchProy[1] : "-";
+        {datos.map((item: any, i: number) => {
+          const isGasto = Number(item.total) < 0;
+          const baseNum = Math.abs(Number(item.total));
+          const ivaNum = Number(item.iva) || 0;
+          const totalOperacion = baseNum * (1 + ivaNum / 100);
 
-         return (
-          <View key={i} style={pdfStyles.tableRow}>
-            <Text style={pdfStyles.colFecha}>{item.name}</Text>
-            <Text style={pdfStyles.colCat}>
-               {item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}
-            </Text>
-            <Text style={pdfStyles.colProy}>{proyText}</Text>
-            <Text style={pdfStyles.colImporte}>{importeText}</Text>
-            <Text style={pdfStyles.colIva}>{item.iva === 0 || item.iva === "0" ? "Exento" : `${item.iva}%`}</Text>
-            <Text style={[pdfStyles.colTotal, { color: colorImporte }]}>{totalText}</Text>
-          </View>
-         );
-      })}
+          const importeText = `${baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
+          const totalText = `${isGasto ? '-' : '+'}${totalOperacion.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
+          const colorImporte = isGasto ? '#e11d48' : '#10b981';
+          const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
+          const proyText = matchProy ? matchProy[1] : "-";
 
-      <View style={pdfStyles.footer}>
-        <Text style={pdfStyles.footerText}>Generado mediante TaxGuard AI</Text>
-        <Text style={pdfStyles.footerText}>SaaS Financiero B2B</Text>
-      </View>
-    </Page>
-  </Document>
-);
+          return (
+            <View key={i} style={pdfStyles.tableRow}>
+              <Text style={pdfStyles.colFecha}>{item.name}</Text>
+              <Text style={pdfStyles.colCat}>
+                {item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}
+              </Text>
+              <Text style={pdfStyles.colProy}>{proyText}</Text>
+              <Text style={pdfStyles.colImporte}>{importeText}</Text>
+              <Text style={pdfStyles.colIva}>{item.iva === 0 || item.iva === "0" ? "Exento" : `${item.iva}%`}</Text>
+              <Text style={[pdfStyles.colTotal, { color: colorImporte }]}>{totalText}</Text>
+            </View>
+          );
+        })}
+
+        <View style={pdfStyles.footer}>
+          <Text style={pdfStyles.footerText}>Generado mediante TaxGuard AI</Text>
+          <Text style={pdfStyles.footerText}>SaaS Financiero B2B</Text>
+        </View>
+      </Page>
+    </Document>
+  );
+};
 
 export default function Home() {
   const router = useRouter(); 
@@ -98,14 +102,14 @@ export default function Home() {
   
   const [data, setData] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
-  const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]); // 🚀 Guardará las empresas a las que el gestor fue invitado
+  const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]); 
   const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
 
   const [planActivo, setPlanActivo] = useState('loading');
   
-  const [rolUsuario, setRolUsuario] = useState("PROPIETARIO");
+  const [rolUsuario, setRolUsuario] = useState("LOADING");
   const [showAsesorModal, setShowAsesorModal] = useState(false);
   const [asesorEmail, setAsesorEmail] = useState("");
   const [listaAsesores, setListaAsesores] = useState<any[]>([]);
@@ -154,10 +158,6 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const etiquetasFiltro: Record<string, string> = {
-    all: "Histórico Completo", week: "Última Semana", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
-  };
-
   const [metaMensual, setMetaMensual] = useState(5000);
   const [editandoMeta, setEditandoMeta] = useState(false);
   const [inputMeta, setInputMeta] = useState("5000");
@@ -169,7 +169,6 @@ export default function Home() {
   const [sectorInput, setSectorInput] = useState("");
   const [objetivoInput, setObjetivoInput] = useState("");
 
-  // 🚀 B2B: Datos Fiscales para Configuración
   const [datosFiscales, setDatosFiscales] = useState({ razonSocial: "", nif: "", direccion: "" });
 
   const [catsIngresoInput, setCatsIngresoInput] = useState(defaultIngresos.join(", "));
@@ -177,6 +176,8 @@ export default function Home() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isScanning, setIsScanning] = useState(false);
+  
+  // 🚀 RECUPERADOS: Variables del importador de CSV
   const fileInputCsvRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -198,6 +199,12 @@ export default function Home() {
   const currentIva = Number(ivaSeleccionado) || 0;
   const currentIvaAmount = tipoTransaccion === 'gasto' && isVehiculo ? currentBase * ((currentIva/2)/100) : currentBase * (currentIva/100);
   const currentTotal = currentBase + currentIvaAmount;
+
+  const nombreEmpresaVisual = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : (empresaId || "Sin Seleccionar");
+
+  const etiquetasFiltro: Record<string, string> = {
+    all: "Histórico Completo", week: "Última Semana", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
+  };
 
   const gestionarSuscripcion = async () => {
     try {
@@ -230,7 +237,6 @@ export default function Home() {
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
-    // Cargar empresas de clientes (Modo Asesor)
     obtenerEmpresasCliente().then(clientes => {
         setEspaciosCliente(clientes);
     });
@@ -271,13 +277,9 @@ export default function Home() {
 
   const manejarCambioEmpresa = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const valorSeleccionado = e.target.value;
+    setEmpresaId(valorSeleccionado);
     
-    // Si el valor empieza por "CLIENTE_", es que ha seleccionado una empresa de un cliente en Modo Asesor
-    if (valorSeleccionado.startsWith("CLIENTE_")) {
-        const clienteEmpresaId = valorSeleccionado.replace("CLIENTE_", "");
-        setEmpresaId(clienteEmpresaId);
-    } else {
-        setEmpresaId(valorSeleccionado);
+    if (!valorSeleccionado.startsWith("CLIENTE|")) {
         const res = await fetch('/api/settings');
         const actuales: any = await res.json(); 
         await syncSettingsToCloud({ ...actuales, empresaActiva: valorSeleccionado });
@@ -343,6 +345,8 @@ export default function Home() {
   useEffect(() => {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
+    setRolUsuario("LOADING");
+
     verificarRolUsuario(empresaId).then(res => {
         setRolUsuario(res.rol);
     });
@@ -350,35 +354,37 @@ export default function Home() {
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
-         if (ajustesGuardados.metas && ajustesGuardados.metas[empresaId]) {
-           setMetaMensual(ajustesGuardados.metas[empresaId]);
-           setInputMeta(ajustesGuardados.metas[empresaId].toString());
+         const idAjuste = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
+
+         if (ajustesGuardados.metas && ajustesGuardados.metas[idAjuste]) {
+           setMetaMensual(ajustesGuardados.metas[idAjuste]);
+           setInputMeta(ajustesGuardados.metas[idAjuste].toString());
          } else {
            setMetaMensual(5000);
            setInputMeta("5000");
          }
 
-         if (ajustesGuardados.perfiles && ajustesGuardados.perfiles[empresaId]) {
-           setPerfilEmpresa(ajustesGuardados.perfiles[empresaId]);
-           setSectorInput(ajustesGuardados.perfiles[empresaId].sector);
-           setObjetivoInput(ajustesGuardados.perfiles[empresaId].objetivo);
+         if (ajustesGuardados.perfiles && ajustesGuardados.perfiles[idAjuste]) {
+           setPerfilEmpresa(ajustesGuardados.perfiles[idAjuste]);
+           setSectorInput(ajustesGuardados.perfiles[idAjuste].sector);
+           setObjetivoInput(ajustesGuardados.perfiles[idAjuste].objetivo);
          } else {
            setPerfilEmpresa({ sector: "", objetivo: "" });
            setSectorInput("");
            setObjetivoInput("");
          }
 
-         if (ajustesGuardados.datosFiscales && ajustesGuardados.datosFiscales[empresaId]) {
-            setDatosFiscales(ajustesGuardados.datosFiscales[empresaId]);
+         if (ajustesGuardados.datosFiscales && ajustesGuardados.datosFiscales[idAjuste]) {
+            setDatosFiscales(ajustesGuardados.datosFiscales[idAjuste]);
          } else {
             setDatosFiscales({ razonSocial: "", nif: "", direccion: "" });
          }
 
-         if (ajustesGuardados.categorias && ajustesGuardados.categorias[empresaId]) {
-           setCategoriasIngreso(ajustesGuardados.categorias[empresaId].ingreso);
-           setCategoriasGasto(ajustesGuardados.categorias[empresaId].gasto);
-           setCatsIngresoInput(ajustesGuardados.categorias[empresaId].ingreso.join(", "));
-           setCatsGastoInput(ajustesGuardados.categorias[empresaId].gasto.join(", "));
+         if (ajustesGuardados.categorias && ajustesGuardados.categorias[idAjuste]) {
+           setCategoriasIngreso(ajustesGuardados.categorias[idAjuste].ingreso);
+           setCategoriasGasto(ajustesGuardados.categorias[idAjuste].gasto);
+           setCatsIngresoInput(ajustesGuardados.categorias[idAjuste].ingreso.join(", "));
+           setCatsGastoInput(ajustesGuardados.categorias[idAjuste].gasto.join(", "));
          } else {
            setCategoriasIngreso(defaultIngresos);
            setCategoriasGasto(defaultGastos);
@@ -388,6 +394,11 @@ export default function Home() {
       });
 
     setChatMessages([]);
+    setData([]);
+    obtenerDatosSupabase(empresaId).then(d => {
+      if (d && d.length > 0) setData(d);
+    });
+
   }, [empresaId, planActivo]);
 
   const guardarPerfil = async () => {
@@ -572,21 +583,6 @@ export default function Home() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
-  const gastosPorCategoria = datosFinancieros
-    .filter(d => Number(d.total) < 0)
-    .reduce((acc: {name: string, value: number}[], curr: any) => {
-      const cat = curr.categoria || 'General';
-      const baseReal = Math.abs(Number(curr.total));
-      const ivaC = Number(curr.iva) || 0;
-      const totalC = baseReal * (1 + ivaC / 100);
-
-      const existente = acc.find((item: any) => item.name === cat);
-      if (existente) existente.value += totalC;
-      else acc.push({ name: cat, value: totalC });
-      return acc;
-    }, [])
-    .sort((a, b) => b.value - a.value);
-
   const ingresosTotales = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
   const gastosTotales = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
   const beneficioNeto = ingresosTotales - gastosTotales;
@@ -611,16 +607,6 @@ export default function Home() {
   };
 
   const alertasDinamicas = generarAlertas();
-
-  useEffect(() => {
-    if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
-
-    setData([]);
-    obtenerDatosSupabase(empresaId).then(d => {
-      if (d && d.length > 0) setData(d);
-      else setData([]);
-    });
-  }, [empresaId, planActivo]);
 
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -667,6 +653,7 @@ export default function Home() {
     }
   };
 
+  // 🚀 RECUPERADA: La función del banco (CSV)
   const manejarImportarCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -799,7 +786,7 @@ export default function Home() {
         cif: cifEmisor, 
         numero_factura: numFactura,
         estado_pago: estadoPago, 
-        empresaId: empresaId,
+        empresaId: empresaId, 
         isRecurrent: isRecurrent,
         frecuencia: isRecurrent ? frecuencia : null,
         concepto_detalle: detalleAdicional + tagProyecto,
@@ -820,7 +807,7 @@ export default function Home() {
         
         toast.success("Movimiento Guardado", { description: "La transacción se ha registrado en el Libro Mayor." });
       } else {
-        toast.error("Fallo de Servidor", { description: "Error al guardar en la nube. Inténtalo de nuevo." });
+        toast.error("Fallo de Servidor", { description: res.error || "Error al guardar en la nube." });
       }
     } catch (error) {
       toast.error("Sin Conexión", { description: "Revisa tu conexión a internet al intentar guardar." });
@@ -833,11 +820,13 @@ export default function Home() {
     const confirmacion = window.confirm("¿Seguro que deseas eliminar esta transacción?");
     if (!confirmacion) return;
 
-    const res = await borrarDatoSupabase(id.toString());
+    const res = await borrarDatoSupabase(id.toString(), empresaId);
     if (res.success) {
       const restantes = data.filter(item => item.id !== id);
       setData(restantes);
       toast.success("Registro Eliminado", { description: "La transacción se ha borrado correctamente." });
+    } else {
+        toast.error("Error", { description: res.error });
     }
   };
 
@@ -885,7 +874,8 @@ export default function Home() {
         categoria: editFormData.categoria, 
         iva: editFormData.ivaSeleccionado,
         estado_pago: editFormData.estado_pago,
-        concepto_detalle: nuevoConcepto.trim()
+        concepto_detalle: nuevoConcepto.trim(),
+        empresaId: empresaId
       });
 
       if (res.success) {
@@ -893,6 +883,8 @@ export default function Home() {
         setData(actualizadosBD);
         setEditingId(null);
         toast.success("Movimiento Actualizado", { description: "Los cambios se han guardado correctamente." });
+      } else {
+        toast.error("Error", { description: res.error });
       }
     } catch (error) {
       toast.error("Error", { description: "Error al actualizar el dato en el servidor." });
@@ -909,7 +901,7 @@ export default function Home() {
               nuevoEstado = Number(transaccion.total) > 0 ? 'COBRADO' : 'PAGADO';
           }
           
-          const res = await actualizarEstadoPago(Number(id), nuevoEstado);
+          const res = await actualizarEstadoPago(Number(id), nuevoEstado, empresaId);
           
           if (res.success) {
               const actualizadosBD = await obtenerDatosSupabase(empresaId);
@@ -957,7 +949,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: historial,
           contextoFinanciero: datosContexto,
-          empresaId: empresaId,
+          empresaId: nombreEmpresaVisual,
           perfil: perfilEmpresa
         })
       });
@@ -1009,7 +1001,7 @@ export default function Home() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `Libro_Mayor_${empresaId || 'General'}_${filtroDoc}.csv`;
+    link.download = `Libro_Mayor_${nombreEmpresaVisual.replace(/\s+/g, '')}_${filtroDoc}.csv`;
     link.click();
   };
 
@@ -1079,7 +1071,7 @@ export default function Home() {
                         )}
                     </select>
                     
-                    {rolUsuario !== 'LECTURA' && (
+                    {rolUsuario !== 'LECTURA' && rolUsuario !== 'LOADING' && (
                         <>
                             <button onClick={() => {setShowAsesorModal(true); setIsSidebarOpen(false); cargarAsesores();}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700 shrink-0" title="Invitar Asesor">
                               👥
@@ -1091,7 +1083,7 @@ export default function Home() {
                     )}
                 </div>
                 
-                {rolUsuario !== 'LECTURA' && (
+                {rolUsuario !== 'LECTURA' && rolUsuario !== 'LOADING' && (
                     <div className="flex gap-2 mt-2">
                       <input value={nuevaEmpresa} onChange={(e) => setNuevaEmpresa(e.target.value)} placeholder="Nueva empresa..." className="w-full bg-slate-800 p-2 text-xs text-white rounded-lg border border-slate-700 outline-none" />
                       <button onClick={agregarEmpresa} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-500 transition">+</button>
@@ -1152,705 +1144,722 @@ export default function Home() {
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             
-            {rolUsuario === 'LECTURA' && (
-                <div className="bg-blue-600 text-white text-xs font-bold py-3 px-4 rounded-xl mb-6 shadow-md shadow-blue-600/20 flex flex-col sm:flex-row justify-between items-center gap-3">
-                    <span className="flex items-center gap-2">
-                        <span className="animate-pulse text-lg">👁️</span> 
-                        <span>MODO ASESOR ACTIVO: Estás visualizando la empresa "{empresaId}" de tu cliente.</span>
-                    </span>
-                    <button onClick={salirModoAsesor} className="bg-white text-blue-600 px-4 py-1.5 rounded-lg font-black hover:bg-blue-50 transition shadow-sm w-full sm:w-auto">
-                       Salir a Mi Espacio
-                    </button>
+            {/* 🚀 SEGURIDAD VISUAL: MIENTRAS CARGA EL ROL, OCULTAMOS TODO PARA EVITAR PARPADEOS */}
+            {rolUsuario === 'LOADING' ? (
+                <div className="animate-pulse space-y-6">
+                    <div className="h-10 bg-slate-200 rounded-xl w-1/3"></div>
+                    <div className="h-32 bg-slate-200 rounded-xl w-full"></div>
+                    <div className="grid grid-cols-3 gap-6"><div className="h-24 bg-slate-200 rounded-xl"></div><div className="h-24 bg-slate-200 rounded-xl"></div><div className="h-24 bg-slate-200 rounded-xl"></div></div>
                 </div>
-            )}
-
-            <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 border-b border-slate-200 pb-6 gap-4">
-              <div>
-                <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Panel Ejecutivo - <span className="text-blue-600">{empresaId || "Sin Seleccionar"}</span></h1>
-                <p className="text-sm font-medium text-slate-500 mt-1">Supervisión integrada de flujos de caja corporativos.</p>
-              </div>
-              
-              <div className="flex items-center gap-4 self-start lg:self-auto">
-                <div className="relative">
-                  <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50 transition hover:shadow-md">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                    {alertasDinamicas.length > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
-                  </button>
-                  {showNotifications && (
-                    <div className="absolute left-0 sm:left-auto sm:right-0 mt-3 w-[85vw] sm:w-80 max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-left sm:origin-top-right">
-                      <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
-                        <h4 className="text-sm font-bold text-slate-900">Centro de Riesgos</h4>
-                        <span className="bg-slate-800 text-white text-[10px] font-black px-2.5 py-1 rounded-full">{alertasDinamicas.length}</span>
-                      </div>
-                      <div className="max-h-[350px] overflow-y-auto p-3 bg-white">
-                        {alertasDinamicas.length === 0 ? (
-                           <div className="py-8 text-center text-xs text-slate-400 font-medium flex flex-col items-center gap-2">
-                             <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                             Salud financiera estable. No hay alertas.
-                           </div>
-                        ) : (
-                           alertasDinamicas.map((alerta, idx) => (
-                             <div key={idx} className={`p-4 mb-3 rounded-xl border ${alerta.tipo === 'critico' ? 'bg-rose-50/50 border-rose-200' : alerta.tipo === 'advertencia' ? 'bg-amber-50/50 border-amber-200' : alerta.tipo === 'exito' ? 'bg-emerald-50/50 border-emerald-200' : 'bg-blue-50/50 border-blue-200'} shadow-sm`}>
-                               <h5 className={`text-xs font-black mb-1.5 uppercase tracking-wide ${alerta.tipo === 'critico' ? 'text-rose-700' : alerta.tipo === 'advertencia' ? 'text-amber-700' : alerta.tipo === 'exito' ? 'text-emerald-700' : 'text-blue-700'}`}>{alerta.titulo}</h5>
-                               <p className={`text-[11px] font-medium leading-relaxed ${alerta.tipo === 'critico' ? 'text-rose-600' : alerta.tipo === 'advertencia' ? 'text-amber-700' : alerta.tipo === 'exito' ? 'text-emerald-600' : 'text-blue-600'}`}>{alerta.texto}</p>
-                             </div>
-                           ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                  <span className="hidden sm:inline">Servidores Cloud Conectados</span>
-                </div>
-              </div>
-            </header>
-
-            {/* 🚀 B2B: MÓDULO DE TESORERÍA (Facturas Pendientes) */}
-            {facturasPendientes.length > 0 && (
-                <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
+            ) : (
+             <>
+                {rolUsuario === 'LECTURA' && (
+                    <div className="bg-gradient-to-r from-blue-700 to-indigo-700 text-white p-4 rounded-2xl mb-6 shadow-xl shadow-blue-900/20 flex flex-col sm:flex-row justify-between items-center gap-4 border border-blue-500">
                         <div className="flex items-center gap-3">
-                            <span className="text-xl bg-amber-100 p-2 rounded-xl">⚠️</span>
+                            <span className="text-3xl animate-pulse">👁️</span> 
                             <div>
-                                <h3 className="text-sm font-black text-amber-900 uppercase tracking-widest">Tesorería en Alerta</h3>
-                                <p className="text-xs font-medium text-amber-700 mt-0.5">Tienes {facturasPendientes.length} facturas pendientes de cobro o pago.</p>
+                                <p className="text-xs font-black tracking-widest text-blue-200 uppercase mb-0.5">Modo Asesor Activo</p>
+                                <p className="text-sm font-semibold">Estás visualizando los datos de <span className="font-black text-white">"{nombreEmpresaVisual}"</span> en Solo Lectura.</p>
                             </div>
                         </div>
-                        <div className="flex gap-4 bg-white px-4 py-2 rounded-xl border border-amber-100 shadow-sm">
-                            <div className="text-right">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Cobrar</p>
-                                <p className="text-sm font-black text-emerald-600">+{cobrosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
-                            </div>
-                            <div className="w-px bg-amber-100"></div>
-                            <div className="text-right">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar</p>
-                                <p className="text-sm font-black text-rose-600">-{pagosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div className="overflow-x-auto bg-white rounded-xl border border-amber-100">
-                        <table className="min-w-full text-left whitespace-nowrap text-sm">
-                            <thead className="bg-amber-50 text-[10px] font-black text-amber-700 uppercase">
-                                <tr>
-                                    <th className="px-4 py-2">Fecha</th>
-                                    <th className="px-4 py-2">Emisor / NIF</th>
-                                    <th className="px-4 py-2">Concepto</th>
-                                    <th className="px-4 py-2 text-right">Importe Total</th>
-                                    {rolUsuario !== 'LECTURA' && <th className="px-4 py-2 text-center">Acción Inmediata</th>}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-amber-50 font-semibold text-slate-700">
-                                {facturasPendientes.map((item) => {
-                                    const totalConIva = Math.abs(Number(item.total)) * (1 + (Number(item.iva)||0)/100);
-                                    const esGasto = Number(item.total) < 0;
-                                    
-                                    const [d, m, y] = item.name.split('/');
-                                    const fechaDoc = new Date(Number(y), Number(m)-1, Number(d)).getTime();
-                                    const diasPasados = Math.floor((new Date().getTime() - fechaDoc) / (1000 * 60 * 60 * 24));
-                                    const riesgoAlto = diasPasados > 30;
-
-                                    return (
-                                        <tr key={item.id} className="hover:bg-amber-50/30 transition">
-                                            <td className="px-4 py-3">
-                                                <span className="block">{item.name}</span>
-                                                {riesgoAlto && (
-                                                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 mt-1 inline-block">
-                                                        🔴 +30 Días (Riesgo)
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className="text-xs text-slate-900 block">{item.cif || "S/N"}</span>
-                                                <span className="text-[9px] text-slate-400">{item.numero_factura}</span>
-                                            </td>
-                                            <td className="px-4 py-3 text-xs">{item.concepto_detalle || item.categoria}</td>
-                                            <td className={`px-4 py-3 text-right font-black ${esGasto ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                {esGasto ? '-' : '+'}{totalConIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
-                                            </td>
-                                            {rolUsuario !== 'LECTURA' && (
-                                                <td className="px-4 py-3 text-center">
-                                                    <button onClick={() => marcarComoPagado(item.id)} className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition shadow-sm ${esGasto ? 'bg-rose-600 text-white hover:bg-rose-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
-                                                        {esGasto ? "Pagar Ahora" : "Marcar Cobrado"}
-                                                    </button>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            <div className="flex gap-2 lg:gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-              <button onClick={() => setFiltro('all')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Histórico</button>
-              <button onClick={() => setFiltro('week')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'week' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Semana</button>
-              <button onClick={() => setFiltro('month')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'month' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Mes</button>
-              <button onClick={() => setFiltro('quarter')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'quarter' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Trimestre</button>
-              <button onClick={() => setFiltro('year')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Año</button>
-            </div>
-
-            <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col xl:flex-row justify-between xl:items-center relative overflow-hidden gap-6 border border-slate-800">
-               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 opacity-5 rounded-full blur-3xl"></div>
-               <div className="relative z-10 w-full xl:w-auto">
-                  <div className="flex items-center gap-2 mb-1">
-                     <span className="text-xl">🛡️</span>
-                     <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Escudo Fiscal Integrado</h3>
-                  </div>
-                  <p className="text-xs text-slate-400 font-medium">Liquidación estimada de IVA para el periodo actual.</p>
-               </div>
-               
-               <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 lg:gap-6 relative z-10 w-full xl:w-auto justify-between xl:justify-end">
-                  <div className="text-left xl:text-right w-[45%] lg:w-auto">
-                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Cobrado</p>
-                     <p className="text-base md:text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
-                  </div>
-                  <div className="text-left xl:text-right w-[45%] lg:w-auto">
-                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Pagado</p>
-                     <p className="text-base md:text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
-                  </div>
-                  <div className="text-left xl:text-right w-full lg:w-auto xl:pl-6 xl:border-l xl:border-slate-700 pt-4 xl:pt-0 border-t border-slate-700 xl:border-t-0">
-                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Liquidación</p>
-                     <p className={`text-xl md:text-2xl font-black tracking-tight flex items-center gap-2 ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
-                        <span>{liquidacionIva > 0 ? 'Pagar:' : 'A favor:'}</span>
-                        <span>{Math.abs(liquidacionIva).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
-                     </p>
-                  </div>
-               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Ingresos)</span>
-                <span className="text-2xl md:text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
-              </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Gastos)</span>
-                <span className="text-2xl md:text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
-              </div>
-              <div className="col-span-1 sm:col-span-2 lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
-                <div className={`absolute top-0 left-0 w-1 h-full ${beneficioNeto >= 0 ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Flujo de Caja Libre</span>
-                <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
-              
-              {/* 🚀 CANDADO MODO ASESOR: Oculta el formulario si es lectura */}
-              <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                {rolUsuario !== 'LECTURA' ? (
-                    <div>
-                      <div className="flex flex-col gap-3 mb-6">
-                        <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
-                        <div className="grid grid-cols-2 gap-2 w-full">
-                          <input type="file" accept="image/*,.pdf" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
-                          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
-                            {isScanning ? "⏳ Leyendo..." : "📸 Factura OCR"}
-                          </button>
-
-                          <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputCsvRef} onChange={manejarImportarCSV} />
-                          <button type="button" onClick={() => fileInputCsvRef.current?.click()} disabled={isImporting} className="justify-center text-[10px] font-bold bg-slate-50 text-slate-600 px-3 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
-                            {isImporting ? "⏳ Cargando..." : "📊 Banco (CSV)"}
-                          </button>
-                        </div>
-                        
-                        {confianzaIA !== null && evidenciaIA && (
-                          <div className="mt-1 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl animate-fade-in-up">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="relative flex h-2.5 w-2.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                              </span>
-                              <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">
-                                Auditoría IA: Confianza {confianzaIA}%
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-emerald-600 font-medium italic">
-                              "{evidenciaIA}"
-                            </p>
-                          </div>
-                        )}
-
-                        {urlArchivoTemporal && (
-                          <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-bold animate-fade-in-up">
-                            <span>📎 {nombreArchivoTemporal || 'Documento adjunto'} listo para guardar</span>
-                            <button type="button" onClick={() => {setUrlArchivoTemporal(null); setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);}} className="ml-auto text-rose-500 hover:text-rose-700">✖</button>
-                          </div>
-                        )}
-                      </div>
-
-                      <form onSubmit={guardarDato} className="space-y-4">
-                        <div className="grid grid-cols-3 gap-3 mb-2 bg-slate-100 p-1.5 rounded-2xl">
-                          <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
-                          <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
-                          <button type="button" onClick={() => setTipoTransaccion('proyecto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
-                        </div>
-
-                        {tipoTransaccion !== 'proyecto' ? (
-                          <>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
-                                <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                </div>
-                                <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
-                                <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
-                                    <option value="21">21% (General)</option>
-                                    <option value="10">10% (Reducido)</option>
-                                    <option value="4">4% (Superreducido)</option>
-                                    <option value="0">0% (Exento)</option>
-                                </select>
-                                </div>
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
-                              <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
-                                {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
-                              </select>
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">NIF/CIF Emisor (Opcional)</label>
-                                  <input type="text" placeholder="Ej: B12345678" value={cifEmisor} onChange={(e) => setCifEmisor(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                </div>
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nº Factura (Opcional)</label>
-                                  <input type="text" placeholder="Ej: F-2026-104" value={numFactura} onChange={(e) => setNumFactura(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
-                                  <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta Proyecto</label>
-                                  <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                </div>
-                            </div>
-
-                            <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex justify-between items-center mt-2 shadow-sm">
-                               <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Total Operación (Con IVA)</span>
-                               <span className="text-sm font-black text-blue-600">
-                                   {currentTotal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                               </span>
-                            </div>
-                            
-                            <div className="flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div className="flex justify-between items-center">
-                                   <label className="text-[10px] font-black text-slate-600 uppercase">Estado Financiero</label>
-                                   <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden">
-                                      <button type="button" onClick={() => setEstadoPago(tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
-                                          {tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO'}
-                                      </button>
-                                      <button type="button" onClick={() => setEstadoPago('PENDIENTE')} className={`px-3 py-1.5 text-[10px] font-bold transition border-l border-slate-200 ${estadoPago === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}>
-                                          PENDIENTE
-                                      </button>
-                                   </div>
-                                </div>
-                                
-                                {tipoTransaccion === 'gasto' && (
-                                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                                        <input type="checkbox" id="vehiculo" checked={isVehiculo} onChange={(e) => setIsVehiculo(e.target.checked)} className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" />
-                                        <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
-                                            🚘 Gasto Vehículo (Deducir 50% IVA)
-                                        </label>
-                                    </div>
-                                )}
-                            </div>
-
-                          </>
-                        ) : (
-                          <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
-                             <div>
-                                <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">Nombre del Proyecto / Evento *</label>
-                                <input type="text" placeholder="Ej: Boda Madrid o Mantenimiento Web" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-2.5 bg-white border border-purple-200 text-slate-900 rounded-lg text-sm font-black outline-none focus:ring-2 focus:ring-purple-500/30 shadow-sm" />
-                             </div>
-                             
-                             <div>
-                                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
-                                 <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 text-slate-900 rounded-lg text-xs font-bold outline-none" />
-                             </div>
-
-                             <div className="border-t border-emerald-100 pt-3 mt-2">
-                                 <div className="flex justify-between items-center mb-3">
-                                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Ingresos Asociados (Ventas, Propinas...)</span>
-                                    <button type="button" onClick={() => setProyectoIngresos([...proyectoIngresos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasIngreso[0] || "Ventas", iva: "21" }])} className="text-[9px] font-bold bg-white text-emerald-600 px-2 py-1.5 rounded-md border border-emerald-200 shadow-sm hover:bg-emerald-50">+ Ingreso</button>
-                                 </div>
-                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                    {proyectoIngresos.map((ing, idx) => (
-                                       <div key={ing.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-emerald-100 items-end">
-                                          <div className="w-full sm:flex-1">
-                                             <input type="text" placeholder="Ej: Servicio principal" value={ing.concepto} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, concepto: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
-                                          </div>
-                                          <div className="w-full sm:w-20">
-                                             <input type="text" inputMode="decimal" placeholder="€ Valor" value={ing.importe} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, importe: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-emerald-600 text-xs font-bold outline-none bg-transparent" />
-                                          </div>
-                                          <div className="w-full sm:w-16">
-                                             <select value={ing.iva} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, iva: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                                <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                                             </select>
-                                          </div>
-                                          <div className="w-full sm:w-24">
-                                             <select value={ing.categoria} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, categoria: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                                {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
-                                             </select>
-                                          </div>
-                                          <button type="button" onClick={() => setProyectoIngresos(proyectoIngresos.filter(pi => pi.id !== ing.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
-                                       </div>
-                                    ))}
-                                 </div>
-                             </div>
-
-                             <div className="border-t border-rose-100 pt-3 mt-2">
-                                 <div className="flex justify-between items-center mb-3">
-                                    <span className="text-[10px] font-black text-rose-700 uppercase tracking-widest">Gastos Asociados (Compras, Nóminas...)</span>
-                                    <button type="button" onClick={() => setProyectoGastos([...proyectoGastos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }])} className="text-[9px] font-bold bg-white text-rose-600 px-2 py-1.5 rounded-md border border-rose-200 shadow-sm hover:bg-rose-50">+ Coste</button>
-                                 </div>
-                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                    {proyectoGastos.map((g, idx) => (
-                                       <div key={g.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-slate-200 items-end">
-                                          <div className="w-full sm:flex-1">
-                                             <input type="text" placeholder="Ej: Alquiler furgoneta" value={g.concepto} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, concepto: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
-                                          </div>
-                                          <div className="w-full sm:w-20">
-                                             <input type="text" inputMode="decimal" placeholder="€ Coste" value={g.importe} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, importe: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-rose-600 text-xs font-bold outline-none bg-transparent" />
-                                          </div>
-                                          <div className="w-full sm:w-16">
-                                             <select value={g.iva} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, iva: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                                <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                                             </select>
-                                          </div>
-                                          <div className="w-full sm:w-24">
-                                             <select value={g.categoria} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, categoria: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                                {categoriasGasto.map(c => <option key={c} value={c}>{c}</option>)}
-                                             </select>
-                                          </div>
-                                          <button type="button" onClick={() => setProyectoGastos(proyectoGastos.filter(pg => pg.id !== g.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
-                                       </div>
-                                    ))}
-                                 </div>
-                             </div>
-                             
-                             <div className="bg-purple-100/50 p-4 rounded-xl border border-purple-200 flex justify-between items-center mt-2 shadow-sm">
-                                 <div>
-                                     <span className="text-[10px] font-black text-purple-900 uppercase block">Beneficio Limpio Esperado</span>
-                                     <span className="text-[9px] text-purple-600 font-medium">Ingresos - Gastos asignados</span>
-                                 </div>
-                                 <div className="text-right">
-                                     <span className={`text-xl font-black ${proyMargen >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                         {proyMargen >= 0 ? '+' : ''}{proyMargen.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                                     </span>
-                                     <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded border ${proyMargen >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
-                                         {proyMargenPorcentaje.toFixed(1)}%
-                                     </span>
-                                 </div>
-                             </div>
-                          </div>
-                        )}
-
-                        <button type="submit" disabled={isSaving} className={`w-full text-white font-bold py-3 rounded-xl disabled:opacity-50 mt-2 transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/30' : 'bg-slate-900 hover:bg-slate-800'}`}>
-                            {isSaving ? "Procesando..." : tipoTransaccion === 'proyecto' ? "Guardar Proyecto Completo" : "Asignar Movimiento"}
+                        <button onClick={salirModoAsesor} className="w-full sm:w-auto bg-white text-blue-700 px-6 py-2.5 rounded-xl font-black hover:bg-blue-50 transition shadow-lg flex items-center justify-center gap-2">
+                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                           Salir a Mi Espacio
                         </button>
-                      </form>
-                    </div>
-                ) : (
-                    <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100 flex flex-col items-center justify-center text-center h-full min-h-[300px]">
-                        <span className="text-5xl mb-4">👁️</span>
-                        <h3 className="text-lg font-black text-blue-900 mb-2">Modo Asesor Activo</h3>
-                        <p className="text-sm text-blue-700 font-medium max-w-sm">
-                            Estás visualizando los datos de tu cliente en <strong className="font-black">Solo Lectura</strong>. Puedes utilizar los filtros, ver las métricas en tiempo real y descargar el Libro Mayor (CSV/PDF) para generar los modelos tributarios.
-                        </p>
                     </div>
                 )}
-              </div>
 
-              <div className="xl:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
-                <div className="flex justify-between items-center mb-1">
-                  <h3 className="text-md font-bold text-slate-900">Balance Visual del Periodo</h3>
-                  {chartFilter && (
-                     <button onClick={() => setChartFilter(null)} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded-md transition border border-slate-200">
-                        Mostrando: {chartFilter} (Quitar filtro ✖)
-                     </button>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 font-medium mb-4">Gráficas libres de presupuestos (solo ingresos y gastos reales).</p>
-                <div className="flex-1 min-h-[220px]">
-                  {isMounted && chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} onClick={(state) => {
-                         if (state && state.activeLabel) {
-                            setChartFilter(state.activeLabel);
-                            setCurrentPage(1); 
-                         }
-                      }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                        <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={40} />
+                <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 border-b border-slate-200 pb-6 gap-4">
+                  <div>
+                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Panel Ejecutivo - <span className="text-blue-600">{nombreEmpresaVisual}</span></h1>
+                    <p className="text-sm font-medium text-slate-500 mt-1">Supervisión integrada de flujos de caja corporativos.</p>
+                  </div>
+                  
+                  <div className="flex items-center gap-4 self-start lg:self-auto">
+                    <div className="relative">
+                      <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50 transition hover:shadow-md">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                        {alertasDinamicas.length > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
+                      </button>
+                      {showNotifications && (
+                        <div className="absolute left-0 sm:left-auto sm:right-0 mt-3 w-[85vw] sm:w-80 max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-left sm:origin-top-right">
+                          <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
+                            <h4 className="text-sm font-bold text-slate-900">Centro de Riesgos</h4>
+                            <span className="bg-slate-800 text-white text-[10px] font-black px-2.5 py-1 rounded-full">{alertasDinamicas.length}</span>
+                          </div>
+                          <div className="max-h-[350px] overflow-y-auto p-3 bg-white">
+                            {alertasDinamicas.length === 0 ? (
+                               <div className="py-8 text-center text-xs text-slate-400 font-medium flex flex-col items-center gap-2">
+                                 <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                 Salud financiera estable. No hay alertas.
+                               </div>
+                            ) : (
+                               alertasDinamicas.map((alerta, idx) => (
+                                 <div key={idx} className={`p-4 mb-3 rounded-xl border ${alerta.tipo === 'critico' ? 'bg-rose-50/50 border-rose-200' : alerta.tipo === 'advertencia' ? 'bg-amber-50/50 border-amber-200' : alerta.tipo === 'exito' ? 'bg-emerald-50/50 border-emerald-200' : 'bg-blue-50/50 border-blue-200'} shadow-sm`}>
+                                   <h5 className={`text-xs font-black mb-1.5 uppercase tracking-wide ${alerta.tipo === 'critico' ? 'text-rose-700' : alerta.tipo === 'advertencia' ? 'text-amber-700' : alerta.tipo === 'exito' ? 'text-emerald-700' : 'text-blue-700'}`}>{alerta.titulo}</h5>
+                                   <p className={`text-[11px] font-medium leading-relaxed ${alerta.tipo === 'critico' ? 'text-rose-600' : alerta.tipo === 'advertencia' ? 'text-amber-700' : alerta.tipo === 'exito' ? 'text-emerald-600' : 'text-blue-600'}`}>{alerta.texto}</p>
+                                 </div>
+                               ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                      <span className="hidden sm:inline">Servidores Cloud Conectados</span>
+                    </div>
+                  </div>
+                </header>
+
+                {facturasPendientes.length > 0 && (
+                    <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
+                            <div className="flex items-center gap-3">
+                                <span className="text-xl bg-amber-100 p-2 rounded-xl">⚠️</span>
+                                <div>
+                                    <h3 className="text-sm font-black text-amber-900 uppercase tracking-widest">Tesorería en Alerta</h3>
+                                    <p className="text-xs font-medium text-amber-700 mt-0.5">Tienes {facturasPendientes.length} facturas pendientes de cobro o pago.</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-4 bg-white px-4 py-2 rounded-xl border border-amber-100 shadow-sm">
+                                <div className="text-right">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Cobrar</p>
+                                    <p className="text-sm font-black text-emerald-600">+{cobrosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
+                                </div>
+                                <div className="w-px bg-amber-100"></div>
+                                <div className="text-right">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar</p>
+                                    <p className="text-sm font-black text-rose-600">-{pagosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
+                                </div>
+                            </div>
+                        </div>
                         
-                        <Tooltip 
-                           formatter={(value: any) => [`${Number(value).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, undefined]}
-                           cursor={{fill: '#f1f5f9'}} 
-                           isAnimationActive={false}
-                           contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                           labelStyle={{ color: '#0f172a', fontWeight: '900', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px', fontSize: '14px' }}
-                        />
+                        <div className="overflow-x-auto bg-white rounded-xl border border-amber-100">
+                            <table className="min-w-full text-left whitespace-nowrap text-sm">
+                                <thead className="bg-amber-50 text-[10px] font-black text-amber-700 uppercase">
+                                    <tr>
+                                        <th className="px-4 py-2">Fecha</th>
+                                        <th className="px-4 py-2">Emisor / NIF</th>
+                                        <th className="px-4 py-2">Concepto</th>
+                                        <th className="px-4 py-2 text-right">Importe Total</th>
+                                        {rolUsuario !== 'LECTURA' && <th className="px-4 py-2 text-center">Acción Inmediata</th>}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-amber-50 font-semibold text-slate-700">
+                                    {facturasPendientes.map((item) => {
+                                        const totalConIva = Math.abs(Number(item.total)) * (1 + (Number(item.iva)||0)/100);
+                                        const esGasto = Number(item.total) < 0;
+                                        
+                                        const [d, m, y] = item.name.split('/');
+                                        const fechaDoc = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+                                        const diasPasados = Math.floor((new Date().getTime() - fechaDoc) / (1000 * 60 * 60 * 24));
+                                        const riesgoAlto = diasPasados > 30;
 
-                        <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }} />
-                        <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
-                        <Bar dataKey="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-slate-400 text-xs font-bold">Sin datos para graficar en este periodo</div>
-                  )}
-                </div>
-              </div>
-            </div>
+                                        return (
+                                            <tr key={item.id} className="hover:bg-amber-50/30 transition">
+                                                <td className="px-4 py-3">
+                                                    <span className="block">{item.name}</span>
+                                                    {riesgoAlto && (
+                                                        <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 mt-1 inline-block">
+                                                            🔴 +30 Días (Riesgo)
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-xs text-slate-900 block">{item.cif || "S/N"}</span>
+                                                    <span className="text-[9px] text-slate-400">{item.numero_factura}</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-xs">{item.concepto_detalle || item.categoria}</td>
+                                                <td className={`px-4 py-3 text-right font-black ${esGasto ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                    {esGasto ? '-' : '+'}{totalConIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                                                </td>
+                                                {rolUsuario !== 'LECTURA' && (
+                                                    <td className="px-4 py-3 text-center">
+                                                        <button onClick={() => marcarComoPagado(item.id)} className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition shadow-sm ${esGasto ? 'bg-rose-600 text-white hover:bg-rose-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
+                                                            {esGasto ? "Pagar Ahora" : "Marcar Cobrado"}
+                                                        </button>
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
-              <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
-                <div className="flex items-center gap-3">
-                   <h3 className="text-md font-bold text-slate-900">Libro Mayor Integrado</h3>
-                   <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black px-2 py-0.5 rounded-full">{datosTablaFiltrados.length} registros</span>
+                <div className="flex gap-2 lg:gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+                  <button onClick={() => setFiltro('all')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Histórico</button>
+                  <button onClick={() => setFiltro('week')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'week' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Semana</button>
+                  <button onClick={() => setFiltro('month')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'month' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Mes</button>
+                  <button onClick={() => setFiltro('quarter')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'quarter' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Trimestre</button>
+                  <button onClick={() => setFiltro('year')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Año</button>
                 </div>
-                
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
-                   <input 
-                      type="text" 
-                      placeholder="🔍 Buscar categoría, número, importe, NIF o proyecto..." 
-                      value={searchTerm}
-                      onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
-                      className="w-full sm:flex-1 sm:w-80 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900"
-                   />
-                   <div className="flex gap-2 w-full sm:w-auto">
-                       <button onClick={exportarAExcel} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
-                         ↓ CSV
-                       </button>
-                       {isMounted && (
-                           <PDFDownloadLink 
-                               document={<LibroMayorPDF datos={datosTablaFiltrados} empresaId={empresaId} filtro={etiquetasFiltro[filtro] || 'Todas las Fechas'} />} 
-                               fileName={`LibroMayor_${empresaId.replace(/\s+/g, '')}_${filtroDoc}.pdf`}
-                           >
-                               {/* @ts-ignore */}
-                               {({ loading }) => (
-                                   <button disabled={loading} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 border border-blue-200 shadow-sm transition whitespace-nowrap disabled:opacity-50">
-                                       {loading ? '⏳...' : '📄 PDF'}
-                                   </button>
-                               )}
-                           </PDFDownloadLink>
-                       )}
+
+                <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col xl:flex-row justify-between xl:items-center relative overflow-hidden gap-6 border border-slate-800">
+                   <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 opacity-5 rounded-full blur-3xl"></div>
+                   <div className="relative z-10 w-full xl:w-auto">
+                      <div className="flex items-center gap-2 mb-1">
+                         <span className="text-xl">🛡️</span>
+                         <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Escudo Fiscal Integrado</h3>
+                      </div>
+                      <p className="text-xs text-slate-400 font-medium">Liquidación estimada de IVA para el periodo actual.</p>
+                   </div>
+                   
+                   <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 lg:gap-6 relative z-10 w-full xl:w-auto justify-between xl:justify-end">
+                      <div className="text-left xl:text-right w-[45%] lg:w-auto">
+                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Cobrado</p>
+                         <p className="text-base md:text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
+                      </div>
+                      <div className="text-left xl:text-right w-[45%] lg:w-auto">
+                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Pagado</p>
+                         <p className="text-base md:text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
+                      </div>
+                      <div className="text-left xl:text-right w-full lg:w-auto xl:pl-6 xl:border-l xl:border-slate-700 pt-4 xl:pt-0 border-t border-slate-700 xl:border-t-0">
+                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Liquidación</p>
+                         <p className={`text-xl md:text-2xl font-black tracking-tight flex items-center gap-2 ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
+                            <span>{liquidacionIva > 0 ? 'Pagar:' : 'A favor:'}</span>
+                            <span>{Math.abs(liquidacionIva).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                         </p>
+                      </div>
                    </div>
                 </div>
-              </div>
-              
-              <div className="px-4 md:px-6 pt-4 pb-2 bg-slate-50/50 border-b border-slate-100 flex flex-col">
-                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                     <button onClick={() => {setFiltroDoc('all'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas las Op.</button>
-                     <button onClick={() => {setFiltroDoc('ingresos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'ingresos' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>Ingresos Reales</button>
-                     <button onClick={() => {setFiltroDoc('gastos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'gastos' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Gastos / Compras</button>
-                     <button onClick={() => {setFiltroDoc('pendientes'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'pendientes' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>⏳ Pendientes</button>
-                     
-                     <button onClick={() => {setFiltroDoc('proyectos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'proyectos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>🎯 Modo Proyectos</button>
-                     <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Presupuestos</button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Ingresos)</span>
+                    <span className="text-2xl md:text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                   </div>
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Gastos)</span>
+                    <span className="text-2xl md:text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                  </div>
+                  <div className="col-span-1 sm:col-span-2 lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
+                    <div className={`absolute top-0 left-0 w-1 h-full ${beneficioNeto >= 0 ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Flujo de Caja Libre</span>
+                    <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                  </div>
+                </div>
 
-                  {filtroDoc === 'proyectos' && (
-                     <div className="flex flex-col sm:flex-row gap-3 mt-3 p-3 bg-purple-50/50 border border-purple-100 rounded-xl animate-fade-in-up">
-                         <select value={proyectoSeleccionadoFiltro} onChange={(e) => {setProyectoSeleccionadoFiltro(e.target.value); setCurrentPage(1);}} className="p-2 bg-white border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 outline-none focus:ring-2 focus:ring-purple-500/20">
-                             <option value="todos">📋 Todos los Proyectos</option>
-                             {proyectosUnicos.map(p => <option key={p} value={p}>🎯 {p}</option>)}
-                         </select>
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
+                  
+                  {/* 🚀 CANDADO MODO ASESOR: Oculta el formulario si es lectura */}
+                  <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    {rolUsuario !== 'LECTURA' ? (
+                        <div>
+                          <div className="flex flex-col gap-3 mb-6">
+                            <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
+                            <div className="grid grid-cols-2 gap-2 w-full">
+                              <input type="file" accept="image/*,.pdf" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
+                              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                                {isScanning ? "⏳ Leyendo..." : "📸 Factura OCR"}
+                              </button>
 
-                         <div className="flex bg-white rounded-lg border border-purple-200 overflow-hidden">
-                             <button onClick={() => {setSubFiltroProyecto('all'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition ${subFiltroProyecto === 'all' ? 'bg-purple-100 text-purple-800' : 'text-slate-500 hover:bg-slate-50'}`}>Balance Completo</button>
-                             <button onClick={() => {setSubFiltroProyecto('ingresos'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition border-l border-r border-purple-100 ${subFiltroProyecto === 'ingresos' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-50'}`}>Solo Ingresos</button>
-                             <button onClick={() => {setSubFiltroProyecto('gastos'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition ${subFiltroProyecto === 'gastos' ? 'bg-rose-50 text-rose-700' : 'text-slate-500 hover:bg-slate-50'}`}>Solo Gastos</button>
-                         </div>
-                     </div>
-                  )}
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100 text-left whitespace-nowrap">
-                  <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-20">
-                    <tr>
-                      <th className="px-4 md:px-6 py-3">Fecha</th>
-                      <th className="px-4 md:px-6 py-3">Categoría / Doc</th>
-                      <th className="px-4 md:px-6 py-3">Base Imponible</th>
-                      <th className="px-4 md:px-6 py-3">Impuestos</th>
-                      <th className="px-4 md:px-6 py-3">Total Final</th>
-                      {/* 🚀 CANDADO MODO ASESOR: Oculta la columna Acciones si es lectura */}
-                      {rolUsuario !== 'LECTURA' && <th className="px-4 md:px-6 py-3 text-right">Acciones</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                    {currentItems.map((item: any, index: number) => {
-                      const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
-                      const isAbono = item.numero_factura?.startsWith('R-');
-                      const isIngreso = Number(item.total) > 0 && !isPresupuesto;
-                      const isGasto = Number(item.total) < 0 && !isPresupuesto && !isAbono;
-                      
-                      let colorText = isPresupuesto ? 'text-amber-600' : (isAbono || isGasto ? 'text-rose-600' : 'text-emerald-600');
-                      let bgBadge = isPresupuesto ? 'bg-amber-100 text-amber-700' : (isAbono ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600');
-                      let tagLabel = isPresupuesto ? 'PRESUPUESTO' : (isAbono ? 'ABONO' : (item.categoria || 'General'));
-
-                      const baseNum = Math.abs(Number(item.total));
-                      const ivaPorcentaje = Number(item.iva) || 0;
-                      const cuotaIva = baseNum * (ivaPorcentaje / 100);
-                      const totalFinal = baseNum + cuotaIva;
-                      const signoVisual = isPresupuesto ? '+' : (isGasto || isAbono ? '-' : '+');
-
-                      const tagProyectoMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
-                      const proyectoEtiqueta = tagProyectoMatch ? tagProyectoMatch[1] : null;
-                      
-                      let estadoLabelDB = item.estado_pago || 'PAGADO';
-                      const estadoFinal = estadoLabelDB === 'PENDIENTE' ? 'PENDIENTE' : (isIngreso ? 'COBRADO' : 'PAGADO');
-                      const estadoColor = estadoFinal === 'PENDIENTE' ? 'text-amber-600 bg-amber-50 border-amber-200' : 
-                                        (estadoFinal === 'COBRADO' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-blue-600 bg-blue-50 border-blue-200');
-
-                      if (editingId === item.id) {
-                        return (
-                          <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
-                            <td className="px-4 py-2">
-                               <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none" />
-                            </td>
-                            <td className="px-4 py-2 flex gap-1">
-                               <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1">
-                                 {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
-                               </select>
-                               <select value={editFormData.estado_pago} onChange={(e) => setEditFormData({...editFormData, estado_pago: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1 font-bold">
-                                  <option value={editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}>{editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}</option>
-                                  <option value="PENDIENTE">PENDIENTE</option>
-                               </select>
-                            </td>
-                            <td className="px-4 py-2">
-                               <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className="w-full w-24 p-1.5 border border-blue-300 rounded text-xs outline-none" />
-                            </td>
-                            <td className="px-4 py-2">
-                               <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
-                                  <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                               </select>
-                            </td>
-                            <td className="px-4 py-2 text-slate-400 text-xs italic">Auto</td>
-                            <td className="px-4 py-2 text-right space-x-2">
-                               <button onClick={() => guardarEdicion(item.id)} className="text-emerald-600 font-bold text-xs hover:underline">Guardar</button>
-                               <button onClick={() => setEditingId(null)} className="text-slate-500 font-bold text-xs hover:underline">Cancelar</button>
-                            </td>
-                          </tr>
-                        );
-                      }
-
-                      return (
-                        <tr key={`view-${item.id || index}`} className="hover:bg-slate-50/80 transition">
-                          <td className="px-4 md:px-6 py-3.5 text-slate-600">{item.name}</td>
-                          <td className="px-4 md:px-6 py-3.5 flex flex-col gap-1 items-start">
-                            <div className="flex items-center gap-1">
-                                <span className={`${bgBadge} px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border border-white/20`}>
-                                   {tagLabel}
-                                </span>
-                                {proyectoEtiqueta && (
-                                    <span className="text-[9px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200" title="Asignado a Proyecto">
-                                        🎯 {proyectoEtiqueta}
-                                    </span>
-                                )}
+                              <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputCsvRef} onChange={manejarImportarCSV} />
+                              <button type="button" onClick={() => fileInputCsvRef.current?.click()} disabled={isImporting} className="justify-center text-[10px] font-bold bg-slate-50 text-slate-600 px-3 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                                {isImporting ? "⏳ Cargando..." : "📊 Banco (CSV)"}
+                              </button>
                             </div>
                             
-                            {(item.numero_factura || item.cif) && (
-                                <span className="text-[10px] font-bold text-slate-400">{item.cif ? `${item.cif} | ` : ''}{item.numero_factura}</span>
-                            )}
-                            <div className="flex gap-1 mt-0.5">
-                                {item.isRecurrent && (
-                                  <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center" title={`Gasto fijo: ${item.frecuencia}`}>
-                                    🔄 {item.frecuencia}
+                            {confianzaIA !== null && evidenciaIA && (
+                              <div className="mt-1 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl animate-fade-in-up">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="relative flex h-2.5 w-2.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                                   </span>
-                                )}
-                                {item.concepto_detalle && item.concepto_detalle.includes("Vehículo") && (
-                                    <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200" title="Solo 50% del IVA deducido por ley">
-                                        🚘 50%
-                                    </span>
-                                )}
-                                {item.url_archivo && (
-                                    <a href={item.url_archivo} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100 transition flex items-center" title="Ver documento adjunto">
-                                        📎 Doc
-                                    </a>
-                                )}
+                                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">
+                                    Auditoría IA: Confianza {confianzaIA}%
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-emerald-600 font-medium italic">
+                                  "{evidenciaIA}"
+                                </p>
+                              </div>
+                            )}
+
+                            {urlArchivoTemporal && (
+                              <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-bold animate-fade-in-up">
+                                <span>📎 {nombreArchivoTemporal || 'Documento adjunto'} listo para guardar</span>
+                                <button type="button" onClick={() => {setUrlArchivoTemporal(null); setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);}} className="ml-auto text-rose-500 hover:text-rose-700">✖</button>
+                              </div>
+                            )}
+                          </div>
+
+                          <form onSubmit={guardarDato} className="space-y-4">
+                            <div className="grid grid-cols-3 gap-3 mb-2 bg-slate-100 p-1.5 rounded-2xl">
+                              <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
+                              <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
+                              <button type="button" onClick={() => setTipoTransaccion('proyecto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
                             </div>
-                          </td>
-                          
-                          <td className="px-4 md:px-6 py-3.5 font-bold text-slate-700">
-                             {baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                          </td>
-                          <td className="px-4 md:px-6 py-3.5">
-                             <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200 block w-fit">
-                                {ivaPorcentaje === 0 ? "Exento" : `+${cuotaIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} € (${ivaPorcentaje}%)`}
-                             </span>
-                          </td>
-                          <td className={`px-4 md:px-6 py-3.5 font-black text-base ${colorText}`}>
-                             {signoVisual}{totalFinal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                          </td>
 
-                          {/* 🚀 CANDADO MODO ASESOR: Oculta los botones de edición si es lectura */}
-                          {rolUsuario !== 'LECTURA' && (
-                              <td className="px-4 md:px-6 py-3.5 text-right flex justify-end gap-2 items-center">
-                                {!isPresupuesto && !isAbono && (
-                                    <button onClick={() => marcarComoPagado(item.id)} className={`text-[9px] font-black px-2 py-1 rounded border ${estadoColor} hover:opacity-70 transition`} title="Cambiar estado de pago (Clic para alternar)">
-                                        {estadoFinal}
-                                    </button>
-                                )}
-                                {!isPresupuesto && !isAbono && (
-                                    <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar manual">
-                                      <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                    </button>
-                                )}
-                                <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar registro">
-                                  <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
-                              </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                    {datosTablaFiltrados.length === 0 && (
-                      <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">No se encontraron registros para esta búsqueda o filtro.</td></tr>
+                            {tipoTransaccion !== 'proyecto' ? (
+                              <>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                    <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
+                                    <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                    </div>
+                                    <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
+                                    <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        <option value="21">21% (General)</option>
+                                        <option value="10">10% (Reducido)</option>
+                                        <option value="4">4% (Superreducido)</option>
+                                        <option value="0">0% (Exento)</option>
+                                    </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
+                                  <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                    {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">NIF/CIF Emisor (Opcional)</label>
+                                      <input type="text" placeholder="Ej: B12345678" value={cifEmisor} onChange={(e) => setCifEmisor(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nº Factura (Opcional)</label>
+                                      <input type="text" placeholder="Ej: F-2026-104" value={numFactura} onChange={(e) => setNumFactura(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
+                                      <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta Proyecto</label>
+                                      <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                    </div>
+                                </div>
+
+                                <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex justify-between items-center mt-2 shadow-sm">
+                                   <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Total Operación (Con IVA)</span>
+                                   <span className="text-sm font-black text-blue-600">
+                                       {currentTotal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                                   </span>
+                                </div>
+                                
+                                <div className="flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                    <div className="flex justify-between items-center">
+                                       <label className="text-[10px] font-black text-slate-600 uppercase">Estado Financiero</label>
+                                       <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                          {/* 🚀 BOTÓN DINÁMICO AUTO-CORRECTOR */}
+                                          <button type="button" onClick={() => setEstadoPago(tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
+                                              {tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO'}
+                                          </button>
+                                          <button type="button" onClick={() => setEstadoPago('PENDIENTE')} className={`px-3 py-1.5 text-[10px] font-bold transition border-l border-slate-200 ${estadoPago === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                              PENDIENTE
+                                          </button>
+                                       </div>
+                                    </div>
+                                    
+                                    {tipoTransaccion === 'gasto' && (
+                                        <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                                            <input type="checkbox" id="vehiculo" checked={isVehiculo} onChange={(e) => setIsVehiculo(e.target.checked)} className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" />
+                                            <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
+                                                🚘 Gasto Vehículo (Deducir 50% IVA)
+                                            </label>
+                                        </div>
+                                    )}
+                                </div>
+
+                              </>
+                            ) : (
+                              <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
+                                 <div>
+                                    <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">Nombre del Proyecto / Evento *</label>
+                                    <input type="text" placeholder="Ej: Boda Madrid o Mantenimiento Web" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-2.5 bg-white border border-purple-200 text-slate-900 rounded-lg text-sm font-black outline-none focus:ring-2 focus:ring-purple-500/30 shadow-sm" />
+                                 </div>
+                                 
+                                 <div>
+                                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
+                                     <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 text-slate-900 rounded-lg text-xs font-bold outline-none" />
+                                 </div>
+
+                                 <div className="border-t border-emerald-100 pt-3 mt-2">
+                                     <div className="flex justify-between items-center mb-3">
+                                        <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Ingresos Asociados (Ventas, Propinas...)</span>
+                                        <button type="button" onClick={() => setProyectoIngresos([...proyectoIngresos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasIngreso[0] || "Ventas", iva: "21" }])} className="text-[9px] font-bold bg-white text-emerald-600 px-2 py-1.5 rounded-md border border-emerald-200 shadow-sm hover:bg-emerald-50">+ Ingreso</button>
+                                     </div>
+                                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {proyectoIngresos.map((ing, idx) => (
+                                           <div key={ing.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-emerald-100 items-end">
+                                              <div className="w-full sm:flex-1">
+                                                 <input type="text" placeholder="Ej: Servicio principal" value={ing.concepto} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, concepto: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
+                                              </div>
+                                              <div className="w-full sm:w-20">
+                                                 <input type="text" inputMode="decimal" placeholder="€ Valor" value={ing.importe} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, importe: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-emerald-600 text-xs font-bold outline-none bg-transparent" />
+                                              </div>
+                                              <div className="w-full sm:w-16">
+                                                 <select value={ing.iva} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, iva: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                    <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                                 </select>
+                                              </div>
+                                              <div className="w-full sm:w-24">
+                                                 <select value={ing.categoria} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, categoria: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                    {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
+                                                 </select>
+                                              </div>
+                                              <button type="button" onClick={() => setProyectoIngresos(proyectoIngresos.filter(pi => pi.id !== ing.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                           </div>
+                                        ))}
+                                     </div>
+                                 </div>
+
+                                 <div className="border-t border-rose-100 pt-3 mt-2">
+                                     <div className="flex justify-between items-center mb-3">
+                                        <span className="text-[10px] font-black text-rose-700 uppercase tracking-widest">Gastos Asociados (Compras, Nóminas...)</span>
+                                        <button type="button" onClick={() => setProyectoGastos([...proyectoGastos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }])} className="text-[9px] font-bold bg-white text-rose-600 px-2 py-1.5 rounded-md border border-rose-200 shadow-sm hover:bg-rose-50">+ Coste</button>
+                                     </div>
+                                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {proyectoGastos.map((g, idx) => (
+                                           <div key={g.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-slate-200 items-end">
+                                              <div className="w-full sm:flex-1">
+                                                 <input type="text" placeholder="Ej: Alquiler furgoneta" value={g.concepto} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, concepto: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
+                                              </div>
+                                              <div className="w-full sm:w-20">
+                                                 <input type="text" inputMode="decimal" placeholder="€ Coste" value={g.importe} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, importe: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-rose-600 text-xs font-bold outline-none bg-transparent" />
+                                              </div>
+                                              <div className="w-full sm:w-16">
+                                                 <select value={g.iva} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, iva: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                    <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                                 </select>
+                                              </div>
+                                              <div className="w-full sm:w-24">
+                                                 <select value={g.categoria} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, categoria: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                    {categoriasGasto.map(c => <option key={c} value={c}>{c}</option>)}
+                                                 </select>
+                                              </div>
+                                              <button type="button" onClick={() => setProyectoGastos(proyectoGastos.filter(pg => pg.id !== g.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                           </div>
+                                        ))}
+                                     </div>
+                                 </div>
+                                 
+                                 <div className="bg-purple-100/50 p-4 rounded-xl border border-purple-200 flex justify-between items-center mt-2 shadow-sm">
+                                     <div>
+                                         <span className="text-[10px] font-black text-purple-900 uppercase block">Beneficio Limpio Esperado</span>
+                                         <span className="text-[9px] text-purple-600 font-medium">Ingresos - Gastos asignados</span>
+                                     </div>
+                                     <div className="text-right">
+                                         <span className={`text-xl font-black ${proyMargen >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                             {proyMargen >= 0 ? '+' : ''}{proyMargen.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                                         </span>
+                                         <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded border ${proyMargen >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
+                                             {proyMargenPorcentaje.toFixed(1)}%
+                                         </span>
+                                     </div>
+                                 </div>
+                              </div>
+                            )}
+
+                            <button type="submit" disabled={isSaving} className={`w-full text-white font-bold py-3 rounded-xl disabled:opacity-50 mt-2 transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/30' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                                {isSaving ? "Procesando..." : tipoTransaccion === 'proyecto' ? "Guardar Proyecto Completo" : "Asignar Movimiento"}
+                            </button>
+                          </form>
+                        </div>
+                    ) : (
+                        <div className="p-6 bg-indigo-50/50 rounded-2xl border border-indigo-100 flex flex-col items-center justify-center text-center h-full min-h-[300px]">
+                            <span className="text-5xl mb-4 animate-bounce">🛡️</span>
+                            <h3 className="text-lg font-black text-indigo-900 mb-2">Candado de Seguridad Activo</h3>
+                            <p className="text-sm text-indigo-700 font-medium max-w-sm mb-6">
+                                El propietario ha bloqueado la edición de datos. Solo puedes generar reportes y descargar libros contables.
+                            </p>
+                            <button onClick={exportarAExcel} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-500 transition shadow-lg shadow-indigo-600/20">
+                                ↓ Descargar Libro Mayor (.csv)
+                            </button>
+                        </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
-              
-              {totalPages > 1 && (
-                <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-                   <button 
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
-                      disabled={currentPage === 1}
-                      className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition"
-                   >
-                      Anterior
-                   </button>
-                   <span className="text-xs font-semibold text-slate-500">
-                      Página <span className="font-black text-slate-700">{currentPage}</span> de {totalPages}
-                   </span>
-                   <button 
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
-                      disabled={currentPage === totalPages}
-                      className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition"
-                   >
-                      Siguiente
-                   </button>
-                </div>
-              )}
-            </div>
+                  </div>
 
+                  <div className="xl:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
+                    <div className="flex justify-between items-center mb-1">
+                      <h3 className="text-md font-bold text-slate-900">Balance Visual del Periodo</h3>
+                      {chartFilter && (
+                         <button onClick={() => setChartFilter(null)} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded-md transition border border-slate-200">
+                            Mostrando: {chartFilter} (Quitar filtro ✖)
+                         </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-medium mb-4">Gráficas libres de presupuestos (solo ingresos y gastos reales).</p>
+                    <div className="flex-1 min-h-[220px]">
+                      {isMounted && chartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} onClick={(state) => {
+                             if (state && state.activeLabel) {
+                                setChartFilter(state.activeLabel);
+                                setCurrentPage(1); 
+                             }
+                          }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
+                            <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} width={40} />
+                            
+                            <Tooltip 
+                               formatter={(value: any) => [`${Number(value).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`, undefined]}
+                               cursor={{fill: '#f1f5f9'}} 
+                               isAnimationActive={false}
+                               contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                               labelStyle={{ color: '#0f172a', fontWeight: '900', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px', fontSize: '14px' }}
+                            />
+
+                            <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }} />
+                            <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
+                            <Bar dataKey="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} className="cursor-pointer hover:opacity-80 transition-opacity" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-slate-400 text-xs font-bold">Sin datos para graficar en este periodo</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
+                  <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
+                    <div className="flex items-center gap-3">
+                       <h3 className="text-md font-bold text-slate-900">Libro Mayor Integrado</h3>
+                       <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black px-2 py-0.5 rounded-full">{datosTablaFiltrados.length} registros</span>
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
+                       <input 
+                          type="text" 
+                          placeholder="🔍 Buscar categoría, número, importe o NIF..." 
+                          value={searchTerm}
+                          onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
+                          className="w-full sm:flex-1 sm:w-80 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900"
+                       />
+                       <div className="flex gap-2 w-full sm:w-auto">
+                           <button onClick={exportarAExcel} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-slate-50 text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100 border border-slate-200 shadow-sm transition whitespace-nowrap">
+                             ↓ CSV
+                           </button>
+                           {isMounted && (
+                               <PDFDownloadLink 
+                                   document={<LibroMayorPDF datos={datosTablaFiltrados} empresaId={empresaId} filtro={etiquetasFiltro[filtro] || 'Todas las Fechas'} />} 
+                                   fileName={`LibroMayor_${nombreEmpresaVisual.replace(/\s+/g, '')}_${filtroDoc}.pdf`}
+                               >
+                                   {/* @ts-ignore */}
+                                   {({ loading }) => (
+                                       <button disabled={loading} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 border border-blue-200 shadow-sm transition whitespace-nowrap disabled:opacity-50">
+                                           {loading ? '⏳...' : '📄 PDF'}
+                                       </button>
+                                   )}
+                               </PDFDownloadLink>
+                           )}
+                       </div>
+                    </div>
+                  </div>
+                  
+                  <div className="px-4 md:px-6 pt-4 pb-2 bg-slate-50/50 border-b border-slate-100 flex flex-col">
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                         <button onClick={() => {setFiltroDoc('all'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas las Op.</button>
+                         <button onClick={() => {setFiltroDoc('ingresos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'ingresos' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>Ingresos Reales</button>
+                         <button onClick={() => {setFiltroDoc('gastos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'gastos' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Gastos / Compras</button>
+                         <button onClick={() => {setFiltroDoc('pendientes'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'pendientes' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>⏳ Pendientes</button>
+                         
+                         <button onClick={() => {setFiltroDoc('proyectos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'proyectos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>🎯 Modo Proyectos</button>
+                         <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Presupuestos</button>
+                      </div>
+
+                      {filtroDoc === 'proyectos' && (
+                         <div className="flex flex-col sm:flex-row gap-3 mt-3 p-3 bg-purple-50/50 border border-purple-100 rounded-xl animate-fade-in-up">
+                             <select value={proyectoSeleccionadoFiltro} onChange={(e) => {setProyectoSeleccionadoFiltro(e.target.value); setCurrentPage(1);}} className="p-2 bg-white border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 outline-none focus:ring-2 focus:ring-purple-500/20">
+                                 <option value="todos">📋 Todos los Proyectos</option>
+                                 {proyectosUnicos.map(p => <option key={p} value={p}>🎯 {p}</option>)}
+                             </select>
+
+                             <div className="flex bg-white rounded-lg border border-purple-200 overflow-hidden">
+                                 <button onClick={() => {setSubFiltroProyecto('all'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition ${subFiltroProyecto === 'all' ? 'bg-purple-100 text-purple-800' : 'text-slate-500 hover:bg-slate-50'}`}>Balance Completo</button>
+                                 <button onClick={() => {setSubFiltroProyecto('ingresos'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition border-l border-r border-purple-100 ${subFiltroProyecto === 'ingresos' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-50'}`}>Solo Ingresos</button>
+                                 <button onClick={() => {setSubFiltroProyecto('gastos'); setCurrentPage(1);}} className={`px-4 py-2 text-[10px] font-bold transition ${subFiltroProyecto === 'gastos' ? 'bg-rose-50 text-rose-700' : 'text-slate-500 hover:bg-slate-50'}`}>Solo Gastos</button>
+                             </div>
+                         </div>
+                      )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-100 text-left whitespace-nowrap">
+                      <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-20">
+                        <tr>
+                          <th className="px-4 md:px-6 py-3">Fecha</th>
+                          <th className="px-4 md:px-6 py-3">Categoría / Doc</th>
+                          <th className="px-4 md:px-6 py-3">Base Imponible</th>
+                          <th className="px-4 md:px-6 py-3">Impuestos</th>
+                          <th className="px-4 md:px-6 py-3">Total Final</th>
+                          {/* 🚀 CANDADO MODO ASESOR: Oculta la columna Acciones si es lectura */}
+                          {rolUsuario !== 'LECTURA' && <th className="px-4 md:px-6 py-3 text-right">Acciones</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
+                        {currentItems.map((item: any, index: number) => {
+                          const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
+                          const isAbono = item.numero_factura?.startsWith('R-');
+                          const isIngreso = Number(item.total) > 0 && !isPresupuesto;
+                          const isGasto = Number(item.total) < 0 && !isPresupuesto && !isAbono;
+                          
+                          let colorText = isPresupuesto ? 'text-amber-600' : (isAbono || isGasto ? 'text-rose-600' : 'text-emerald-600');
+                          let bgBadge = isPresupuesto ? 'bg-amber-100 text-amber-700' : (isAbono ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600');
+                          let tagLabel = isPresupuesto ? 'PRESUPUESTO' : (isAbono ? 'ABONO' : (item.categoria || 'General'));
+
+                          const baseNum = Math.abs(Number(item.total));
+                          const ivaPorcentaje = Number(item.iva) || 0;
+                          const cuotaIva = baseNum * (ivaPorcentaje / 100);
+                          const totalFinal = baseNum + cuotaIva;
+                          const signoVisual = isPresupuesto ? '+' : (isGasto || isAbono ? '-' : '+');
+
+                          const tagProyectoMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
+                          const proyectoEtiqueta = tagProyectoMatch ? tagProyectoMatch[1] : null;
+                          
+                          let estadoLabelDB = item.estado_pago || 'PAGADO';
+                          const estadoFinal = estadoLabelDB === 'PENDIENTE' ? 'PENDIENTE' : (isIngreso ? 'COBRADO' : 'PAGADO');
+                          const estadoColor = estadoFinal === 'PENDIENTE' ? 'text-amber-600 bg-amber-50 border-amber-200' : 
+                                            (estadoFinal === 'COBRADO' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-blue-600 bg-blue-50 border-blue-200');
+
+                          if (editingId === item.id) {
+                            return (
+                              <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
+                                <td className="px-4 py-2">
+                                   <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none" />
+                                </td>
+                                <td className="px-4 py-2 flex gap-1">
+                                   <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1">
+                                     {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
+                                   </select>
+                                   <select value={editFormData.estado_pago} onChange={(e) => setEditFormData({...editFormData, estado_pago: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1 font-bold">
+                                      <option value={editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}>{editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}</option>
+                                      <option value="PENDIENTE">PENDIENTE</option>
+                                   </select>
+                                </td>
+                                <td className="px-4 py-2">
+                                   <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className="w-full w-24 p-1.5 border border-blue-300 rounded text-xs outline-none" />
+                                </td>
+                                <td className="px-4 py-2">
+                                   <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
+                                      <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                   </select>
+                                </td>
+                                <td className="px-4 py-2 text-slate-400 text-xs italic">Auto</td>
+                                <td className="px-4 py-2 text-right space-x-2">
+                                   <button onClick={() => guardarEdicion(item.id)} className="text-emerald-600 font-bold text-xs hover:underline">Guardar</button>
+                                   <button onClick={() => setEditingId(null)} className="text-slate-500 font-bold text-xs hover:underline">Cancelar</button>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return (
+                            <tr key={`view-${item.id || index}`} className="hover:bg-slate-50/80 transition">
+                              <td className="px-4 md:px-6 py-3.5 text-slate-600">{item.name}</td>
+                              <td className="px-4 md:px-6 py-3.5 flex flex-col gap-1 items-start">
+                                <div className="flex items-center gap-1">
+                                    <span className={`${bgBadge} px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border border-white/20`}>
+                                       {tagLabel}
+                                    </span>
+                                    {proyectoEtiqueta && (
+                                        <span className="text-[9px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200" title="Asignado a Proyecto">
+                                            🎯 {proyectoEtiqueta}
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                {(item.numero_factura || item.cif) && (
+                                    <span className="text-[10px] font-bold text-slate-400">{item.cif ? `${item.cif} | ` : ''}{item.numero_factura}</span>
+                                )}
+                                <div className="flex gap-1 mt-0.5">
+                                    {item.isRecurrent && (
+                                      <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center" title={`Gasto fijo: ${item.frecuencia}`}>
+                                        🔄 {item.frecuencia}
+                                      </span>
+                                    )}
+                                    {item.concepto_detalle && item.concepto_detalle.includes("Vehículo") && (
+                                        <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200" title="Solo 50% del IVA deducido por ley">
+                                            🚘 50%
+                                        </span>
+                                    )}
+                                    {item.url_archivo && (
+                                        <a href={item.url_archivo} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 hover:bg-blue-100 transition flex items-center" title="Ver documento adjunto">
+                                            📎 Doc
+                                        </a>
+                                    )}
+                                </div>
+                              </td>
+                              
+                              <td className="px-4 md:px-6 py-3.5 font-bold text-slate-700">
+                                 {baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                              </td>
+                              <td className="px-4 md:px-6 py-3.5">
+                                 <span className="text-xs text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded border border-slate-200 block w-fit">
+                                    {ivaPorcentaje === 0 ? "Exento" : `+${cuotaIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} € (${ivaPorcentaje}%)`}
+                                 </span>
+                              </td>
+                              <td className={`px-4 md:px-6 py-3.5 font-black text-base ${colorText}`}>
+                                 {signoVisual}{totalFinal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                              </td>
+
+                              {/* 🚀 CANDADO MODO ASESOR: Oculta los botones de edición si es lectura */}
+                              {rolUsuario !== 'LECTURA' && (
+                                  <td className="px-4 md:px-6 py-3.5 text-right flex justify-end gap-2 items-center">
+                                    {!isPresupuesto && !isAbono && (
+                                        <button onClick={() => marcarComoPagado(item.id)} className={`text-[9px] font-black px-2 py-1 rounded border ${estadoColor} hover:opacity-70 transition`} title="Cambiar estado de pago (Clic para alternar)">
+                                            {estadoFinal}
+                                        </button>
+                                    )}
+                                    {!isPresupuesto && !isAbono && (
+                                        <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar manual">
+                                          <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                        </button>
+                                    )}
+                                    <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar registro">
+                                      <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                  </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                        {datosTablaFiltrados.length === 0 && (
+                          <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">No se encontraron registros para esta búsqueda o filtro.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {totalPages > 1 && (
+                    <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                       <button 
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                          disabled={currentPage === 1}
+                          className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition"
+                       >
+                          Anterior
+                       </button>
+                       <span className="text-xs font-semibold text-slate-500">
+                          Página <span className="font-black text-slate-700">{currentPage}</span> de {totalPages}
+                       </span>
+                       <button 
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                          disabled={currentPage === totalPages}
+                          className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition"
+                       >
+                          Siguiente
+                       </button>
+                    </div>
+                  )}
+                </div>
+             </>
+            )}
             <div className="h-24 md:h-10"></div>
           </main>
         </div>
@@ -1861,7 +1870,7 @@ export default function Home() {
               <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-                  <h4 className="text-sm font-bold">CFO Virtual - {empresaId}</h4>
+                  <h4 className="text-sm font-bold">CFO Virtual - {nombreEmpresaVisual}</h4>
                 </div>
                 <button onClick={() => setIsChatOpen(false)} className="text-slate-400 hover:text-white transition">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1958,7 +1967,7 @@ export default function Home() {
 
                         {listaAsesores.length > 0 && (
                             <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
-                                <h4 className="text-sm font-bold text-slate-800 mb-3">Asesores con Acceso a {empresaId}</h4>
+                                <h4 className="text-sm font-bold text-slate-800 mb-3">Asesores con Acceso a {nombreEmpresaVisual}</h4>
                                 <div className="space-y-2 max-h-48 overflow-y-auto">
                                     {listaAsesores.map((asesor) => (
                                         <div key={asesor.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
@@ -1984,7 +1993,7 @@ export default function Home() {
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
-                  <h3 className="text-lg font-black text-slate-900">Ajustes: {empresaId}</h3>
+                  <h3 className="text-lg font-black text-slate-900">Ajustes: {nombreEmpresaVisual}</h3>
                   <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-rose-500 transition">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
@@ -1992,7 +2001,6 @@ export default function Home() {
                 
                 <div className="p-6 overflow-y-auto bg-white flex flex-col lg:flex-row gap-6">
                   
-                  {/* Columna Izquierda: Perfil y Categorías */}
                   <div className="flex-1 space-y-6">
                       <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
                           <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
@@ -2025,7 +2033,6 @@ export default function Home() {
                       </div>
                   </div>
 
-                  {/* Columna Derecha: Datos Fiscales y Papelera */}
                   <div className="flex-1 space-y-6">
                       <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl">
                           <h4 className="text-sm font-bold text-purple-800 mb-1">Datos de Facturación Fiscal</h4>
