@@ -9,7 +9,8 @@ import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 import { Toaster, toast } from 'sonner';
 
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA } from './actions';
+// 🚀 FIX: Importamos actualizarEstadoPago
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago } from './actions';
 
 Font.register({
   family: 'Roboto',
@@ -95,7 +96,6 @@ export default function Home() {
   const { isSignedIn, isLoaded, user } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   
   const [data, setData] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
@@ -457,6 +457,10 @@ export default function Home() {
   }).filter(Boolean))) as string[];
 
   const facturasPendientes = datosFinancieros.filter(d => d.estado_pago === 'PENDIENTE');
+  
+  // 🚀 B2B: Cálculo avanzado del dinero total bloqueado en tesorería
+  const cobrosPendientesTotal = facturasPendientes.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0);
+  const pagosPendientesTotal = facturasPendientes.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0);
 
   let datosTablaFiltrados = datosTabla.filter(item => {
     if (chartFilter) {
@@ -536,7 +540,7 @@ export default function Home() {
     if (datosFinancieros.length === 0) return alertas;
 
     if (facturasPendientes.length > 0) {
-      alertas.push({ tipo: 'critico', titulo: '💸 Alerta de Tesorería', texto: `Tienes ${facturasPendientes.length} facturas pendientes de cobro o pago. Evita recargos.` });
+      alertas.push({ tipo: 'critico', titulo: '💸 Alerta de Tesorería', texto: `Tienes ${facturasPendientes.length} facturas pendientes de cobro o pago. Revisa el módulo superior.` });
     }
 
     if (beneficioNeto < 0) {
@@ -563,7 +567,6 @@ export default function Home() {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
     setData([]);
-    setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
     
     obtenerDatosSupabase(empresaId).then(d => {
       if (d && d.length > 0) setData(d);
@@ -766,7 +769,6 @@ export default function Home() {
         
         setConfianzaIA(null); setEvidenciaIA(null); setUrlArchivoTemporal(null);
         setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);
-        setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
         
         toast.success("Movimiento Guardado", { description: "La transacción se ha registrado en el Libro Mayor." });
       } else {
@@ -844,6 +846,7 @@ export default function Home() {
     }
   };
 
+  // 🚀 FIX: ACTUALIZACIÓN RÁPIDA DE TESORERÍA BLINDADA
   const marcarComoPagado = async (id: any) => {
       try {
           const transaccion = data.find(d => d.id === id);
@@ -851,18 +854,18 @@ export default function Home() {
           
           const nuevoEstado = Number(transaccion.total) > 0 ? 'COBRADO' : 'PAGADO';
           
-          const res = await editarDatoSupabase({
-              id: id,
-              estado_pago: nuevoEstado
-          });
+          // Llamamos directamente a la función ligera de cambio de estado
+          const res = await actualizarEstadoPago(Number(id), nuevoEstado);
           
           if (res.success) {
               const actualizadosBD = await obtenerDatosSupabase(empresaId);
               setData(actualizadosBD);
-              toast.success("Tesorería Actualizada", { description: `El documento se ha marcado como ${nuevoEstado}.` });
+              toast.success("✅ Tesorería Actualizada", { description: `El documento se ha marcado como ${nuevoEstado} exitosamente.` });
+          } else {
+              toast.error("Error", { description: res.error || "No se pudo actualizar el estado de pago." });
           }
       } catch (error) {
-          toast.error("Error", { description: "No se pudo actualizar el estado de pago." });
+          toast.error("Error", { description: "Fallo de conexión con el servidor." });
       }
   };
 
@@ -1110,15 +1113,26 @@ export default function Home() {
               </div>
             </header>
 
-            {/* 🚀 B2B: MÓDULO DE TESORERÍA (Facturas Pendientes) */}
+            {/* 🚀 B2B: MÓDULO DE TESORERÍA CON VALOR AÑADIDO (Facturas Pendientes) */}
             {facturasPendientes.length > 0 && (
                 <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
                         <div className="flex items-center gap-3">
                             <span className="text-xl bg-amber-100 p-2 rounded-xl">⚠️</span>
                             <div>
                                 <h3 className="text-sm font-black text-amber-900 uppercase tracking-widest">Tesorería en Alerta</h3>
-                                <p className="text-xs font-medium text-amber-700 mt-0.5">Tienes {facturasPendientes.length} facturas pendientes de cobro o pago en este periodo.</p>
+                                <p className="text-xs font-medium text-amber-700 mt-0.5">Tienes {facturasPendientes.length} facturas pendientes de cobro o pago.</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-4 bg-white px-4 py-2 rounded-xl border border-amber-100 shadow-sm">
+                            <div className="text-right">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Cobrar</p>
+                                <p className="text-sm font-black text-emerald-600">+{cobrosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
+                            </div>
+                            <div className="w-px bg-amber-100"></div>
+                            <div className="text-right">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar</p>
+                                <p className="text-sm font-black text-rose-600">-{pagosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
                             </div>
                         </div>
                     </div>
@@ -1138,9 +1152,23 @@ export default function Home() {
                                 {facturasPendientes.map((item) => {
                                     const totalConIva = Math.abs(Number(item.total)) * (1 + (Number(item.iva)||0)/100);
                                     const esGasto = Number(item.total) < 0;
+                                    
+                                    // Cálculo de días de retraso
+                                    const [d, m, y] = item.name.split('/');
+                                    const fechaDoc = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+                                    const diasPasados = Math.floor((new Date().getTime() - fechaDoc) / (1000 * 60 * 60 * 24));
+                                    const riesgoAlto = diasPasados > 30;
+
                                     return (
                                         <tr key={item.id} className="hover:bg-amber-50/30 transition">
-                                            <td className="px-4 py-3">{item.name}</td>
+                                            <td className="px-4 py-3">
+                                                <span className="block">{item.name}</span>
+                                                {riesgoAlto && (
+                                                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 mt-1 inline-block">
+                                                        🔴 +30 Días (Riesgo)
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td className="px-4 py-3">
                                                 <span className="text-xs text-slate-900 block">{item.cif || "S/N"}</span>
                                                 <span className="text-[9px] text-slate-400">{item.numero_factura}</span>
