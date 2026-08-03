@@ -10,31 +10,37 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // 🛡️ MOTOR DE SEGURIDAD B2B: IDENTIFICADOR COMPUESTO
-// Esto separa los datos del gestor de los del cliente definitivamente.
 async function getContextoSeguro(empresaIdRaw?: string) {
     const { userId } = await auth();
     const user = await currentUser();
     if (!userId || !user) throw new Error("No autenticado");
 
     const miEmail = user.primaryEmailAddress?.emailAddress;
-    let realEmpresaId = empresaIdRaw || "General";
+    let realEmpresaId = empresaIdRaw || "Mi Empresa Principal";
     let targetUserId = userId;
     let rol = "PROPIETARIO";
 
-    // Si el ID viene en formato compuesto (Modo Asesor): "CLIENTE|idDelPropietario|NombreEmpresa"
+    // Si es un Asesor entrando al espacio de un cliente
     if (empresaIdRaw && empresaIdRaw.startsWith("CLIENTE|")) {
         const parts = empresaIdRaw.split('|');
-        targetUserId = parts[1];
-        realEmpresaId = parts[2];
-        rol = "NINGUNO";
+        if (parts.length === 3) {
+            targetUserId = parts[1];
+            realEmpresaId = parts[2] || "Mi Empresa Principal";
+            rol = "NINGUNO";
 
-        if (miEmail) {
-            const permiso = await prisma.permisoEmpresa.findFirst({
-                where: { empresaId: realEmpresaId, propietarioId: targetUserId, asesorEmail: miEmail }
-            });
-            if (permiso) {
-                rol = permiso.rol; // "LECTURA"
+            if (miEmail) {
+                const permiso = await prisma.permisoEmpresa.findFirst({
+                    where: { empresaId: realEmpresaId, propietarioId: targetUserId, asesorEmail: miEmail }
+                });
+                if (permiso) {
+                    rol = permiso.rol; // "LECTURA"
+                }
             }
+        }
+    } else {
+        // Verificación extra por si la empresa se guardó como "undefined"
+        if (realEmpresaId === "undefined" || realEmpresaId.includes("CLIENTE_undefined")) {
+            realEmpresaId = "Mi Empresa Principal";
         }
     }
 
@@ -52,17 +58,16 @@ export async function obtenerDatosSupabase(empresaIdRaw?: string) {
       // Si es un gestor sin permiso real, lo echamos.
       if (ctx.rol === "NINGUNO") return [];
 
-      // 🌟 AUTO-RESCATE B2B: Recupera cualquier factura desvinculada y corrige errores de colisión.
-      // SOLO SE EJECUTA SI ERES EL DUEÑO REAL DE LA EMPRESA.
+      // 🌟 AUTO-RESCATE B2B CORREGIDO (Sin error Type 'null')
       if (ctx.rol === "PROPIETARIO") {
-          // 1. Corrige facturas que por error tomaron el nombre "CLIENTE_..."
           await prisma.transaccion.updateMany({
-              where: { userId: ctx.userId, empresaId: { startsWith: 'CLIENTE' } },
-              data: { empresaId: ctx.realEmpresaId }
-          });
-          // 2. Rescata facturas que se hayan quedado huérfanas en "General" o Null
-          await prisma.transaccion.updateMany({
-              where: { userId: ctx.userId, OR: [{ empresaId: null }, { empresaId: "General" }] },
+              where: { 
+                  userId: ctx.userId, 
+                  OR: [
+                      { empresaId: { in: ['CLIENTE_undefined', 'undefined', 'General'] } },
+                      { empresaId: null }
+                  ]
+              },
               data: { empresaId: ctx.realEmpresaId }
           });
       }
@@ -76,7 +81,7 @@ export async function obtenerDatosSupabase(empresaIdRaw?: string) {
         id: t.id,
         name: t.fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
         total: t.tipo === 'GASTO' ? -t.baseImponible : t.baseImponible,
-        empresaId: t.empresaId || "General",
+        empresaId: t.empresaId || "Mi Empresa Principal",
         categoria: t.categoria,
         iva: t.iva || 0,
         isRecurrent: t.isRecurrent || false, 
@@ -101,13 +106,12 @@ export async function obtenerDatosSupabase(empresaIdRaw?: string) {
 }
 
 // ==========================================
-// 2. GUARDAR NUEVO DATO (BLOQUEADO PARA GESTORES)
+// 2. GUARDAR NUEVO DATO 
 // ==========================================
 export async function guardarDatoSupabase(datos: any) {
   try {
       const ctx = await getContextoSeguro(datos.empresaId);
       
-      // 🛡️ CANDADO DE TITANIO: Bloquea intentos de guardado desde cuentas de gestores
       if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") {
           return { error: "Acceso denegado: El Modo Asesor es de solo lectura." };
       }
@@ -151,7 +155,7 @@ export async function guardarDatoSupabase(datos: any) {
 }
 
 // ==========================================
-// 3. EDITAR DATO (BLOQUEADO PARA GESTORES)
+// 3. EDITAR DATO 
 // ==========================================
 export async function editarDatoSupabase(datos: any) {
   try {
@@ -190,7 +194,7 @@ export async function editarDatoSupabase(datos: any) {
 }
 
 // ==========================================
-// 4. BORRAR DATO (BLOQUEADO PARA GESTORES)
+// 4. BORRAR DATO 
 // ==========================================
 export async function borrarDatoSupabase(id: string, empresaIdRaw: string) {
   try {
@@ -207,7 +211,7 @@ export async function borrarDatoSupabase(id: string, empresaIdRaw: string) {
 }
 
 // ==========================================
-// 5. ACTUALIZAR ESTADO RÁPIDO (Morosidad - Bloqueado Gestor)
+// 5. ACTUALIZAR ESTADO RÁPIDO
 // ==========================================
 export async function actualizarEstadoPago(id: number, nuevoEstado: string, empresaIdRaw: string) {
   try {
@@ -245,16 +249,10 @@ export async function escanearFacturaIA(formData: FormData) {
     try {
         const { data: uploadData, error: uploadError } = await supabase.storage
             .from('facturas') 
-            .upload(nombreArchivoUnico, buffer, {
-                contentType: file.type,
-                upsert: false
-            });
+            .upload(nombreArchivoUnico, buffer, { contentType: file.type, upsert: false });
 
         if (!uploadError && uploadData) {
-            const { data: publicUrlData } = supabase.storage
-                .from('facturas')
-                .getPublicUrl(nombreArchivoUnico);
-            
+            const { data: publicUrlData } = supabase.storage.from('facturas').getPublicUrl(nombreArchivoUnico);
             urlArchivoSubido = publicUrlData.publicUrl;
         }
     } catch (e) {
@@ -281,22 +279,13 @@ export async function escanearFacturaIA(formData: FormData) {
       }
     `;
 
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: base64Image, mimeType: file.type } }
-    ]);
-
+    const result = await model.generateContent([ prompt, { inlineData: { data: base64Image, mimeType: file.type } } ]);
     const texto = result.response.text();
     const datosParseados = JSON.parse(texto);
     
     return { 
         success: true, 
-        data: {
-            ...datosParseados,
-            url_archivo: urlArchivoSubido,
-            nombre_archivo: file.name,
-            tipo_archivo: file.type
-        }
+        data: { ...datosParseados, url_archivo: urlArchivoSubido, nombre_archivo: file.name, tipo_archivo: file.type }
     };
   } catch (error: any) {
     return { error: error.message || "Fallo de conexión OCR" };
@@ -328,22 +317,25 @@ export async function obtenerEmpresasCliente() {
         where: { asesorEmail: miEmail }
     });
 
-    // 🚀 B2B: Retorna el ID COMPUESTO que evita las colisiones
-    return invitaciones.map(inv => ({
-        idCompleto: `CLIENTE|${inv.propietarioId}|${inv.empresaId}`,
-        nombreVisible: inv.empresaId,
-        propietarioId: inv.propietarioId
-    }));
+    return invitaciones
+        .filter(inv => inv.empresaId && inv.empresaId.trim() !== "") 
+        .map(inv => ({
+            idCompleto: `CLIENTE|${inv.propietarioId}|${inv.empresaId}`,
+            nombreVisible: inv.empresaId,
+            propietarioId: inv.propietarioId
+        }));
 }
 
 export async function invitarAsesor(empresaId: string, asesorEmail: string) {
     const { userId } = await auth();
     if (!userId) return { error: "No autorizado" };
+    
+    const realEmpresa = empresaId && empresaId.trim() !== "" ? empresaId : "Mi Empresa Principal";
 
     try {
         await prisma.permisoEmpresa.create({
             data: {
-                empresaId: empresaId,
+                empresaId: realEmpresa,
                 propietarioId: userId,
                 asesorEmail: asesorEmail.toLowerCase(),
                 rol: "LECTURA"
@@ -359,9 +351,11 @@ export async function invitarAsesor(empresaId: string, asesorEmail: string) {
 export async function obtenerAsesores(empresaId: string) {
     const { userId } = await auth();
     if (!userId) return [];
+    
+    const realEmpresa = empresaId && empresaId.trim() !== "" ? empresaId : "Mi Empresa Principal";
 
     const asesores = await prisma.permisoEmpresa.findMany({
-        where: { empresaId: empresaId, propietarioId: userId }
+        where: { empresaId: realEmpresa, propietarioId: userId }
     });
     return asesores;
 }

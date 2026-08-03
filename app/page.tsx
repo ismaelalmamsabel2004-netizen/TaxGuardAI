@@ -38,6 +38,11 @@ const pdfStyles = StyleSheet.create({
   footerText: { fontSize: 7, color: '#94a3b8' },
 });
 
+// 🚀 SOLUCIÓN B2B: Extraemos las etiquetas fuera para que el PDF las vea
+const etiquetasFiltro: Record<string, string> = {
+  all: "Histórico Completo", week: "Última Semana", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
+};
+
 const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => {
   const nombreLimpio = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
 
@@ -103,6 +108,7 @@ export default function Home() {
   const [data, setData] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]); 
+  
   const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
@@ -177,7 +183,6 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isScanning, setIsScanning] = useState(false);
   
-  // 🚀 RECUPERADOS: Variables del importador de CSV
   const fileInputCsvRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -200,11 +205,15 @@ export default function Home() {
   const currentIvaAmount = tipoTransaccion === 'gasto' && isVehiculo ? currentBase * ((currentIva/2)/100) : currentBase * (currentIva/100);
   const currentTotal = currentBase + currentIvaAmount;
 
-  const nombreEmpresaVisual = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : (empresaId || "Sin Seleccionar");
-
-  const etiquetasFiltro: Record<string, string> = {
-    all: "Histórico Completo", week: "Última Semana", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
-  };
+  // 🛡️ Limpiador visual seguro
+  let nombreEmpresaVisual = "Cargando...";
+  if (empresaId) {
+      if (empresaId.startsWith("CLIENTE|")) {
+          nombreEmpresaVisual = empresaId.split('|')[2] || "Cliente";
+      } else {
+          nombreEmpresaVisual = empresaId === "undefined" || empresaId === "CLIENTE_undefined" ? "Mi Empresa Principal" : empresaId;
+      }
+  }
 
   const gestionarSuscripcion = async () => {
     try {
@@ -251,7 +260,10 @@ export default function Home() {
 
          const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa Principal"];
          setEmpresas(listaEmpresas);
-         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         
+         let activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "Mi Empresa Principal";
+         if (activa === "undefined" || activa === "CLIENTE_undefined") activa = "Mi Empresa Principal";
+         
          setEmpresaId(activa);
 
          if (ajustesGuardados.papelera) setPapelera(ajustesGuardados.papelera);
@@ -319,7 +331,7 @@ export default function Home() {
     const lista = empresas.filter(e => e !== nombre);
     setEmpresas(lista);
     
-    const nuevaActiva = empresaId === nombre ? (lista[0] || "") : empresaId;
+    const nuevaActiva = empresaId === nombre ? (lista[0] || "Mi Empresa Principal") : empresaId;
     setEmpresaId(nuevaActiva);
 
     const res = await fetch('/api/settings');
@@ -346,9 +358,14 @@ export default function Home() {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
     setRolUsuario("LOADING");
+    setData([]);
 
     verificarRolUsuario(empresaId).then(res => {
         setRolUsuario(res.rol);
+        
+        obtenerDatosSupabase(empresaId).then(d => {
+          if (d && d.length > 0) setData(d);
+        });
     });
 
     fetch('/api/settings')
@@ -394,10 +411,6 @@ export default function Home() {
       });
 
     setChatMessages([]);
-    setData([]);
-    obtenerDatosSupabase(empresaId).then(d => {
-      if (d && d.length > 0) setData(d);
-    });
 
   }, [empresaId, planActivo]);
 
@@ -653,7 +666,6 @@ export default function Home() {
     }
   };
 
-  // 🚀 RECUPERADA: La función del banco (CSV)
   const manejarImportarCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1055,7 +1067,7 @@ export default function Home() {
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1 w-full relative">
                     <select 
-                      value={rolUsuario === 'LECTURA' ? `CLIENTE_${empresaId}` : empresaId} 
+                      value={empresaId} 
                       onChange={manejarCambioEmpresa} 
                       className="flex-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none w-full"
                       style={{ textOverflow: 'ellipsis' }}
@@ -1066,7 +1078,7 @@ export default function Home() {
                         
                         {espaciosCliente.length > 0 && (
                             <optgroup label="Clientes (Modo Asesor)">
-                                {espaciosCliente.map(c => <option key={`CLIENTE_${c.empresaId}`} value={`CLIENTE_${c.empresaId}`}>👁️ {c.empresaId}</option>)}
+                                {espaciosCliente.map(c => <option key={c.idCompleto} value={c.idCompleto}>👁️ {c.nombreVisible}</option>)}
                             </optgroup>
                         )}
                     </select>
@@ -1454,7 +1466,6 @@ export default function Home() {
                                     <div className="flex justify-between items-center">
                                        <label className="text-[10px] font-black text-slate-600 uppercase">Estado Financiero</label>
                                        <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden">
-                                          {/* 🚀 BOTÓN DINÁMICO AUTO-CORRECTOR */}
                                           <button type="button" onClick={() => setEstadoPago(tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
                                               {tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO'}
                                           </button>
@@ -1574,7 +1585,7 @@ export default function Home() {
                             <span className="text-5xl mb-4 animate-bounce">🛡️</span>
                             <h3 className="text-lg font-black text-indigo-900 mb-2">Candado de Seguridad Activo</h3>
                             <p className="text-sm text-indigo-700 font-medium max-w-sm mb-6">
-                                El propietario ha bloqueado la edición de datos. Solo puedes generar reportes y descargar libros contables.
+                                El propietario de <span className="font-black">"{nombreEmpresaVisual}"</span> ha bloqueado la edición de datos. Solo puedes generar reportes y descargar libros contables.
                             </p>
                             <button onClick={exportarAExcel} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-500 transition shadow-lg shadow-indigo-600/20">
                                 ↓ Descargar Libro Mayor (.csv)
@@ -2001,6 +2012,7 @@ export default function Home() {
                 
                 <div className="p-6 overflow-y-auto bg-white flex flex-col lg:flex-row gap-6">
                   
+                  {/* Columna Izquierda: Perfil y Categorías */}
                   <div className="flex-1 space-y-6">
                       <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
                           <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
@@ -2033,6 +2045,7 @@ export default function Home() {
                       </div>
                   </div>
 
+                  {/* Columna Derecha: Datos Fiscales y Papelera */}
                   <div className="flex-1 space-y-6">
                       <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl">
                           <h4 className="text-sm font-bold text-purple-800 mb-1">Datos de Facturación Fiscal</h4>
