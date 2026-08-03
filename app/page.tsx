@@ -9,7 +9,6 @@ import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 import { Toaster, toast } from 'sonner';
 
-// 🚀 FIX: Importamos actualizarEstadoPago
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago } from './actions';
 
 Font.register({
@@ -96,6 +95,7 @@ export default function Home() {
   const { isSignedIn, isLoaded, user } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   
   const [data, setData] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
@@ -111,7 +111,7 @@ export default function Home() {
   
   const [cifEmisor, setCifEmisor] = useState("");
   const [numFactura, setNumFactura] = useState("");
-  const [estadoPago, setEstadoPago] = useState("PAGADO");
+  const [estadoPago, setEstadoPago] = useState("COBRADO");
 
   const [proyecto, setProyecto] = useState("");
   const [proyectoIngresos, setProyectoIngresos] = useState([{ id: Date.now(), concepto: "", importe: "", categoria: "Ventas", iva: "21" }]);
@@ -458,7 +458,6 @@ export default function Home() {
 
   const facturasPendientes = datosFinancieros.filter(d => d.estado_pago === 'PENDIENTE');
   
-  // 🚀 B2B: Cálculo avanzado del dinero total bloqueado en tesorería
   const cobrosPendientesTotal = facturasPendientes.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0);
   const pagosPendientesTotal = facturasPendientes.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0);
 
@@ -690,7 +689,7 @@ export default function Home() {
 
           if (esDuplicado) {
               setIsSaving(false);
-              toast.error("🛡️ Escudo Antiduplicados", { description: "Este documento (mismo importe, fecha y emisor) ya está en tu Libro Mayor. Guardado bloqueado por seguridad." });
+              toast.error("🛡️ Escudo Antiduplicados", { description: "Este documento ya está en tu Libro Mayor. Guardado bloqueado por seguridad." });
               return;
           }
       }
@@ -798,6 +797,12 @@ export default function Home() {
     const [d, m, y] = item.name.split('/');
     const tagMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
 
+    // 🚀 AUTO-SANACIÓN EN EDICIÓN
+    let estadoInicial = item.estado_pago || "PAGADO";
+    if (estadoInicial !== "PENDIENTE") {
+         estadoInicial = Number(item.total) > 0 ? "COBRADO" : "PAGADO";
+    }
+
     setEditFormData({
       tipo: Number(item.total) >= 0 ? 'ingreso' : 'gasto',
       mes: `${y}-${m}-${d}`,
@@ -806,7 +811,7 @@ export default function Home() {
       ivaSeleccionado: item.iva?.toString() || '0',
       proyecto: tagMatch ? tagMatch[1] : "",
       conceptoOriginal: item.concepto_detalle || "",
-      estado_pago: item.estado_pago || "PAGADO"
+      estado_pago: estadoInicial
     });
   };
 
@@ -846,15 +851,18 @@ export default function Home() {
     }
   };
 
-  // 🚀 FIX: ACTUALIZACIÓN RÁPIDA DE TESORERÍA BLINDADA
+  // 🚀 TOGGLE INTELIGENTE DE ESTADOS
   const marcarComoPagado = async (id: any) => {
       try {
           const transaccion = data.find(d => d.id === id);
           if (!transaccion) return;
           
-          const nuevoEstado = Number(transaccion.total) > 0 ? 'COBRADO' : 'PAGADO';
+          // Si estaba pendiente, lo marcamos Cobrado/Pagado según corresponda. Si estaba Pagado/Cobrado, lo volvemos Pendiente.
+          let nuevoEstado = 'PENDIENTE';
+          if (transaccion.estado_pago === 'PENDIENTE') {
+              nuevoEstado = Number(transaccion.total) > 0 ? 'COBRADO' : 'PAGADO';
+          }
           
-          // Llamamos directamente a la función ligera de cambio de estado
           const res = await actualizarEstadoPago(Number(id), nuevoEstado);
           
           if (res.success) {
@@ -880,15 +888,21 @@ export default function Home() {
     setCurrentMessage("");
     setIsChatLoading(true);
 
-    const datosContexto = datosFinancieros.map(d => ({ 
-      fecha: d.name, 
-      categoria: d.categoria, 
-      importe: d.total, 
-      cliente: d.cif || 'Desconocido', 
-      concepto: d.concepto_detalle || 'General', 
-      factura: d.numero_factura || 'Manual',
-      estado: d.estado_pago || 'Pagado'
-    }));
+    const datosContexto = datosFinancieros.map(d => {
+      let estadoLbl = d.estado_pago || 'PAGADO';
+      if (estadoLbl !== 'PENDIENTE') {
+          estadoLbl = Number(d.total) > 0 ? 'COBRADO' : 'PAGADO';
+      }
+      return { 
+        fecha: d.name, 
+        categoria: d.categoria, 
+        importe: d.total, 
+        cliente: d.cif || 'Desconocido', 
+        concepto: d.concepto_detalle || 'General', 
+        factura: d.numero_factura || 'Manual',
+        estado: estadoLbl
+      };
+    });
 
     try {
       const res = await fetch('/api/chat', {
@@ -930,6 +944,12 @@ export default function Home() {
       else if (isAbono) tipoTxt = "ABONO";
       else if (Number(row.total) < 0) tipoTxt = "Gasto";
 
+      // Auto-sanación en exportación
+      let estadoLabel = row.estado_pago || 'PAGADO';
+      if (estadoLabel !== 'PENDIENTE') {
+          estadoLabel = Number(row.total) > 0 ? 'COBRADO' : 'PAGADO';
+      }
+
       const ivaPorcentaje = Number(row.iva) || 0;
       const cuotaIva = baseNum * (ivaPorcentaje / 100);
       const totalFinal = baseNum + cuotaIva;
@@ -938,7 +958,7 @@ export default function Home() {
       const proyectoStr = tagMatch ? tagMatch[1] : "-";
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
 
-      csvContent += `${row.name};${row.numero_factura || 'S/N'};${row.cif || 'S/N'};${proyectoStr};${row.categoria || "General"};${row.estado_pago || 'PAGADO'};${tipoTxt};${fNum(baseNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
+      csvContent += `${row.name};${row.numero_factura || 'S/N'};${row.cif || 'S/N'};${proyectoStr};${row.categoria || "General"};${estadoLabel};${tipoTxt};${fNum(baseNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1113,7 +1133,7 @@ export default function Home() {
               </div>
             </header>
 
-            {/* 🚀 B2B: MÓDULO DE TESORERÍA CON VALOR AÑADIDO (Facturas Pendientes) */}
+            {/* 🚀 B2B: MÓDULO DE TESORERÍA (Facturas Pendientes) */}
             {facturasPendientes.length > 0 && (
                 <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
@@ -1153,7 +1173,6 @@ export default function Home() {
                                     const totalConIva = Math.abs(Number(item.total)) * (1 + (Number(item.iva)||0)/100);
                                     const esGasto = Number(item.total) < 0;
                                     
-                                    // Cálculo de días de retraso
                                     const [d, m, y] = item.name.split('/');
                                     const fechaDoc = new Date(Number(y), Number(m)-1, Number(d)).getTime();
                                     const diasPasados = Math.floor((new Date().getTime() - fechaDoc) / (1000 * 60 * 60 * 24));
@@ -1319,7 +1338,6 @@ export default function Home() {
                           </select>
                         </div>
 
-                        {/* 🚀 B2B: CAMPOS DE IDENTIFICACIÓN (Escudo DNI) */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
                             <div>
                               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">NIF/CIF Emisor (Opcional)</label>
@@ -1350,11 +1368,11 @@ export default function Home() {
                         </div>
                         
                         <div className="flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                            {/* 🚀 B2B: ESTADO DE PAGO (TESORERÍA) */}
                             <div className="flex justify-between items-center">
                                <label className="text-[10px] font-black text-slate-600 uppercase">Estado Financiero</label>
                                <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden">
-                                  <button type="button" onClick={() => setEstadoPago('PAGADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
+                                  {/* 🚀 BOTÓN DINÁMICO AUTO-CORRECTOR */}
+                                  <button type="button" onClick={() => setEstadoPago(tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
                                       {tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO'}
                                   </button>
                                   <button type="button" onClick={() => setEstadoPago('PENDIENTE')} className={`px-3 py-1.5 text-[10px] font-bold transition border-l border-slate-200 ${estadoPago === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}>
@@ -1608,9 +1626,11 @@ export default function Home() {
                       const tagProyectoMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
                       const proyectoEtiqueta = tagProyectoMatch ? tagProyectoMatch[1] : null;
                       
-                      const estadoLabel = item.estado_pago || 'PAGADO';
-                      const estadoColor = estadoLabel === 'PENDIENTE' ? 'text-amber-600 bg-amber-50 border-amber-200' : 
-                                        (estadoLabel === 'COBRADO' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-blue-600 bg-blue-50 border-blue-200');
+                      // 🚀 AUTO-SANACIÓN VISUAL: Fuerza la etiqueta correcta si no está "Pendiente"
+                      let estadoLabelDB = item.estado_pago || 'PAGADO';
+                      const estadoFinal = estadoLabelDB === 'PENDIENTE' ? 'PENDIENTE' : (isIngreso ? 'COBRADO' : 'PAGADO');
+                      const estadoColor = estadoFinal === 'PENDIENTE' ? 'text-amber-600 bg-amber-50 border-amber-200' : 
+                                        (estadoFinal === 'COBRADO' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-blue-600 bg-blue-50 border-blue-200');
 
                       if (editingId === item.id) {
                         return (
@@ -1623,8 +1643,7 @@ export default function Home() {
                                  {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
                                </select>
                                <select value={editFormData.estado_pago} onChange={(e) => setEditFormData({...editFormData, estado_pago: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1 font-bold">
-                                  <option value="PAGADO">PAGADO</option>
-                                  <option value="COBRADO">COBRADO</option>
+                                  <option value={editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}>{editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}</option>
                                   <option value="PENDIENTE">PENDIENTE</option>
                                </select>
                             </td>
@@ -1696,8 +1715,8 @@ export default function Home() {
 
                           <td className="px-4 md:px-6 py-3.5 text-right flex justify-end gap-2 items-center">
                             {!isPresupuesto && !isAbono && (
-                                <button onClick={() => marcarComoPagado(item.id)} className={`text-[9px] font-black px-2 py-1 rounded border ${estadoColor} hover:opacity-70 transition`} title="Cambiar estado de pago">
-                                    {estadoLabel}
+                                <button onClick={() => marcarComoPagado(item.id)} className={`text-[9px] font-black px-2 py-1 rounded border ${estadoColor} hover:opacity-70 transition`} title="Cambiar estado de pago (Clic para alternar)">
+                                    {estadoFinal}
                                 </button>
                             )}
                             {!isPresupuesto && !isAbono && (
