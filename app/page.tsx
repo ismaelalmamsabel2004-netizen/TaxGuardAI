@@ -109,6 +109,10 @@ export default function Home() {
   const [ingreso, setIngreso] = useState("");
   const [tipoTransaccion, setTipoTransaccion] = useState<"ingreso" | "gasto" | "proyecto">("ingreso");
   
+  const [cifEmisor, setCifEmisor] = useState("");
+  const [numFactura, setNumFactura] = useState("");
+  const [estadoPago, setEstadoPago] = useState("PAGADO");
+
   const [proyecto, setProyecto] = useState("");
   const [proyectoIngresos, setProyectoIngresos] = useState([{ id: Date.now(), concepto: "", importe: "", categoria: "Ventas", iva: "21" }]);
   const [proyectoGastos, setProyectoGastos] = useState([{ id: Date.now() + 1, concepto: "", importe: "", categoria: "Logística", iva: "21" }]);
@@ -135,7 +139,7 @@ export default function Home() {
   const [nombreArchivoTemporal, setNombreArchivoTemporal] = useState<string | null>(null);
   const [tipoArchivoTemporal, setTipoArchivoTemporal] = useState<string | null>(null);
   
-  const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos" | "proyectos">("all");
+  const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos" | "proyectos" | "pendientes">("all");
   const [subFiltroProyecto, setSubFiltroProyecto] = useState<"all" | "ingresos" | "gastos">("all");
   const [proyectoSeleccionadoFiltro, setProyectoSeleccionadoFiltro] = useState<string>("todos");
 
@@ -157,7 +161,6 @@ export default function Home() {
   
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [faqSearch, setFaqSearch] = useState("");
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   const [sectorInput, setSectorInput] = useState("");
@@ -185,7 +188,6 @@ export default function Home() {
   const proyMargen = proyIngresosNumTotal - proyGastosNumTotal;
   const proyMargenPorcentaje = proyIngresosNumTotal > 0 ? (proyMargen / proyIngresosNumTotal) * 100 : 0;
 
-  // LÓGICA DE LA CALCULADORA EN TIEMPO REAL
   const currentBase = parseFloat(ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
   const currentIva = Number(ivaSeleccionado) || 0;
   const currentIvaAmount = tipoTransaccion === 'gasto' && isVehiculo ? currentBase * ((currentIva/2)/100) : currentBase * (currentIva/100);
@@ -201,7 +203,6 @@ export default function Home() {
         toast.info("Modo Administrador", { description: "Como estás usando una cuenta de Administrador, no has registrado tarjeta. ¡A los clientes reales sí les funcionará!" });
       }
     } catch (error) {
-      console.error(error);
       toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
   };
@@ -249,8 +250,10 @@ export default function Home() {
   useEffect(() => {
     if (tipoTransaccion === 'ingreso' || tipoTransaccion === 'proyecto') {
         setCategoria(categoriasIngreso[0]);
+        setEstadoPago("COBRADO");
     } else {
         setCategoria(categoriasGasto[0]);
+        setEstadoPago("PAGADO");
     }
     if (tipoTransaccion === 'ingreso' || tipoTransaccion === 'proyecto') setIsVehiculo(false);
   }, [tipoTransaccion, categoriasIngreso, categoriasGasto]);
@@ -270,7 +273,7 @@ export default function Home() {
   };
 
   const eliminarEmpresa = async (nombre: string) => {
-    const confirmacion = window.confirm(`⚠️ ATENCIÓN: ¿Estás seguro de que deseas borrar el espacio de trabajo "${nombre}"?\n\nLos datos se guardarán en la papelera de reciclaje durante 7 días antes de su eliminación definitiva.`);
+    const confirmacion = window.confirm(`⚠️ ATENCIÓN: ¿Estás seguro de que deseas borrar el espacio de trabajo "${nombre}"?`);
     if (!confirmacion) return;
 
     const nuevaPapelera = [...papelera, { nombre, fecha: Date.now() }];
@@ -299,7 +302,7 @@ export default function Home() {
     const res = await fetch('/api/settings');
     const actuales: any = await res.json();
     await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nombre, papelera: nuevaPapelera });
-    toast.success("Restaurado", { description: `El espacio "${nombre}" ha sido restaurado con éxito.` });
+    toast.success("Restaurado", { description: `El espacio "${nombre}" ha sido restaurado.` });
   };
 
   useEffect(() => {
@@ -411,7 +414,6 @@ export default function Home() {
     return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
   });
 
-  // 🚀 CORRECCIÓN: GRAFICAR TOTALES REALES, NO BASES
   const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
     const [d, m, y] = curr.name.split('/');
     let clave = curr.name; 
@@ -454,6 +456,8 @@ export default function Home() {
       return match ? match[1] : null;
   }).filter(Boolean))) as string[];
 
+  const facturasPendientes = datosFinancieros.filter(d => d.estado_pago === 'PENDIENTE');
+
   let datosTablaFiltrados = datosTabla.filter(item => {
     if (chartFilter) {
       const [d, m, y] = item.name.split('/');
@@ -472,7 +476,8 @@ export default function Home() {
        const coincideFactura = item.numero_factura?.toLowerCase().includes(searchLower);
        const coincideCliente = item.cliente_nombre?.toLowerCase().includes(searchLower);
        const coincideProyecto = item.concepto_detalle?.toLowerCase().includes(searchLower);
-       if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente && !coincideProyecto) return false;
+       const coincideCif = item.cif?.toLowerCase().includes(searchLower);
+       if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente && !coincideProyecto && !coincideCif) return false;
     }
 
     const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
@@ -484,6 +489,7 @@ export default function Home() {
     if (filtroDoc === 'gastos' && !isGasto) return false;
     if (filtroDoc === 'presupuestos' && !isPresupuesto) return false;
     if (filtroDoc === 'abonos' && !isAbono) return false;
+    if (filtroDoc === 'pendientes' && item.estado_pago !== 'PENDIENTE') return false;
     
     if (filtroDoc === 'proyectos') {
         const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
@@ -501,7 +507,6 @@ export default function Home() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
 
-  // 🚀 CORRECCIÓN TOTALES SUPERIORES: SUMAN EL TOTAL REAL (BASE + IVA)
   const gastosPorCategoria = datosFinancieros
     .filter(d => Number(d.total) < 0)
     .reduce((acc: {name: string, value: number}[], curr: any) => {
@@ -522,7 +527,6 @@ export default function Home() {
   const beneficioNeto = ingresosTotales - gastosTotales;
   const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
-  // 🚀 LIQUIDACIÓN IVA BASADA EN BASES
   const ivaRepercutido = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const ivaSoportado = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const liquidacionIva = ivaRepercutido - ivaSoportado;
@@ -531,19 +535,15 @@ export default function Home() {
     const alertas: { tipo: string, titulo: string, texto: string }[] = [];
     if (datosFinancieros.length === 0) return alertas;
 
+    if (facturasPendientes.length > 0) {
+      alertas.push({ tipo: 'critico', titulo: '💸 Alerta de Tesorería', texto: `Tienes ${facturasPendientes.length} facturas pendientes de cobro o pago. Evita recargos.` });
+    }
+
     if (beneficioNeto < 0) {
       alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €. Riesgo de liquidez.` });
     } 
     else if (ingresosTotales > 0 && gastosTotales > (ingresosTotales * 0.75)) {
       alertas.push({ tipo: 'advertencia', titulo: '⚠️ Alerta de Márgenes', texto: `El margen es estrecho. Los costes consumen más del 75% de lo facturado.` });
-    }
-
-    if (gastosPorCategoria.length > 0 && gastosTotales > 0) {
-      const gastoPrincipal = gastosPorCategoria[0];
-      const porcentaje = Math.round((gastoPrincipal.value / gastosTotales) * 100);
-      if (porcentaje >= 50) {
-        alertas.push({ tipo: 'info', titulo: '📊 Desviación de Costes', texto: `La categoría '${gastoPrincipal.name}' representa un ${porcentaje}% de los gastos.` });
-      }
     }
 
     if (porcentajeMeta >= 100) {
@@ -592,6 +592,9 @@ export default function Home() {
         if (res.data.base_imponible) setIngreso(res.data.base_imponible.toString());
         if (res.data.iva !== undefined) setIvaSeleccionado(res.data.iva.toString());
         if (res.data.categoria && categoriasGasto.includes(res.data.categoria)) setCategoria(res.data.categoria);
+        
+        if (res.data.nif) setCifEmisor(res.data.nif);
+        if (res.data.numero_factura) setNumFactura(res.data.numero_factura);
         
         if (res.data.confianza) setConfianzaIA(res.data.confianza);
         if (res.data.evidencia) setEvidenciaIA(res.data.evidencia);
@@ -652,26 +655,47 @@ export default function Home() {
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault(); 
     
-    if (!empresaId) {
-       toast.warning("Espacio Requerido", { description: "Por favor, selecciona o crea un Espacio de Trabajo." });
-       return;
-    }
-    if (!mes) {
-       toast.warning("Fecha Requerida", { description: "Por favor, selecciona una fecha operativa." });
-       return;
-    }
+    if (!empresaId) return toast.warning("Espacio Requerido", { description: "Por favor, selecciona un Espacio de Trabajo." });
+    if (!mes) return toast.warning("Fecha Requerida", { description: "Por favor, selecciona una fecha operativa." });
 
     setIsSaving(true);
     
     try {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
+      
+      const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+      const numeroLimpio = parseFloat(textoLimpio);
+
+      if (isNaN(numeroLimpio) && tipoTransaccion !== 'proyecto') {
+         setIsSaving(false);
+         return toast.error("Importe Inválido", { description: "Usa solo números y comas/puntos." });
+      }
+
+      const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
+
+      if (tipoTransaccion !== 'proyecto') {
+          const esDuplicado = data.some(item => {
+             const mismaFecha = item.name === fecha;
+             const mismoTotal = Math.abs(Number(item.total)) === Math.abs(numeroLimpio);
+             const mismoTipo = (Number(item.total) >= 0) === (valorFinal >= 0);
+             const mismoNif = cifEmisor ? (item.cif === cifEmisor) : true;
+             const mismaFactura = numFactura ? (item.numero_factura === numFactura) : true;
+             
+             return mismaFecha && mismoTotal && mismoTipo && (cifEmisor || numFactura ? (mismoNif && mismaFactura) : true);
+          });
+
+          if (esDuplicado) {
+              setIsSaving(false);
+              toast.error("🛡️ Escudo Antiduplicados", { description: "Este documento (mismo importe, fecha y emisor) ya está en tu Libro Mayor. Guardado bloqueado por seguridad." });
+              return;
+          }
+      }
 
       if (tipoTransaccion === 'proyecto') {
           const proyName = proyecto.trim().toUpperCase();
           if (!proyName) { setIsSaving(false); return toast.warning("Dato Obligatorio", { description: "Debe indicar el Nombre del Proyecto." }); }
-          if (proyIngresosNumTotal <= 0 && proyGastosNumTotal <= 0) { setIsSaving(false); return toast.warning("Datos Inválidos", { description: "El proyecto no tiene importes válidos." }); }
-
+          
           const promesas = [];
           const tagProyecto = ` [PROYECTO: ${proyName}]`;
 
@@ -679,29 +703,18 @@ export default function Home() {
               const numI = parseFloat(ing.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
               if (!isNaN(numI) && numI > 0) {
                   promesas.push(guardarDatoSupabase({
-                      month: fecha, 
-                      total: Math.abs(numI), 
-                      categoria: ing.categoria, 
-                      iva: ing.iva,
-                      empresaId, 
-                      isRecurrent: false, 
-                      frecuencia: null, 
+                      month: fecha, total: Math.abs(numI), categoria: ing.categoria, iva: ing.iva,
+                      empresaId, isRecurrent: false, frecuencia: null, estado_pago: 'COBRADO',
                       concepto_detalle: (ing.concepto.trim() || "Ingreso asociado") + tagProyecto
                   }));
               }
           }
-
           for (const g of proyectoGastos) {
               const numG = parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
               if (!isNaN(numG) && numG > 0) {
                   promesas.push(guardarDatoSupabase({
-                      month: fecha, 
-                      total: -Math.abs(numG), 
-                      categoria: g.categoria, 
-                      iva: g.iva,
-                      empresaId, 
-                      isRecurrent: false, 
-                      frecuencia: null, 
+                      month: fecha, total: -Math.abs(numG), categoria: g.categoria, iva: g.iva,
+                      empresaId, isRecurrent: false, frecuencia: null, estado_pago: 'PAGADO',
                       concepto_detalle: (g.concepto.trim() || "Coste asociado") + tagProyecto
                   }));
               }
@@ -719,21 +732,11 @@ export default function Home() {
           return;
       }
       
-      const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
-      const numeroLimpio = parseFloat(textoLimpio);
-
-      if (isNaN(numeroLimpio)) {
-         setIsSaving(false);
-         toast.error("Importe Inválido", { description: "Usa solo números y comas/puntos." });
-         return;
-      }
-
       let ivaFinal = ivaSeleccionado;
       if (tipoTransaccion === 'gasto' && isVehiculo) {
          ivaFinal = (Number(ivaSeleccionado) / 2).toString();
       }
 
-      const valorFinal = tipoTransaccion === 'gasto' ? -Math.abs(numeroLimpio) : Math.abs(numeroLimpio);
       const detalleAdicional = (tipoTransaccion === 'gasto' && isVehiculo) ? " (Gasto Vehículo: IVA 50% deducible)" : "";
       const tagProyecto = proyecto.trim() ? ` [PROYECTO: ${proyecto.toUpperCase()}]` : "";
       
@@ -742,6 +745,9 @@ export default function Home() {
         total: valorFinal, 
         categoria: categoria, 
         iva: ivaFinal,
+        cif: cifEmisor, 
+        numero_factura: numFactura,
+        estado_pago: estadoPago, 
         empresaId: empresaId,
         isRecurrent: isRecurrent,
         frecuencia: isRecurrent ? frecuencia : null,
@@ -754,26 +760,19 @@ export default function Home() {
       if (res.success) {
         const actualizadosBD = await obtenerDatosSupabase(empresaId);
         setData(actualizadosBD);
-        setIngreso('');
-        setProyecto('');
-        setIsRecurrent(false);
-        setIsVehiculo(false);
-        setFrecuencia('Mensual');
-        setIvaSeleccionado("21"); 
+        setIngreso(''); setProyecto(''); setCifEmisor(''); setNumFactura('');
+        setIsRecurrent(false); setIsVehiculo(false);
+        setFrecuencia('Mensual'); setIvaSeleccionado("21"); 
         
-        setConfianzaIA(null);
-        setEvidenciaIA(null);
-        setUrlArchivoTemporal(null);
-        setNombreArchivoTemporal(null);
-        setTipoArchivoTemporal(null);
+        setConfianzaIA(null); setEvidenciaIA(null); setUrlArchivoTemporal(null);
+        setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);
+        setAiAnalysis("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
         
         toast.success("Movimiento Guardado", { description: "La transacción se ha registrado en el Libro Mayor." });
-
       } else {
         toast.error("Fallo de Servidor", { description: "Error al guardar en la nube. Inténtalo de nuevo." });
       }
     } catch (error) {
-      console.error(error);
       toast.error("Sin Conexión", { description: "Revisa tu conexión a internet al intentar guardar." });
     } finally {
       setIsSaving(false);
@@ -795,7 +794,6 @@ export default function Home() {
   const iniciarEdicion = (item: any) => {
     setEditingId(item.id);
     const [d, m, y] = item.name.split('/');
-    
     const tagMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
 
     setEditFormData({
@@ -805,7 +803,8 @@ export default function Home() {
       categoria: item.categoria || 'General',
       ivaSeleccionado: item.iva?.toString() || '0',
       proyecto: tagMatch ? tagMatch[1] : "",
-      conceptoOriginal: item.concepto_detalle || ""
+      conceptoOriginal: item.concepto_detalle || "",
+      estado_pago: item.estado_pago || "PAGADO"
     });
   };
 
@@ -830,6 +829,7 @@ export default function Home() {
         total: valorFinal, 
         categoria: editFormData.categoria, 
         iva: editFormData.ivaSeleccionado,
+        estado_pago: editFormData.estado_pago,
         concepto_detalle: nuevoConcepto.trim()
       });
 
@@ -842,6 +842,28 @@ export default function Home() {
     } catch (error) {
       toast.error("Error", { description: "Error al actualizar el dato en el servidor." });
     }
+  };
+
+  const marcarComoPagado = async (id: any) => {
+      try {
+          const transaccion = data.find(d => d.id === id);
+          if (!transaccion) return;
+          
+          const nuevoEstado = Number(transaccion.total) > 0 ? 'COBRADO' : 'PAGADO';
+          
+          const res = await editarDatoSupabase({
+              id: id,
+              estado_pago: nuevoEstado
+          });
+          
+          if (res.success) {
+              const actualizadosBD = await obtenerDatosSupabase(empresaId);
+              setData(actualizadosBD);
+              toast.success("Tesorería Actualizada", { description: `El documento se ha marcado como ${nuevoEstado}.` });
+          }
+      } catch (error) {
+          toast.error("Error", { description: "No se pudo actualizar el estado de pago." });
+      }
   };
 
   const enviarMensajeChat = async (e: React.FormEvent) => {
@@ -859,9 +881,10 @@ export default function Home() {
       fecha: d.name, 
       categoria: d.categoria, 
       importe: d.total, 
-      cliente: d.cliente_nombre || d.cliente || 'Desconocido', 
-      concepto: d.concepto_detalle || d.concepto || 'General', 
-      factura: d.numero_factura || d.factura || 'Manual' 
+      cliente: d.cif || 'Desconocido', 
+      concepto: d.concepto_detalle || 'General', 
+      factura: d.numero_factura || 'Manual',
+      estado: d.estado_pago || 'Pagado'
     }));
 
     try {
@@ -892,7 +915,7 @@ export default function Home() {
   const exportarAExcel = () => {
     if (datosTablaFiltrados.length === 0) return toast.info("Sin datos", { description: "No hay datos para exportar con los filtros actuales." });
     
-    let csvContent = "\uFEFFFecha;Nº Documento;Proyecto;Categoría;Recurrencia;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
+    let csvContent = "\uFEFFFecha;Nº Documento;Emisor/NIF;Proyecto;Categoría;Estado;Tipo;Base Imponible (EUR);IVA (%);Cuota IVA (EUR);Total (EUR)\n";
     
     datosTablaFiltrados.forEach(row => {
       const isPresupuesto = row.categoria === 'Presupuestos' || row.numero_factura?.startsWith('P-');
@@ -904,18 +927,15 @@ export default function Home() {
       else if (isAbono) tipoTxt = "ABONO";
       else if (Number(row.total) < 0) tipoTxt = "Gasto";
 
-      const recTxt = row.isRecurrent ? row.frecuencia : "Puntual";
       const ivaPorcentaje = Number(row.iva) || 0;
-      
       const cuotaIva = baseNum * (ivaPorcentaje / 100);
       const totalFinal = baseNum + cuotaIva;
 
       const tagMatch = row.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
       const proyectoStr = tagMatch ? tagMatch[1] : "-";
-
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
 
-      csvContent += `${row.name};${row.numero_factura || 'S/N'};${proyectoStr};${row.categoria || "General"};${recTxt};${tipoTxt};${fNum(baseNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
+      csvContent += `${row.name};${row.numero_factura || 'S/N'};${row.cif || 'S/N'};${proyectoStr};${row.categoria || "General"};${row.estado_pago || 'PAGADO'};${tipoTxt};${fNum(baseNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -924,60 +944,6 @@ export default function Home() {
     link.download = `Libro_Mayor_${empresaId || 'General'}_${filtroDoc}.csv`;
     link.click();
   };
-
-  const abrirGmailWeb = (tipo: string) => {
-      const email = "soporte.taxguard@gmail.com";
-      const subject = tipo === "ayuda" ? `Asistencia Técnica TaxGuard AI - ${empresaId}` : `Sugerencia de Mejora - TaxGuard AI - ${empresaId}`;
-      const body = `Hola equipo de TaxGuard AI,%0A%0AEscribe aquí tu ${tipo === 'ayuda' ? 'consulta o problema' : 'idea para mejorar la plataforma'}:%0A%0A`;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${subject}&body=${body}`;
-      window.open(gmailUrl, '_blank');
-  };
-
-  const copiarCorreoSoporte = () => {
-      navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      toast.success("¡Copiado!", { description: "Correo de soporte copiado al portapapeles." });
-  };
-
-  const faqs = [
-      { 
-        q: "🚀 ¿Cómo empiezo a usar TaxGuard AI por primera vez?", 
-        a: "¡Es muy fácil! 1. Arriba a la izquierda, en 'Espacio de Trabajo', crea el nombre de tu empresa. 2. Pulsa en la rueda dentada (⚙️) y añade las categorías de ingresos y gastos de tu sector. 3. Empieza a registrar tus movimientos diarios en la Consola General o importa el Excel de tu banco." 
-      },
-      { 
-        q: "🏦 ¿Cómo conecto mi banco de forma segura?", 
-        a: "Para máxima seguridad, no te pedimos claves bancarias. Ve a la web de tu banco, descarga tus movimientos en formato CSV o Excel, y en nuestra Consola General haz clic en el botón '📊 Banco (CSV)'. Nuestro sistema lo leerá y clasificará todo en segundos." 
-      },
-      { 
-        q: "📸 ¿Cómo funciona el escáner de facturas con IA (OCR)?", 
-        a: "En la Consola General, haz clic en '📸 Factura OCR'. Sube una foto hecha con el móvil o un PDF de tu ticket de compra. Nuestra Inteligencia Artificial leerá automáticamente la base imponible, el IVA, la fecha y adivinará la categoría correcta por ti. ¡Magia pura!" 
-      },
-      { 
-        q: "🚘 ¿Qué es la casilla 'Gasto Vehículo' y el escudo del 50%?", 
-        a: "Por ley (Agencia Tributaria), la gasolina, peajes y reparaciones de un vehículo que no es 100% comercial (como tu coche personal usado para trabajar) solo permiten deducir el 50% del IVA. Al marcar esta casilla al subir un gasto, TaxGuard AI dividirá el IVA a la mitad automáticamente para que Hacienda no te multe." 
-      },
-      { 
-        q: "📝 ¿Cómo creo y envío una factura oficial a mi cliente?", 
-        a: "Ve a la pestaña 'Facturación PDF' en el menú izquierdo. Rellena tus datos fiscales (pulsa 'Guardar como predeterminado' para no tener que repetirlos nunca más). Pon los datos del cliente, el concepto y el precio. Dale a 'Registrar en Libro Mayor' y luego descarga el PDF oficial para enviarlo." 
-      },
-      { 
-        q: "🪄 ¿Qué diferencia hay entre Presupuesto y Factura?", 
-        a: "Un Presupuesto es una propuesta. Puedes crearlos en 'Facturación PDF'. No suman en tus ingresos y son 'invisibles' para los impuestos. Cuando tu cliente lo acepte, ve a la tabla de abajo, búscalo (estará en naranja) y pulsa el botón '🪄 Convertir'. Se transformará en factura oficial al instante." 
-      },
-      { 
-        q: "❌ Me he equivocado en una factura ya emitida. ¿La borro?", 
-        a: "¡Cuidado! La ley prohíbe borrar o saltarse la numeración de facturas ya emitidas. Ve al Historial de Documentos (en la pestaña de Facturación), busca la factura con el error y pulsa el botón rojo 'Rectificar'. El sistema creará un 'Abono' (Factura Rectificativa R-XXX) en negativo para anularla legalmente." 
-      },
-      { 
-        q: "🏛️ ¿Cómo presento mis impuestos (Modelos)?", 
-        a: "¡Nosotros hacemos las mates! Ve a 'Modelos Tributarios'. Selecciona tu trimestre (o año) y descarga el Borrador PDF. Obtendrás un documento con el formato idéntico al de Hacienda para el IVA, IRPF y Resúmenes Anuales." 
-      },
-      { 
-        q: "🧠 ¿Para qué sirve el Centro de Inteligencia (Análisis Avanzado)?", 
-        a: "Es tu Director Financiero Privado (Solo Plan Pro). Entra ahí y pulsa los botones de arriba ('Detectar Fugas', 'Simular Precios'). La Inteligencia Artificial analizará todos tus movimientos y te dará un informe ejecutivo diciéndote dónde estás perdiendo dinero y cómo mejorar tu margen de beneficio real." 
-      }
-  ];
-
-  const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
 
   if (!isMounted) return null;
   
@@ -988,14 +954,6 @@ export default function Home() {
            <h2 className="text-xl font-black tracking-tight mb-2">Preparando entorno seguro...</h2>
            <p className="text-sm font-medium text-slate-500 mb-6">Comprobando credenciales y conexión cifrada</p>
            
-           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2.5 rounded-xl mb-8 flex items-center gap-3 shadow-lg">
-              <span className="text-xl">🛡️</span>
-              <div>
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Soporte Técnico VIP</p>
-                <p className="text-sm font-bold text-blue-400">soporte.taxguard@gmail.com</p>
-              </div>
-           </div>
-
            <div className="flex gap-2">
               <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></span>
               <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></span>
@@ -1041,7 +999,6 @@ export default function Home() {
                       onChange={async (e) => {
                         const newId = e.target.value;
                         setEmpresaId(newId);
-                        
                         const res = await fetch('/api/settings');
                         const actuales: any = await res.json(); 
                         await syncSettingsToCloud({ ...actuales, empresaActiva: newId });
@@ -1053,13 +1010,6 @@ export default function Home() {
                     <button onClick={() => {setShowConfig(true); setIsSidebarOpen(false);}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil y Categorías">
                       ⚙️
                     </button>
-                    <button onClick={() => eliminarEmpresa(empresaId)} className="p-2.5 bg-rose-900/30 text-rose-500 rounded-xl hover:bg-rose-900 transition" title="Eliminar Espacio">
-                      ×
-                    </button>
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <input value={nuevaEmpresa} onChange={(e) => setNuevaEmpresa(e.target.value)} placeholder="Nueva empresa..." className="w-full bg-slate-800 p-2 text-xs text-white rounded-lg border border-slate-700 outline-none" />
-                  <button onClick={agregarEmpresa} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-500 transition">+</button>
                 </div>
               </div>
               
@@ -1084,12 +1034,6 @@ export default function Home() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
                   Gestor Documental
                 </Link>
-
-                <div className="pt-4 mt-4 border-t border-slate-800">
-                    <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
-                      <span className="text-lg group-hover:scale-110 transition-transform">🎧</span> Soporte VIP
-                    </button>
-                </div>
               </nav>
             </div>
             
@@ -1098,13 +1042,9 @@ export default function Home() {
                 <button onClick={gestionarSuscripcion} className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full animate-pulse bg-emerald-500"></span>
-                    <span className="text-xs font-bold text-emerald-400">
-                      {planActivo === 'pro' ? 'Plan Empresa PRO' : 'Plan Autónomo'}
-                    </span>
+                    <span className="text-xs font-bold text-emerald-400">Plan Activo</span>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-md text-emerald-300 bg-emerald-900/50 hover:bg-emerald-800/80 transition">
-                    Gestionar
-                  </span>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-md text-emerald-300 bg-emerald-900/50 hover:bg-emerald-800/80 transition">Gestionar</span>
                 </button>
               ) : (
                 <Link href="/precios" className="w-full flex items-center justify-between p-3 rounded-2xl border mb-3 transition cursor-pointer bg-slate-800/50 border-slate-700 hover:bg-slate-800">
@@ -1112,12 +1052,9 @@ export default function Home() {
                     <span className="w-2 h-2 rounded-full animate-pulse bg-rose-500"></span>
                     <span className="text-xs font-bold text-slate-300">Suscripción Inactiva</span>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-md text-slate-800 bg-white hover:bg-slate-200 transition">
-                    Activar
-                  </span>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-md text-slate-800 bg-white hover:bg-slate-200 transition">Activar</span>
                 </Link>
               )}
-              
               <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
                 <span className="text-xs font-semibold text-slate-400">Entorno Seguro</span>
                 <UserButton/>
@@ -1125,9 +1062,7 @@ export default function Home() {
             </div>
           </aside>
 
-          {isSidebarOpen && (
-             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
-          )}
+          {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             
@@ -1143,7 +1078,6 @@ export default function Home() {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     {alertasDinamicas.length > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
                   </button>
-
                   {showNotifications && (
                     <div className="absolute left-0 sm:left-auto sm:right-0 mt-3 w-[85vw] sm:w-80 max-w-[320px] bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden transform transition-all origin-top-left sm:origin-top-right">
                       <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
@@ -1172,10 +1106,62 @@ export default function Home() {
                 <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2">
                   <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                   <span className="hidden sm:inline">Servidores Cloud Conectados</span>
-                  <span className="sm:hidden">Online</span>
                 </div>
               </div>
             </header>
+
+            {/* 🚀 B2B: MÓDULO DE TESORERÍA (Facturas Pendientes) */}
+            {facturasPendientes.length > 0 && (
+                <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <span className="text-xl bg-amber-100 p-2 rounded-xl">⚠️</span>
+                            <div>
+                                <h3 className="text-sm font-black text-amber-900 uppercase tracking-widest">Tesorería en Alerta</h3>
+                                <p className="text-xs font-medium text-amber-700 mt-0.5">Tienes {facturasPendientes.length} facturas pendientes de cobro o pago en este periodo.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto bg-white rounded-xl border border-amber-100">
+                        <table className="min-w-full text-left whitespace-nowrap text-sm">
+                            <thead className="bg-amber-50 text-[10px] font-black text-amber-700 uppercase">
+                                <tr>
+                                    <th className="px-4 py-2">Fecha</th>
+                                    <th className="px-4 py-2">Emisor / NIF</th>
+                                    <th className="px-4 py-2">Concepto</th>
+                                    <th className="px-4 py-2 text-right">Importe Total</th>
+                                    <th className="px-4 py-2 text-center">Acción Inmediata</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-amber-50 font-semibold text-slate-700">
+                                {facturasPendientes.map((item) => {
+                                    const totalConIva = Math.abs(Number(item.total)) * (1 + (Number(item.iva)||0)/100);
+                                    const esGasto = Number(item.total) < 0;
+                                    return (
+                                        <tr key={item.id} className="hover:bg-amber-50/30 transition">
+                                            <td className="px-4 py-3">{item.name}</td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-xs text-slate-900 block">{item.cif || "S/N"}</span>
+                                                <span className="text-[9px] text-slate-400">{item.numero_factura}</span>
+                                            </td>
+                                            <td className="px-4 py-3 text-xs">{item.concepto_detalle || item.categoria}</td>
+                                            <td className={`px-4 py-3 text-right font-black ${esGasto ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                {esGasto ? '-' : '+'}{totalConIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <button onClick={() => marcarComoPagado(item.id)} className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition shadow-sm ${esGasto ? 'bg-rose-600 text-white hover:bg-rose-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
+                                                    {esGasto ? "Pagar Ahora" : "Marcar Cobrado"}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
 
             <div className="flex gap-2 lg:gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
               <button onClick={() => setFiltro('all')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Histórico</button>
@@ -1185,11 +1171,11 @@ export default function Home() {
               <button onClick={() => setFiltro('year')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'year' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Año</button>
             </div>
 
-            <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col xl:flex-row justify-between xl:items-center relative overflow-hidden gap-6">
+            <div className="bg-slate-900 p-6 rounded-2xl shadow-xl mb-8 text-white flex flex-col xl:flex-row justify-between xl:items-center relative overflow-hidden gap-6 border border-slate-800">
                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 opacity-5 rounded-full blur-3xl"></div>
                <div className="relative z-10 w-full xl:w-auto">
                   <div className="flex items-center gap-2 mb-1">
-                     <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+                     <span className="text-xl">🛡️</span>
                      <h3 className="text-sm font-black uppercase tracking-widest text-blue-400">Escudo Fiscal Integrado</h3>
                   </div>
                   <p className="text-xs text-slate-400 font-medium">Liquidación estimada de IVA para el periodo actual.</p>
@@ -1212,33 +1198,6 @@ export default function Home() {
                      </p>
                   </div>
                </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8">
-              <div className="flex flex-col lg:flex-row justify-between lg:items-end mb-4 gap-4">
-                <div>
-                  <h3 className="text-md font-bold text-slate-900">Objetivo de Ingresos ({etiquetasFiltro[filtro]})</h3>
-                </div>
-                <div className="text-left lg:text-right">
-                  {editandoMeta ? (
-                    <div className="flex gap-2">
-                      <input type="number" value={inputMeta} onChange={(e) => setInputMeta(e.target.value)} className="w-24 p-2 bg-slate-50 border border-slate-300 text-slate-900 font-bold rounded-lg text-sm outline-none" />
-                      <button onClick={guardarNuevaMeta} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition">Guardar</button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-start lg:items-end cursor-pointer group" onClick={() => setEditandoMeta(true)}>
-                      <span className="text-2xl font-black text-slate-900">
-                         {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € <span className="text-sm font-medium text-slate-400">/ {metaMensual.toLocaleString('es-ES')} €</span>
-                      </span>
-                      <span className="text-[10px] font-bold text-blue-500 uppercase group-hover:underline mt-1">Editar Meta</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                <div className={`h-3 rounded-full transition-all duration-1000 ${porcentajeMeta >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${porcentajeMeta}%` }}></div>
-              </div>
-              <p className="text-right text-xs font-bold text-slate-500 mt-2">{porcentajeMeta}% Alcanzado</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
@@ -1264,7 +1223,7 @@ export default function Home() {
                   <div className="flex flex-col gap-3 mb-6">
                     <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
                     <div className="grid grid-cols-2 gap-2 w-full">
-                      <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
+                      <input type="file" accept="image/*,.pdf" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
                       <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
                         {isScanning ? "⏳ Leyendo..." : "📸 Factura OCR"}
                       </button>
@@ -1332,13 +1291,25 @@ export default function Home() {
                           </select>
                         </div>
 
+                        {/* 🚀 B2B: CAMPOS DE IDENTIFICACIÓN (Escudo DNI) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">NIF/CIF Emisor (Opcional)</label>
+                              <input type="text" placeholder="Ej: B12345678" value={cifEmisor} onChange={(e) => setCifEmisor(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nº Factura (Opcional)</label>
+                              <input type="text" placeholder="Ej: F-2026-104" value={numFactura} onChange={(e) => setNumFactura(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
                               <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                             </div>
                             <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta (Opc.)</label>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta Proyecto</label>
                               <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
                             </div>
                         </div>
@@ -1350,34 +1321,30 @@ export default function Home() {
                            </span>
                         </div>
                         
-                        {tipoTransaccion === 'gasto' && (
-                            <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl">
-                                <input 
-                                    type="checkbox" 
-                                    id="vehiculo" 
-                                    checked={isVehiculo} 
-                                    onChange={(e) => setIsVehiculo(e.target.checked)} 
-                                    className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" 
-                                />
-                                <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
-                                    🚘 Gasto Vehículo (Deducir 50% IVA)
-                                </label>
+                        <div className="flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                            {/* 🚀 B2B: ESTADO DE PAGO (TESORERÍA) */}
+                            <div className="flex justify-between items-center">
+                               <label className="text-[10px] font-black text-slate-600 uppercase">Estado Financiero</label>
+                               <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                  <button type="button" onClick={() => setEstadoPago('PAGADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
+                                      {tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO'}
+                                  </button>
+                                  <button type="button" onClick={() => setEstadoPago('PENDIENTE')} className={`px-3 py-1.5 text-[10px] font-bold transition border-l border-slate-200 ${estadoPago === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                      PENDIENTE
+                                  </button>
+                               </div>
                             </div>
-                        )}
-
-                        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between bg-slate-50 p-3 border border-slate-200 rounded-xl mt-2 gap-3">
-                          <label className="text-xs font-bold text-slate-600 flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" checked={isRecurrent} onChange={(e) => setIsRecurrent(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500" />
-                            Hacer recurrente
-                          </label>
-                          {isRecurrent && (
-                            <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="w-full lg:w-auto p-1.5 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none">
-                              <option value="Mensual">Mensual</option>
-                              <option value="Trimestral">Trimestral</option>
-                              <option value="Anual">Anual</option>
-                            </select>
-                          )}
+                            
+                            {tipoTransaccion === 'gasto' && (
+                                <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                                    <input type="checkbox" id="vehiculo" checked={isVehiculo} onChange={(e) => setIsVehiculo(e.target.checked)} className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" />
+                                    <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
+                                        🚘 Gasto Vehículo (Deducir 50% IVA)
+                                    </label>
+                                </div>
+                            )}
                         </div>
+
                       </>
                     ) : (
                       <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
@@ -1528,7 +1495,7 @@ export default function Home() {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
                    <input 
                       type="text" 
-                      placeholder="🔍 Buscar categoría, número, importe o proyecto..." 
+                      placeholder="🔍 Buscar categoría, número, importe, NIF o proyecto..." 
                       value={searchTerm}
                       onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
                       className="w-full sm:flex-1 sm:w-80 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-900"
@@ -1559,11 +1526,10 @@ export default function Home() {
                      <button onClick={() => {setFiltroDoc('all'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas las Op.</button>
                      <button onClick={() => {setFiltroDoc('ingresos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'ingresos' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>Ingresos Reales</button>
                      <button onClick={() => {setFiltroDoc('gastos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'gastos' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Gastos / Compras</button>
+                     <button onClick={() => {setFiltroDoc('pendientes'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'pendientes' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>⏳ Pendientes</button>
                      
                      <button onClick={() => {setFiltroDoc('proyectos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'proyectos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>🎯 Modo Proyectos</button>
-                     
-                     <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>Presupuestos (Ocultos)</button>
-                     <button onClick={() => {setFiltroDoc('abonos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'abonos' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}>Abonos / Rectif.</button>
+                     <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Presupuestos</button>
                   </div>
 
                   {filtroDoc === 'proyectos' && (
@@ -1613,6 +1579,10 @@ export default function Home() {
 
                       const tagProyectoMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
                       const proyectoEtiqueta = tagProyectoMatch ? tagProyectoMatch[1] : null;
+                      
+                      const estadoLabel = item.estado_pago || 'PAGADO';
+                      const estadoColor = estadoLabel === 'PENDIENTE' ? 'text-amber-600 bg-amber-50 border-amber-200' : 
+                                        (estadoLabel === 'COBRADO' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-blue-600 bg-blue-50 border-blue-200');
 
                       if (editingId === item.id) {
                         return (
@@ -1620,21 +1590,22 @@ export default function Home() {
                             <td className="px-4 py-2">
                                <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none" />
                             </td>
-                            <td className="px-4 py-2">
-                               <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none mb-1">
+                            <td className="px-4 py-2 flex gap-1">
+                               <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1">
                                  {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
                                </select>
-                               <input type="text" placeholder="Proyecto (Opcional)" value={editFormData.proyecto} onChange={(e) => setEditFormData({...editFormData, proyecto: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-[10px] outline-none" />
+                               <select value={editFormData.estado_pago} onChange={(e) => setEditFormData({...editFormData, estado_pago: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1 font-bold">
+                                  <option value="PAGADO">PAGADO</option>
+                                  <option value="COBRADO">COBRADO</option>
+                                  <option value="PENDIENTE">PENDIENTE</option>
+                               </select>
                             </td>
                             <td className="px-4 py-2">
                                <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className="w-full w-24 p-1.5 border border-blue-300 rounded text-xs outline-none" />
                             </td>
                             <td className="px-4 py-2">
                                <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
-                                  <option value="21">21%</option>
-                                  <option value="10">10%</option>
-                                  <option value="4">4%</option>
-                                  <option value="0">0%</option>
+                                  <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
                                </select>
                             </td>
                             <td className="px-4 py-2 text-slate-400 text-xs italic">Auto</td>
@@ -1661,8 +1632,8 @@ export default function Home() {
                                 )}
                             </div>
                             
-                            {item.numero_factura && (
-                                <span className="text-[10px] font-bold text-slate-400">{item.numero_factura}</span>
+                            {(item.numero_factura || item.cif) && (
+                                <span className="text-[10px] font-bold text-slate-400">{item.cif ? `${item.cif} | ` : ''}{item.numero_factura}</span>
                             )}
                             <div className="flex gap-1 mt-0.5">
                                 {item.isRecurrent && (
@@ -1695,7 +1666,12 @@ export default function Home() {
                              {signoVisual}{totalFinal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                           </td>
 
-                          <td className="px-4 md:px-6 py-3.5 text-right space-x-2">
+                          <td className="px-4 md:px-6 py-3.5 text-right flex justify-end gap-2 items-center">
+                            {!isPresupuesto && !isAbono && (
+                                <button onClick={() => marcarComoPagado(item.id)} className={`text-[9px] font-black px-2 py-1 rounded border ${estadoColor} hover:opacity-70 transition`} title="Cambiar estado de pago">
+                                    {estadoLabel}
+                                </button>
+                            )}
                             {!isPresupuesto && !isAbono && (
                                 <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar manual">
                                   <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>

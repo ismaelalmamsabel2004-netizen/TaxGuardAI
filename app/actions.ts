@@ -42,6 +42,8 @@ export async function obtenerDatosSupabase(empresaId?: string) {
     frecuencia: t.frecuencia || "Mensual",
     numero_factura: t.numero_factura || null,
     cliente_nombre: t.cliente_nombre || null,
+    // 🚀 B2B: Mapeamos cliente_nif a cif para que el Escudo Antiduplicados del Frontend lo detecte
+    cif: t.cliente_nif || null, 
     cliente_nif: t.cliente_nif || null,
     concepto_detalle: t.concepto_detalle || null,
     
@@ -95,7 +97,8 @@ export async function guardarDatoSupabase(datos: any) {
         frecuencia: datos.frecuencia || null,
         numero_factura: datos.numero_factura || null,
         cliente_nombre: datos.cliente_nombre || null,
-        cliente_nif: datos.cliente_nif || null,
+        // 🚀 B2B: Acepta tanto datos.cif como datos.cliente_nif para guardarlo correctamente
+        cliente_nif: datos.cif || datos.cliente_nif || null,
         concepto_detalle: datos.concepto_detalle || datos.concepto || null,
         
         // 🚀 GUARDADO DE LOS NUEVOS CAMPOS
@@ -142,7 +145,8 @@ export async function editarDatoSupabase(datos: any) {
         baseImponible: Math.abs(Number(datos.total)),
         iva: Number(datos.iva) || 0,
         ...(datos.cliente_nombre !== undefined && { cliente_nombre: datos.cliente_nombre }),
-        ...(datos.cliente_nif !== undefined && { cliente_nif: datos.cliente_nif }),
+        // 🚀 B2B: Actualización del NIF
+        ...((datos.cif !== undefined || datos.cliente_nif !== undefined) && { cliente_nif: datos.cif || datos.cliente_nif }),
         ...(datos.concepto_detalle !== undefined && { concepto_detalle: datos.concepto_detalle }),
         // 🚀 EDICIÓN DE GESTOR DOCUMENTAL Y ESTADOS
         ...(datos.estado_pago !== undefined && { estado_pago: datos.estado_pago }),
@@ -214,7 +218,7 @@ export async function escanearFacturaIA(formData: FormData) {
 
     try {
         const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('facturas') // <-- IMPORTANTE: DEBES CREAR ESTE BUCKET PÚBLICO EN TU PANEL DE SUPABASE
+            .from('facturas') 
             .upload(nombreArchivoUnico, buffer, {
                 contentType: file.type,
                 upsert: false
@@ -235,22 +239,24 @@ export async function escanearFacturaIA(formData: FormData) {
 
     // 🚀 PASO 2: PROCESAMIENTO CON GEMINI (PROMPT SUPER-VITAMINADO)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
 
     const prompt = `
       Eres un auditor financiero experto. Analiza este ticket o factura minuciosamente.
-      Devuelve SOLO y EXCLUSIVAMENTE este JSON exacto (sin bloques de código, sin markdown, solo el objeto JSON):
+      IMPORTANTE: Tu objetivo es extraer datos que sirvan para detectar tickets duplicados en el sistema contable. Necesitamos máxima precisión en la fecha, el NIF y el número de factura.
+
+      Devuelve SOLO y EXCLUSIVAMENTE un objeto JSON válido con esta estructura:
       {
         "categoria": "Elige la que mejor encaje de esta lista: [${categorias}] o pon 'General'",
-        "base_imponible": (el subtotal sin IVA en formato numérico),
+        "base_imponible": (el subtotal sin IVA en formato numérico con decimales, ej: 11.49),
         "iva": (el porcentaje de IVA en número, ej: 21, 10 o 0),
         "fecha": "YYYY-MM-DD",
-        "numero_factura": "El número de la factura o ticket (si aparece, ej: F-2309. Si no lo encuentras, devuelve null)",
-        "concepto": "Un resumen muy breve de 3 o 4 palabras de lo que se ha comprado (ej: Material de oficina, Cena con clientes, Combustible)",
-        "cliente_nombre": "Nombre de la empresa, restaurante, comercio o proveedor que emite el ticket",
-        "cliente_nif": "CIF o NIF del proveedor (si aparece)",
-        "confianza": (tu nivel de seguridad en la lectura global del 0 al 100 en número),
-        "evidencia": "Breve justificación de 1 línea de dónde has extraído la base y el IVA."
+        "numero_factura": "El número de la factura o ticket (ej: F-2309, 1516). Si no hay número obvio, busca cualquier código de caja o transacción que sirva como identificador único. Si no hay nada, devuelve null",
+        "concepto": "Resumen muy breve de 3 o 4 palabras (ej: Gasolina, Dietas, Material oficina)",
+        "cliente_nombre": "Nombre de la empresa, restaurante, gasolinera o comercio emisor",
+        "nif": "CIF o NIF del emisor de la factura. Busca DNI, NIF, CIF, o secuencias como B45779477. Si lo encuentras, devuélvelo limpio (ej: B45779477). Si no, devuelve null",
+        "confianza": (tu nivel de seguridad global del 0 al 100),
+        "evidencia": "Breve justificación de 1 línea de dónde has extraído los datos clave."
       }
     `;
 
@@ -259,7 +265,7 @@ export async function escanearFacturaIA(formData: FormData) {
       { inlineData: { data: base64Image, mimeType: file.type } }
     ]);
 
-    const texto = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
+    const texto = result.response.text();
     const datosParseados = JSON.parse(texto);
     
     // 🚀 PASO 3: DEVOLVER LOS DATOS EXTRAÍDOS DE LA IA + LA URL DE LA FOTO
