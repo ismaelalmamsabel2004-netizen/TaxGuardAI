@@ -9,8 +9,7 @@ import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 import { Toaster, toast } from 'sonner';
 
-// 🚀 AÑADIDAS LAS FUNCIONES DEL MODO ASESOR
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor } from './actions';
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente } from './actions';
 
 Font.register({
   family: 'Roboto',
@@ -96,17 +95,16 @@ export default function Home() {
   const { isSignedIn, isLoaded, user } = useUser();
   const [isMounted, setIsMounted] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState("Pulse 'Generar Reporte' para iniciar la evaluación inteligente de este periodo.");
   
   const [data, setData] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
+  const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]); // 🚀 Guardará las empresas a las que el gestor fue invitado
   const [empresaId, setEmpresaId] = useState(""); 
   const [nuevaEmpresa, setNuevaEmpresa] = useState("");
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
 
   const [planActivo, setPlanActivo] = useState('loading');
   
-  // 🚀 ESTADOS MODO ASESOR
   const [rolUsuario, setRolUsuario] = useState("PROPIETARIO");
   const [showAsesorModal, setShowAsesorModal] = useState(false);
   const [asesorEmail, setAsesorEmail] = useState("");
@@ -167,12 +165,12 @@ export default function Home() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   
-  const [showSupportModal, setShowSupportModal] = useState(false);
-  const [faqSearch, setFaqSearch] = useState("");
-
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   const [sectorInput, setSectorInput] = useState("");
   const [objetivoInput, setObjetivoInput] = useState("");
+
+  // 🚀 B2B: Datos Fiscales para Configuración
+  const [datosFiscales, setDatosFiscales] = useState({ razonSocial: "", nif: "", direccion: "" });
 
   const [catsIngresoInput, setCatsIngresoInput] = useState(defaultIngresos.join(", "));
   const [catsGastoInput, setCatsGastoInput] = useState(defaultGastos.join(", "));
@@ -208,7 +206,7 @@ export default function Home() {
       if (data.url) {
         window.location.href = data.url; 
       } else {
-        toast.info("Modo Administrador", { description: "Como estás usando una cuenta de Administrador, no has registrado tarjeta. ¡A los clientes reales sí les funcionará!" });
+        toast.info("Modo Administrador", { description: "Como estás usando una cuenta de Administrador, no has registrado tarjeta." });
       }
     } catch (error) {
       toast.error("Error", { description: "Error de conexión con la pasarela." });
@@ -232,6 +230,11 @@ export default function Home() {
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
+    // Cargar empresas de clientes (Modo Asesor)
+    obtenerEmpresasCliente().then(clientes => {
+        setEspaciosCliente(clientes);
+    });
+
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
@@ -240,7 +243,7 @@ export default function Home() {
 
          setPlanActivo(planDetectado);
 
-         const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa"];
+         const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa Principal"];
          setEmpresas(listaEmpresas);
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
@@ -265,6 +268,30 @@ export default function Home() {
     }
     if (tipoTransaccion === 'ingreso' || tipoTransaccion === 'proyecto') setIsVehiculo(false);
   }, [tipoTransaccion, categoriasIngreso, categoriasGasto]);
+
+  const manejarCambioEmpresa = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const valorSeleccionado = e.target.value;
+    
+    // Si el valor empieza por "CLIENTE_", es que ha seleccionado una empresa de un cliente en Modo Asesor
+    if (valorSeleccionado.startsWith("CLIENTE_")) {
+        const clienteEmpresaId = valorSeleccionado.replace("CLIENTE_", "");
+        setEmpresaId(clienteEmpresaId);
+    } else {
+        setEmpresaId(valorSeleccionado);
+        const res = await fetch('/api/settings');
+        const actuales: any = await res.json(); 
+        await syncSettingsToCloud({ ...actuales, empresaActiva: valorSeleccionado });
+    }
+  };
+
+  const salirModoAsesor = async () => {
+    const miEmpresaPrincipal = empresas[0] || "Mi Empresa Principal";
+    setEmpresaId(miEmpresaPrincipal);
+    const res = await fetch('/api/settings');
+    const actuales: any = await res.json(); 
+    await syncSettingsToCloud({ ...actuales, empresaActiva: miEmpresaPrincipal });
+    toast.success("Modo Propietario Activo", { description: "Has vuelto a tu espacio personal." });
+  };
 
   const agregarEmpresa = async () => {
     if (nuevaEmpresa && !empresas.includes(nuevaEmpresa)) {
@@ -316,7 +343,6 @@ export default function Home() {
   useEffect(() => {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
-    // 🚀 B2B: Verificar si el usuario es LECTURA o PROPIETARIO
     verificarRolUsuario(empresaId).then(res => {
         setRolUsuario(res.rol);
     });
@@ -342,6 +368,12 @@ export default function Home() {
            setObjetivoInput("");
          }
 
+         if (ajustesGuardados.datosFiscales && ajustesGuardados.datosFiscales[empresaId]) {
+            setDatosFiscales(ajustesGuardados.datosFiscales[empresaId]);
+         } else {
+            setDatosFiscales({ razonSocial: "", nif: "", direccion: "" });
+         }
+
          if (ajustesGuardados.categorias && ajustesGuardados.categorias[empresaId]) {
            setCategoriasIngreso(ajustesGuardados.categorias[empresaId].ingreso);
            setCategoriasGasto(ajustesGuardados.categorias[empresaId].gasto);
@@ -357,20 +389,6 @@ export default function Home() {
 
     setChatMessages([]);
   }, [empresaId, planActivo]);
-
-  const guardarNuevaMeta = async () => {
-    const nuevaMetaNum = Number(inputMeta);
-    if (nuevaMetaNum > 0) {
-      setMetaMensual(nuevaMetaNum);
-      const res = await fetch('/api/settings');
-      const actuales: any = await res.json();
-      const metasObj = actuales.metas || {};
-      metasObj[empresaId] = nuevaMetaNum;
-      await syncSettingsToCloud({ ...actuales, metas: metasObj });
-      toast.success("Meta Guardada", { description: "El objetivo de ingresos se actualizó correctamente." });
-    }
-    setEditandoMeta(false);
-  };
 
   const guardarPerfil = async () => {
     const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
@@ -394,12 +412,14 @@ export default function Home() {
     const categoriasObj = actuales.categorias || {};
     categoriasObj[empresaId] = catA_Guardar;
     
-    await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj });
+    const fiscalesObj = actuales.datosFiscales || {};
+    fiscalesObj[empresaId] = datosFiscales;
+
+    await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj, datosFiscales: fiscalesObj });
     setShowConfig(false);
-    toast.success("Configuración Guardada", { description: "Perfil de IA y categorías actualizados." });
+    toast.success("Configuración Guardada", { description: "Perfil de IA, categorías y datos fiscales actualizados." });
   };
 
-  // 🚀 B2B: FUNCIONES DEL MODAL ASESORES
   const cargarAsesores = async () => {
       const lista = await obtenerAsesores(empresaId);
       setListaAsesores(lista);
@@ -570,7 +590,6 @@ export default function Home() {
   const ingresosTotales = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
   const gastosTotales = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
   const beneficioNeto = ingresosTotales - gastosTotales;
-  const porcentajeMeta = Math.min(Math.round((ingresosTotales / metaMensual) * 100), 100);
 
   const ivaRepercutido = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
   const ivaSoportado = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
@@ -587,17 +606,6 @@ export default function Home() {
     if (beneficioNeto < 0) {
       alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €. Riesgo de liquidez.` });
     } 
-    else if (ingresosTotales > 0 && gastosTotales > (ingresosTotales * 0.75)) {
-      alertas.push({ tipo: 'advertencia', titulo: '⚠️ Alerta de Márgenes', texto: `El margen es estrecho. Los costes consumen más del 75% de lo facturado.` });
-    }
-
-    if (porcentajeMeta >= 100) {
-      alertas.push({ tipo: 'exito', titulo: '🏆 Objetivo Superado', texto: `¡Enhorabuena! Has superado los ${metaMensual.toLocaleString()} € de ingresos.` });
-    }
-    
-    if (liquidacionIva > 3000) {
-      alertas.push({ tipo: 'advertencia', titulo: '🏛️ Provisión de Impuestos', texto: `Recuerda apartar liquidez. Tienes una estimación de ${liquidacionIva.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € a devolver a Hacienda por IVA.` });
-    }
 
     return alertas;
   };
@@ -608,7 +616,6 @@ export default function Home() {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
     setData([]);
-    
     obtenerDatosSupabase(empresaId).then(d => {
       if (d && d.length > 0) setData(d);
       else setData([]);
@@ -1052,30 +1059,32 @@ export default function Home() {
                 </button>
               </div>
               
-              <div className="mb-6 px-2">
+              <div className="mb-6 px-2 w-full">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
-                <div className="flex gap-2 mt-1">
+                <div className="flex gap-2 mt-1 w-full relative">
                     <select 
-                      value={empresaId} 
-                      onChange={async (e) => {
-                        const newId = e.target.value;
-                        setEmpresaId(newId);
-                        const res = await fetch('/api/settings');
-                        const actuales: any = await res.json(); 
-                        await syncSettingsToCloud({ ...actuales, empresaActiva: newId });
-                      }} 
-                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none truncate"
+                      value={rolUsuario === 'LECTURA' ? `CLIENTE_${empresaId}` : empresaId} 
+                      onChange={manejarCambioEmpresa} 
+                      className="flex-1 bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none w-full"
+                      style={{ textOverflow: 'ellipsis' }}
                     >
-                        {empresas.map(e => <option key={e} value={e}>{e}</option>)}
+                        <optgroup label="Mis Espacios Personales">
+                            {empresas.map(e => <option key={`PROPIO_${e}`} value={e}>{e}</option>)}
+                        </optgroup>
+                        
+                        {espaciosCliente.length > 0 && (
+                            <optgroup label="Clientes (Modo Asesor)">
+                                {espaciosCliente.map(c => <option key={`CLIENTE_${c.empresaId}`} value={`CLIENTE_${c.empresaId}`}>👁️ {c.empresaId}</option>)}
+                            </optgroup>
+                        )}
                     </select>
                     
-                    {/* 🚀 BOTONES RESTRINGIDOS PARA GESTORES */}
                     {rolUsuario !== 'LECTURA' && (
                         <>
-                            <button onClick={() => {setShowAsesorModal(true); setIsSidebarOpen(false); cargarAsesores();}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Invitar Asesor">
+                            <button onClick={() => {setShowAsesorModal(true); setIsSidebarOpen(false); cargarAsesores();}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700 shrink-0" title="Invitar Asesor">
                               👥
                             </button>
-                            <button onClick={() => {setShowConfig(true); setIsSidebarOpen(false);}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil y Categorías">
+                            <button onClick={() => {setShowConfig(true); setIsSidebarOpen(false);}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700 shrink-0" title="Configurar Perfil y Categorías">
                               ⚙️
                             </button>
                         </>
@@ -1144,8 +1153,14 @@ export default function Home() {
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             
             {rolUsuario === 'LECTURA' && (
-                <div className="bg-blue-600 text-white text-xs font-bold text-center py-2 px-4 rounded-xl mb-6 shadow-md shadow-blue-600/20 animate-pulse">
-                    👁️ MODO ASESOR ACTIVO: Estás visualizando la empresa "{empresaId}" con permisos de Solo Lectura.
+                <div className="bg-blue-600 text-white text-xs font-bold py-3 px-4 rounded-xl mb-6 shadow-md shadow-blue-600/20 flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <span className="flex items-center gap-2">
+                        <span className="animate-pulse text-lg">👁️</span> 
+                        <span>MODO ASESOR ACTIVO: Estás visualizando la empresa "{empresaId}" de tu cliente.</span>
+                    </span>
+                    <button onClick={salirModoAsesor} className="bg-white text-blue-600 px-4 py-1.5 rounded-lg font-black hover:bg-blue-50 transition shadow-sm w-full sm:w-auto">
+                       Salir a Mi Espacio
+                    </button>
                 </div>
             )}
 
@@ -1193,7 +1208,7 @@ export default function Home() {
               </div>
             </header>
 
-            {/* 🚀 B2B: MÓDULO DE TESORERÍA CON VALOR AÑADIDO (Facturas Pendientes) */}
+            {/* 🚀 B2B: MÓDULO DE TESORERÍA (Facturas Pendientes) */}
             {facturasPendientes.length > 0 && (
                 <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
@@ -1964,68 +1979,94 @@ export default function Home() {
             </div>
         )}
 
-        {/* MODAL CONFIGURACIÓN */}
+        {/* 🚀 MODAL CONFIGURACIÓN AMPLIADO B2B */}
         {showConfig && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
                   <h3 className="text-lg font-black text-slate-900">Ajustes: {empresaId}</h3>
                   <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-rose-500 transition">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
                 
-                <div className="p-6 space-y-6 overflow-y-auto">
+                <div className="p-6 overflow-y-auto bg-white flex flex-col lg:flex-row gap-6">
                   
-                  {papelera.length > 0 && (
-                    <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl">
-                        <h4 className="text-sm font-bold text-rose-800 mb-1 flex items-center gap-2">
-                            🗑️ Papelera de Reciclaje
-                        </h4>
-                        <p className="text-xs text-rose-600 font-medium mb-3">Estos espacios fueron borrados recientemente. Puedes restaurarlos.</p>
-                        <div className="space-y-2">
-                           {papelera.map((item, idx) => (
-                             <div key={idx} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-rose-100">
-                               <span className="text-xs font-bold text-slate-700">{item.nombre}</span>
-                               <button onClick={() => recuperarDePapelera(item.nombre)} className="text-[10px] font-bold bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Restaurar Espacio</button>
-                             </div>
-                           ))}
-                        </div>
-                    </div>
-                  )}
+                  {/* Columna Izquierda: Perfil y Categorías */}
+                  <div className="flex-1 space-y-6">
+                      <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                          <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
+                          <p className="text-[10px] text-blue-600 font-medium mb-3">Estos datos enseñan al CFO Virtual a entender tu modelo de negocio.</p>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Sector de la Empresa</label>
+                              <input type="text" value={sectorInput} onChange={(e) => setSectorInput(e.target.value)} placeholder="Ej: Clínica Dental" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Objetivo Principal</label>
+                              <input type="text" value={objetivoInput} onChange={(e) => setObjetivoInput(e.target.value)} placeholder="Ej: Reducir costes médicos" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                            </div>
+                          </div>
+                      </div>
 
-                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
-                      <h4 className="text-sm font-bold text-blue-800 mb-1">Perfil de Inteligencia Artificial</h4>
-                      <p className="text-xs text-blue-600 font-medium mb-3">Estos datos enseñan a TaxGuard AI a entender tu modelo de negocio.</p>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Sector de la Empresa</label>
-                          <input type="text" value={sectorInput} onChange={(e) => setSectorInput(e.target.value)} placeholder="Ej: Clínica Dental" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Objetivo Principal</label>
-                          <input type="text" value={objetivoInput} onChange={(e) => setObjetivoInput(e.target.value)} placeholder="Ej: Reducir costes médicos" className="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
-                        </div>
+                      <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                          <h4 className="text-sm font-bold text-slate-800 mb-1">Categorías Personalizadas</h4>
+                          <p className="text-[10px] text-slate-500 font-medium mb-3">Separadas por comas. El Escáner OCR aprenderá a usarlas automáticamente.</p>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Ingreso</label>
+                              <input type="text" value={catsIngresoInput} onChange={(e) => setCatsIngresoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Gasto</label>
+                              <input type="text" value={catsGastoInput} onChange={(e) => setCatsGastoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-rose-700 outline-none focus:ring-2 focus:ring-rose-500/20" />
+                            </div>
+                          </div>
                       </div>
                   </div>
 
-                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
-                      <h4 className="text-sm font-bold text-slate-800 mb-1">Categorías Personalizadas</h4>
-                      <p className="text-xs text-slate-500 font-medium mb-3">Escribe tus propias categorías separadas por comas. El Escáner OCR aprenderá a usarlas automáticamente.</p>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Ingreso</label>
-                          <input type="text" value={catsIngresoInput} onChange={(e) => setCatsIngresoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Categorías de Gasto</label>
-                          <input type="text" value={catsGastoInput} onChange={(e) => setCatsGastoInput(e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-rose-700 outline-none focus:ring-2 focus:ring-rose-500/20" />
-                        </div>
+                  {/* Columna Derecha: Datos Fiscales y Papelera */}
+                  <div className="flex-1 space-y-6">
+                      <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl">
+                          <h4 className="text-sm font-bold text-purple-800 mb-1">Datos de Facturación Fiscal</h4>
+                          <p className="text-[10px] text-purple-600 font-medium mb-3">Información legal de la empresa. Se usará para autocompletar la emisión de PDFs oficiales en futuras actualizaciones.</p>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-[10px] font-bold text-purple-800 uppercase mb-1">Nombre Legal / Razón Social</label>
+                              <input type="text" value={datosFiscales.razonSocial} onChange={(e) => setDatosFiscales({...datosFiscales, razonSocial: e.target.value})} placeholder="Ej: NexaCorp S.L." className="w-full p-2.5 bg-white border border-purple-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500/20" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-purple-800 uppercase mb-1">NIF / CIF</label>
+                              <input type="text" value={datosFiscales.nif} onChange={(e) => setDatosFiscales({...datosFiscales, nif: e.target.value})} placeholder="Ej: B12345678" className="w-full p-2.5 bg-white border border-purple-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500/20" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-purple-800 uppercase mb-1">Dirección Fiscal Completa</label>
+                              <textarea value={datosFiscales.direccion} onChange={(e) => setDatosFiscales({...datosFiscales, direccion: e.target.value})} placeholder="Ej: Calle Principal 123, 28001 Madrid" rows={2} className="w-full p-2.5 bg-white border border-purple-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500/20 resize-none" />
+                            </div>
+                          </div>
                       </div>
+
+                      {papelera.length > 0 && (
+                        <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl">
+                            <h4 className="text-sm font-bold text-rose-800 mb-1 flex items-center gap-2">
+                                🗑️ Papelera de Reciclaje
+                            </h4>
+                            <p className="text-[10px] text-rose-600 font-medium mb-3">Estos espacios fueron borrados recientemente.</p>
+                            <div className="space-y-2">
+                               {papelera.map((item, idx) => (
+                                 <div key={idx} className="flex justify-between items-center bg-white p-2 rounded-lg border border-rose-100">
+                                   <span className="text-[10px] font-bold text-slate-700 truncate mr-2">{item.nombre}</span>
+                                   <button onClick={() => recuperarDePapelera(item.nombre)} className="text-[9px] font-bold bg-rose-600 text-white px-2 py-1 rounded-md hover:bg-rose-700 shrink-0">Restaurar</button>
+                                 </div>
+                               ))}
+                            </div>
+                        </div>
+                      )}
                   </div>
+
                 </div>
 
-                <div className="p-6 bg-white border-t border-slate-100 shrink-0">
+                <div className="p-6 bg-slate-50 border-t border-slate-100 shrink-0">
                   <button onClick={guardarPerfil} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl shadow-md transition">
                     Guardar Configuración
                   </button>

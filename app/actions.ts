@@ -1,19 +1,16 @@
 'use server'
 
 import { prisma } from '../lib/prisma';
-import { auth, currentUser } from '@clerk/nextjs/server'; // 🚀 Añadido currentUser para saber el email
+import { auth, currentUser } from '@clerk/nextjs/server'; 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 
-// ==========================================
-// 0. CONFIGURACIÓN SUPABASE STORAGE
-// ==========================================
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
-// 1. OBTENER DATOS (AHORA SOPORTA MODO ASESOR) 🚀
+// 1. OBTENER DATOS (+ AUTO-RESCATE B2B) 🚀
 // ==========================================
 export async function obtenerDatosSupabase(empresaId?: string) {
   const { userId } = await auth();
@@ -31,13 +28,33 @@ export async function obtenerDatosSupabase(empresaId?: string) {
     orderBy: { createdAt: 'desc' },
   });
 
-  // 2. Si no encontró transacciones (o es una cuenta nueva), comprobamos si es un ASESOR INVITADO
+  // 🌟 AUTO-RESCATE DE DATOS: Si no hay transacciones en el nombre nuevo, rescatamos las antiguas (General o null)
+  if (transacciones.length === 0 && empresaId) {
+      const transaccionesHuerfanas = await prisma.transaccion.findMany({
+          where: { userId: userId, OR: [{ empresaId: null }, { empresaId: "General" }, { empresaId: "Mi Empresa" }] }
+      });
+
+      if (transaccionesHuerfanas.length > 0) {
+          // Movemos las facturas antiguas al nuevo espacio de trabajo del usuario
+          await prisma.transaccion.updateMany({
+              where: { userId: userId, OR: [{ empresaId: null }, { empresaId: "General" }, { empresaId: "Mi Empresa" }] },
+              data: { empresaId: empresaId }
+          });
+          
+          // Volvemos a consultar con los datos ya en su sitio
+          transacciones = await prisma.transaccion.findMany({
+              where: { userId: userId, empresaId: empresaId },
+              orderBy: { createdAt: 'desc' },
+          });
+      }
+  }
+
+  // 2. Si sigue vacío, comprobamos si el usuario es un ASESOR INVITADO mirando la empresa de un cliente
   if (transacciones.length === 0 && empresaId && miEmail) {
       const permiso = await prisma.permisoEmpresa.findFirst({
           where: { empresaId: empresaId, asesorEmail: miEmail }
       });
 
-      // Si es asesor, buscamos las transacciones del PROPIETARIO
       if (permiso) {
           transacciones = await prisma.transaccion.findMany({
               where: { userId: permiso.propietarioId, empresaId: empresaId },
@@ -228,7 +245,7 @@ export async function escanearFacturaIA(formData: FormData) {
             });
 
         if (uploadError) {
-            console.error("⚠️ Aviso: Error al subir a Supabase Storage (La IA seguirá procesando).", uploadError);
+            console.error("⚠️ Aviso: Error al subir a Supabase Storage.", uploadError);
         } else if (uploadData) {
             const { data: publicUrlData } = supabase.storage
                 .from('facturas')
@@ -237,7 +254,7 @@ export async function escanearFacturaIA(formData: FormData) {
             urlArchivoSubido = publicUrlData.publicUrl;
         }
     } catch (e) {
-        console.log("⚠️ Aviso: No se pudo subir la imagen al Storage. Verifica la conexión.");
+        console.log("⚠️ Aviso: No se pudo subir la imagen al Storage.");
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -245,20 +262,18 @@ export async function escanearFacturaIA(formData: FormData) {
 
     const prompt = `
       Eres un auditor financiero experto. Analiza este ticket o factura minuciosamente.
-      IMPORTANTE: Tu objetivo es extraer datos que sirvan para detectar tickets duplicados en el sistema contable. Necesitamos máxima precisión en la fecha, el NIF y el número de factura.
-
       Devuelve SOLO y EXCLUSIVAMENTE un objeto JSON válido con esta estructura:
       {
         "categoria": "Elige la que mejor encaje de esta lista: [${categorias}] o pon 'General'",
         "base_imponible": (el subtotal sin IVA en formato numérico con decimales, ej: 11.49),
         "iva": (el porcentaje de IVA en número, ej: 21, 10 o 0),
         "fecha": "YYYY-MM-DD",
-        "numero_factura": "El número de la factura o ticket (ej: F-2309, 1516). Si no hay número obvio, busca cualquier código de caja o transacción que sirva como identificador único. Si no hay nada, devuelve null",
-        "concepto": "Resumen muy breve de 3 o 4 palabras (ej: Gasolina, Dietas, Material oficina)",
-        "cliente_nombre": "Nombre de la empresa, restaurante, gasolinera o comercio emisor",
-        "nif": "CIF o NIF del emisor de la factura. Busca DNI, NIF, CIF, o secuencias como B45779477. Si lo encuentras, devuélvelo limpio (ej: B45779477). Si no, devuelve null",
+        "numero_factura": "El número de la factura o ticket (ej: F-2309, 1516). Si no hay, devuelve null",
+        "concepto": "Resumen muy breve de 3 o 4 palabras",
+        "cliente_nombre": "Nombre de la empresa o emisor",
+        "nif": "CIF o NIF del emisor de la factura. Devuélvelo limpio (ej: B45779477). Si no, devuelve null",
         "confianza": (tu nivel de seguridad global del 0 al 100),
-        "evidencia": "Breve justificación de 1 línea de dónde has extraído los datos clave."
+        "evidencia": "Breve justificación de 1 línea de dónde has extraído los datos."
       }
     `;
 
@@ -281,7 +296,7 @@ export async function escanearFacturaIA(formData: FormData) {
     };
   } catch (error: any) {
     console.error("🚨 Error en Escáner IA:", error);
-    return { error: error.message || "Fallo de conexión con el motor de IA o Storage" };
+    return { error: error.message || "Fallo de conexión OCR" };
   }
 }
 
@@ -289,7 +304,6 @@ export async function escanearFacturaIA(formData: FormData) {
 // 7. FUNCIONES DEL MODO ASESOR (B2B)
 // 🤝=============================================================🤝
 
-// Verifica qué rol tiene el usuario en la empresa actual
 export async function verificarRolUsuario(empresaId: string) {
     const { userId } = await auth();
     const user = await currentUser();
@@ -297,25 +311,41 @@ export async function verificarRolUsuario(empresaId: string) {
 
     const miEmail = user.primaryEmailAddress?.emailAddress;
 
-    // ¿Soy yo el que creó alguna transacción en esta empresa?
     const soyPropietario = await prisma.transaccion.findFirst({
         where: { userId: userId, empresaId: empresaId }
     });
 
     if (soyPropietario) return { rol: "PROPIETARIO" };
 
-    // Si no soy el creador, ¿estoy invitado a mirar?
     if (miEmail) {
         const invitado = await prisma.permisoEmpresa.findFirst({
             where: { empresaId: empresaId, asesorEmail: miEmail }
         });
-        if (invitado) return { rol: invitado.rol }; // Devolverá "LECTURA"
+        if (invitado) return { rol: invitado.rol }; 
     }
 
     return { rol: "NINGUNO" };
 }
 
-// Para que el CEO invite a su gestor
+// 🚀 NUEVA FUNCIÓN: Busca las empresas a las que el gestor ha sido invitado
+export async function obtenerEmpresasCliente() {
+    const { userId } = await auth();
+    const user = await currentUser();
+    if (!userId || !user) return [];
+
+    const miEmail = user.primaryEmailAddress?.emailAddress;
+    if (!miEmail) return [];
+
+    const invitaciones = await prisma.permisoEmpresa.findMany({
+        where: { asesorEmail: miEmail }
+    });
+
+    return invitaciones.map(inv => ({
+        empresaId: inv.empresaId,
+        propietarioId: inv.propietarioId
+    }));
+}
+
 export async function invitarAsesor(empresaId: string, asesorEmail: string) {
     const { userId } = await auth();
     if (!userId) return { error: "No autorizado" };
@@ -331,13 +361,11 @@ export async function invitarAsesor(empresaId: string, asesorEmail: string) {
         });
         return { success: true };
     } catch (error: any) {
-        // El error P2002 significa que viola la regla de @@unique (ya estaba invitado)
         if (error.code === 'P2002') return { error: "Este asesor ya está invitado a este espacio." };
         return { error: "No se pudo enviar la invitación." };
     }
 }
 
-// Para que el CEO vea a quién tiene invitado
 export async function obtenerAsesores(empresaId: string) {
     const { userId } = await auth();
     if (!userId) return [];
@@ -348,7 +376,6 @@ export async function obtenerAsesores(empresaId: string) {
     return asesores;
 }
 
-// Para echar al gestor
 export async function revocarAsesor(permisoId: number) {
     const { userId } = await auth();
     if (!userId) return { error: "No autorizado" };
