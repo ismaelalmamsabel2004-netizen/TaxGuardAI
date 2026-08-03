@@ -1,35 +1,50 @@
 'use server'
 
 import { prisma } from '../lib/prisma';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server'; // 🚀 Añadido currentUser para saber el email
 import { GoogleGenerativeAI } from '@google/generative-ai';
-// 🚀 INYECTADO: Cliente de Supabase para guardar los archivos
 import { createClient } from '@supabase/supabase-js';
 
 // ==========================================
 // 0. CONFIGURACIÓN SUPABASE STORAGE
 // ==========================================
-// Necesitas añadir estas dos variables a tu archivo .env.local y en Vercel
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
-// 1. OBTENER DATOS (CEREBRO CENTRALIZADO MEJORADO)
+// 1. OBTENER DATOS (AHORA SOPORTA MODO ASESOR) 🚀
 // ==========================================
 export async function obtenerDatosSupabase(empresaId?: string) {
   const { userId } = await auth();
-  if (!userId) return [];
+  const user = await currentUser();
+  if (!userId || !user) return [];
 
-  const whereClause: any = { userId: userId };
-  if (empresaId) {
-    whereClause.empresaId = empresaId;
-  }
+  const miEmail = user.primaryEmailAddress?.emailAddress;
 
-  const transacciones = await prisma.transaccion.findMany({
+  // 1. Buscamos si el usuario es el PROPIETARIO
+  let whereClause: any = { userId: userId };
+  if (empresaId) whereClause.empresaId = empresaId;
+
+  let transacciones = await prisma.transaccion.findMany({
     where: whereClause,
     orderBy: { createdAt: 'desc' },
   });
+
+  // 2. Si no encontró transacciones (o es una cuenta nueva), comprobamos si es un ASESOR INVITADO
+  if (transacciones.length === 0 && empresaId && miEmail) {
+      const permiso = await prisma.permisoEmpresa.findFirst({
+          where: { empresaId: empresaId, asesorEmail: miEmail }
+      });
+
+      // Si es asesor, buscamos las transacciones del PROPIETARIO
+      if (permiso) {
+          transacciones = await prisma.transaccion.findMany({
+              where: { userId: permiso.propietarioId, empresaId: empresaId },
+              orderBy: { createdAt: 'desc' },
+          });
+      }
+  }
 
   return transacciones.map((t: any) => ({
     id: t.id,
@@ -42,31 +57,27 @@ export async function obtenerDatosSupabase(empresaId?: string) {
     frecuencia: t.frecuencia || "Mensual",
     numero_factura: t.numero_factura || null,
     cliente_nombre: t.cliente_nombre || null,
-    // 🚀 B2B: Mapeamos cliente_nif a cif para que el Escudo Antiduplicados del Frontend lo detecte
     cif: t.cliente_nif || null, 
     cliente_nif: t.cliente_nif || null,
     concepto_detalle: t.concepto_detalle || null,
-    
-    // 🚀 CAMPOS DE GESTIÓN AVANZADA
     url_archivo: t.url_archivo || null,
     nombre_archivo: t.nombre_archivo || null,
     tipo_archivo: t.tipo_archivo || null,
     estado_pago: t.estado_pago || "COBRADO",
     fecha_vencimiento: t.fecha_vencimiento ? t.fecha_vencimiento.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
-    raw_fecha_vencimiento: t.fecha_vencimiento || null, // Útil para cálculos de días de retraso
+    raw_fecha_vencimiento: t.fecha_vencimiento || null,
     metodo_pago: t.metodo_pago || null,
     notas_internas: t.notas_internas || null
   }));
 }
 
 // ==========================================
-// 2. GUARDAR NUEVO DATO (Soporta nuevos campos y blinda fechas)
+// 2. GUARDAR NUEVO DATO 
 // ==========================================
 export async function guardarDatoSupabase(datos: any) {
   const { userId } = await auth();
   if (!userId) return { error: "No autorizado" };
 
-  // 🚀 BLINDAJE DE FECHAS B2B: Previene caídas del servidor por formatos inválidos
   let fechaObj = new Date();
   if (datos.month && datos.month.includes('/')) {
      const [d, m, y] = datos.month.split('/');
@@ -74,7 +85,6 @@ export async function guardarDatoSupabase(datos: any) {
   } else if (datos.fecha) {
      fechaObj = new Date(datos.fecha);
   }
-  // Si la fecha resultante es "Invalid Date", usamos la fecha de hoy por seguridad
   if (isNaN(fechaObj.getTime())) fechaObj = new Date();
 
   let fechaVencimientoObj = null;
@@ -97,11 +107,8 @@ export async function guardarDatoSupabase(datos: any) {
         frecuencia: datos.frecuencia || null,
         numero_factura: datos.numero_factura || null,
         cliente_nombre: datos.cliente_nombre || null,
-        // 🚀 B2B: Acepta tanto datos.cif como datos.cliente_nif para guardarlo correctamente
         cliente_nif: datos.cif || datos.cliente_nif || null,
         concepto_detalle: datos.concepto_detalle || datos.concepto || null,
-        
-        // 🚀 GUARDADO DE LOS NUEVOS CAMPOS
         url_archivo: datos.url_archivo || null,
         nombre_archivo: datos.nombre_archivo || null,
         tipo_archivo: datos.tipo_archivo || null,
@@ -125,7 +132,6 @@ export async function editarDatoSupabase(datos: any) {
   const { userId } = await auth();
   if (!userId) return { error: "No autorizado" };
 
-  // 🚀 BLINDAJE DE FECHAS EN EDICIÓN
   let fechaObj = new Date();
   if (datos.month && datos.month.includes('/')) {
      const [d, m, y] = datos.month.split('/');
@@ -145,10 +151,8 @@ export async function editarDatoSupabase(datos: any) {
         baseImponible: Math.abs(Number(datos.total)),
         iva: Number(datos.iva) || 0,
         ...(datos.cliente_nombre !== undefined && { cliente_nombre: datos.cliente_nombre }),
-        // 🚀 B2B: Actualización del NIF
         ...((datos.cif !== undefined || datos.cliente_nif !== undefined) && { cliente_nif: datos.cif || datos.cliente_nif }),
         ...(datos.concepto_detalle !== undefined && { concepto_detalle: datos.concepto_detalle }),
-        // 🚀 EDICIÓN DE GESTOR DOCUMENTAL Y ESTADOS
         ...(datos.estado_pago !== undefined && { estado_pago: datos.estado_pago }),
         ...(datos.nombre_archivo !== undefined && { nombre_archivo: datos.nombre_archivo }),
         ...(datos.url_archivo !== undefined && { url_archivo: datos.url_archivo }),
@@ -198,7 +202,7 @@ export async function actualizarEstadoPago(id: number, nuevoEstado: string) {
 }
 
 // ==========================================
-// 6. ESCÁNER DE FACTURAS CON IA (HIPERVITAMINADO B2B)
+// 6. ESCÁNER DE FACTURAS CON IA
 // ==========================================
 export async function escanearFacturaIA(formData: FormData) {
   const { userId } = await auth();
@@ -212,7 +216,6 @@ export async function escanearFacturaIA(formData: FormData) {
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString('base64');
     
-    // 🚀 PASO 1: SUBIR EL ARCHIVO AL STORAGE DE SUPABASE
     let urlArchivoSubido = null;
     let nombreArchivoUnico = `${userId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
 
@@ -237,7 +240,6 @@ export async function escanearFacturaIA(formData: FormData) {
         console.log("⚠️ Aviso: No se pudo subir la imagen al Storage. Verifica la conexión.");
     }
 
-    // 🚀 PASO 2: PROCESAMIENTO CON GEMINI (PROMPT SUPER-VITAMINADO)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
 
@@ -268,7 +270,6 @@ export async function escanearFacturaIA(formData: FormData) {
     const texto = result.response.text();
     const datosParseados = JSON.parse(texto);
     
-    // 🚀 PASO 3: DEVOLVER LOS DATOS EXTRAÍDOS DE LA IA + LA URL DE LA FOTO
     return { 
         success: true, 
         data: {
@@ -282,4 +283,82 @@ export async function escanearFacturaIA(formData: FormData) {
     console.error("🚨 Error en Escáner IA:", error);
     return { error: error.message || "Fallo de conexión con el motor de IA o Storage" };
   }
+}
+
+// 🤝=============================================================🤝
+// 7. FUNCIONES DEL MODO ASESOR (B2B)
+// 🤝=============================================================🤝
+
+// Verifica qué rol tiene el usuario en la empresa actual
+export async function verificarRolUsuario(empresaId: string) {
+    const { userId } = await auth();
+    const user = await currentUser();
+    if (!userId || !user) return { rol: "NINGUNO" };
+
+    const miEmail = user.primaryEmailAddress?.emailAddress;
+
+    // ¿Soy yo el que creó alguna transacción en esta empresa?
+    const soyPropietario = await prisma.transaccion.findFirst({
+        where: { userId: userId, empresaId: empresaId }
+    });
+
+    if (soyPropietario) return { rol: "PROPIETARIO" };
+
+    // Si no soy el creador, ¿estoy invitado a mirar?
+    if (miEmail) {
+        const invitado = await prisma.permisoEmpresa.findFirst({
+            where: { empresaId: empresaId, asesorEmail: miEmail }
+        });
+        if (invitado) return { rol: invitado.rol }; // Devolverá "LECTURA"
+    }
+
+    return { rol: "NINGUNO" };
+}
+
+// Para que el CEO invite a su gestor
+export async function invitarAsesor(empresaId: string, asesorEmail: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "No autorizado" };
+
+    try {
+        await prisma.permisoEmpresa.create({
+            data: {
+                empresaId: empresaId,
+                propietarioId: userId,
+                asesorEmail: asesorEmail.toLowerCase(),
+                rol: "LECTURA"
+            }
+        });
+        return { success: true };
+    } catch (error: any) {
+        // El error P2002 significa que viola la regla de @@unique (ya estaba invitado)
+        if (error.code === 'P2002') return { error: "Este asesor ya está invitado a este espacio." };
+        return { error: "No se pudo enviar la invitación." };
+    }
+}
+
+// Para que el CEO vea a quién tiene invitado
+export async function obtenerAsesores(empresaId: string) {
+    const { userId } = await auth();
+    if (!userId) return [];
+
+    const asesores = await prisma.permisoEmpresa.findMany({
+        where: { empresaId: empresaId, propietarioId: userId }
+    });
+    return asesores;
+}
+
+// Para echar al gestor
+export async function revocarAsesor(permisoId: number) {
+    const { userId } = await auth();
+    if (!userId) return { error: "No autorizado" };
+
+    try {
+        await prisma.permisoEmpresa.delete({
+            where: { id: permisoId, propietarioId: userId }
+        });
+        return { success: true };
+    } catch (error) {
+        return { error: "No se pudo revocar el acceso." };
+    }
 }

@@ -73,3 +73,21 @@ model ContactoEmpresa {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now()) @updatedAt
 }
+
+// 🤝===============================================================🤝
+// 🌟 NUEVO MODELO B2B: MODO ASESOR (MULTICUENTA Y PERMISOS) 🌟
+// El puente de seguridad que permite a Marc entrar a tus datos en "Solo Lectura"
+// 🤝===============================================================🤝
+
+model PermisoEmpresa {
+  id            Int      @id @default(autoincrement())
+  empresaId     String   // El nombre del espacio de trabajo (ej: "Mi Empresa")
+  propietarioId String   // El ID del usuario creador (CEO original)
+  asesorEmail   String   // El email del gestor invitado (ej: mmontolio7@hotmail.com)
+  rol           String   @default("LECTURA") // "LECTURA" para gestores, "ADMIN" para socios
+  
+  createdAt     DateTime @default(now())
+
+  // Regla de seguridad pura: Evita que invites a la misma persona dos veces al mismo espacio
+  @@unique([empresaId, propietarioId, asesorEmail])
+}

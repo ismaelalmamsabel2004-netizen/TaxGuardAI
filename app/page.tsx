@@ -9,7 +9,8 @@ import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 import { Toaster, toast } from 'sonner';
 
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago } from './actions';
+// 🚀 AÑADIDAS LAS FUNCIONES DEL MODO ASESOR
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor } from './actions';
 
 Font.register({
   family: 'Roboto',
@@ -104,6 +105,13 @@ export default function Home() {
   const [papelera, setPapelera] = useState<{nombre: string, fecha: number}[]>([]);
 
   const [planActivo, setPlanActivo] = useState('loading');
+  
+  // 🚀 ESTADOS MODO ASESOR
+  const [rolUsuario, setRolUsuario] = useState("PROPIETARIO");
+  const [showAsesorModal, setShowAsesorModal] = useState(false);
+  const [asesorEmail, setAsesorEmail] = useState("");
+  const [listaAsesores, setListaAsesores] = useState<any[]>([]);
+  const [isInviting, setIsInviting] = useState(false);
 
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
@@ -308,6 +316,11 @@ export default function Home() {
   useEffect(() => {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
 
+    // 🚀 B2B: Verificar si el usuario es LECTURA o PROPIETARIO
+    verificarRolUsuario(empresaId).then(res => {
+        setRolUsuario(res.rol);
+    });
+
     fetch('/api/settings')
       .then(res => res.ok ? res.json() : {})
       .then((ajustesGuardados: any) => {
@@ -384,6 +397,35 @@ export default function Home() {
     await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj });
     setShowConfig(false);
     toast.success("Configuración Guardada", { description: "Perfil de IA y categorías actualizados." });
+  };
+
+  // 🚀 B2B: FUNCIONES DEL MODAL ASESORES
+  const cargarAsesores = async () => {
+      const lista = await obtenerAsesores(empresaId);
+      setListaAsesores(lista);
+  };
+
+  const manejarInvitarAsesor = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!asesorEmail) return;
+      setIsInviting(true);
+      const res = await invitarAsesor(empresaId, asesorEmail);
+      if (res.success) {
+          toast.success("Asesor Invitado", { description: "Ahora puede visualizar tu libro mayor." });
+          setAsesorEmail("");
+          cargarAsesores();
+      } else {
+          toast.error("Error", { description: res.error });
+      }
+      setIsInviting(false);
+  };
+
+  const manejarRevocarAsesor = async (id: number) => {
+      const res = await revocarAsesor(id);
+      if (res.success) {
+          toast.info("Acceso Revocado", { description: "El gestor ya no tiene acceso a tus datos." });
+          cargarAsesores();
+      }
   };
 
   const determinarRangoDias = (tipoFiltro: string) => {
@@ -797,7 +839,6 @@ export default function Home() {
     const [d, m, y] = item.name.split('/');
     const tagMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
 
-    // 🚀 AUTO-SANACIÓN EN EDICIÓN
     let estadoInicial = item.estado_pago || "PAGADO";
     if (estadoInicial !== "PENDIENTE") {
          estadoInicial = Number(item.total) > 0 ? "COBRADO" : "PAGADO";
@@ -851,13 +892,11 @@ export default function Home() {
     }
   };
 
-  // 🚀 TOGGLE INTELIGENTE DE ESTADOS
   const marcarComoPagado = async (id: any) => {
       try {
           const transaccion = data.find(d => d.id === id);
           if (!transaccion) return;
           
-          // Si estaba pendiente, lo marcamos Cobrado/Pagado según corresponda. Si estaba Pagado/Cobrado, lo volvemos Pendiente.
           let nuevoEstado = 'PENDIENTE';
           if (transaccion.estado_pago === 'PENDIENTE') {
               nuevoEstado = Number(transaccion.total) > 0 ? 'COBRADO' : 'PAGADO';
@@ -944,7 +983,6 @@ export default function Home() {
       else if (isAbono) tipoTxt = "ABONO";
       else if (Number(row.total) < 0) tipoTxt = "Gasto";
 
-      // Auto-sanación en exportación
       let estadoLabel = row.estado_pago || 'PAGADO';
       if (estadoLabel !== 'PENDIENTE') {
           estadoLabel = Number(row.total) > 0 ? 'COBRADO' : 'PAGADO';
@@ -1030,10 +1068,26 @@ export default function Home() {
                     >
                         {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                     </select>
-                    <button onClick={() => {setShowConfig(true); setIsSidebarOpen(false);}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil y Categorías">
-                      ⚙️
-                    </button>
+                    
+                    {/* 🚀 BOTONES RESTRINGIDOS PARA GESTORES */}
+                    {rolUsuario !== 'LECTURA' && (
+                        <>
+                            <button onClick={() => {setShowAsesorModal(true); setIsSidebarOpen(false); cargarAsesores();}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Invitar Asesor">
+                              👥
+                            </button>
+                            <button onClick={() => {setShowConfig(true); setIsSidebarOpen(false);}} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700" title="Configurar Perfil y Categorías">
+                              ⚙️
+                            </button>
+                        </>
+                    )}
                 </div>
+                
+                {rolUsuario !== 'LECTURA' && (
+                    <div className="flex gap-2 mt-2">
+                      <input value={nuevaEmpresa} onChange={(e) => setNuevaEmpresa(e.target.value)} placeholder="Nueva empresa..." className="w-full bg-slate-800 p-2 text-xs text-white rounded-lg border border-slate-700 outline-none" />
+                      <button onClick={agregarEmpresa} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-blue-500 transition">+</button>
+                    </div>
+                )}
               </div>
               
               <nav className="space-y-1">
@@ -1089,6 +1143,12 @@ export default function Home() {
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
             
+            {rolUsuario === 'LECTURA' && (
+                <div className="bg-blue-600 text-white text-xs font-bold text-center py-2 px-4 rounded-xl mb-6 shadow-md shadow-blue-600/20 animate-pulse">
+                    👁️ MODO ASESOR ACTIVO: Estás visualizando la empresa "{empresaId}" con permisos de Solo Lectura.
+                </div>
+            )}
+
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 border-b border-slate-200 pb-6 gap-4">
               <div>
                 <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Panel Ejecutivo - <span className="text-blue-600">{empresaId || "Sin Seleccionar"}</span></h1>
@@ -1133,7 +1193,7 @@ export default function Home() {
               </div>
             </header>
 
-            {/* 🚀 B2B: MÓDULO DE TESORERÍA (Facturas Pendientes) */}
+            {/* 🚀 B2B: MÓDULO DE TESORERÍA CON VALOR AÑADIDO (Facturas Pendientes) */}
             {facturasPendientes.length > 0 && (
                 <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
@@ -1165,7 +1225,7 @@ export default function Home() {
                                     <th className="px-4 py-2">Emisor / NIF</th>
                                     <th className="px-4 py-2">Concepto</th>
                                     <th className="px-4 py-2 text-right">Importe Total</th>
-                                    <th className="px-4 py-2 text-center">Acción Inmediata</th>
+                                    {rolUsuario !== 'LECTURA' && <th className="px-4 py-2 text-center">Acción Inmediata</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-amber-50 font-semibold text-slate-700">
@@ -1196,11 +1256,13 @@ export default function Home() {
                                             <td className={`px-4 py-3 text-right font-black ${esGasto ? 'text-rose-600' : 'text-emerald-600'}`}>
                                                 {esGasto ? '-' : '+'}{totalConIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
                                             </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <button onClick={() => marcarComoPagado(item.id)} className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition shadow-sm ${esGasto ? 'bg-rose-600 text-white hover:bg-rose-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
-                                                    {esGasto ? "Pagar Ahora" : "Marcar Cobrado"}
-                                                </button>
-                                            </td>
+                                            {rolUsuario !== 'LECTURA' && (
+                                                <td className="px-4 py-3 text-center">
+                                                    <button onClick={() => marcarComoPagado(item.id)} className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition shadow-sm ${esGasto ? 'bg-rose-600 text-white hover:bg-rose-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
+                                                        {esGasto ? "Pagar Ahora" : "Marcar Cobrado"}
+                                                    </button>
+                                                </td>
+                                            )}
                                         </tr>
                                     );
                                 })}
@@ -1264,228 +1326,238 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
+              
+              {/* 🚀 CANDADO MODO ASESOR: Oculta el formulario si es lectura */}
               <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <div>
-                  
-                  <div className="flex flex-col gap-3 mb-6">
-                    <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
-                    <div className="grid grid-cols-2 gap-2 w-full">
-                      <input type="file" accept="image/*,.pdf" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
-                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
-                        {isScanning ? "⏳ Leyendo..." : "📸 Factura OCR"}
-                      </button>
+                {rolUsuario !== 'LECTURA' ? (
+                    <div>
+                      <div className="flex flex-col gap-3 mb-6">
+                        <h3 className="text-md font-bold text-slate-900">Añadir Transacción</h3>
+                        <div className="grid grid-cols-2 gap-2 w-full">
+                          <input type="file" accept="image/*,.pdf" className="hidden" ref={fileInputRef} onChange={escanearFactura} />
+                          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="justify-center text-[10px] font-bold bg-blue-50 text-blue-600 px-3 py-2.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                            {isScanning ? "⏳ Leyendo..." : "📸 Factura OCR"}
+                          </button>
 
-                      <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputCsvRef} onChange={manejarImportarCSV} />
-                      <button type="button" onClick={() => fileInputCsvRef.current?.click()} disabled={isImporting} className="justify-center text-[10px] font-bold bg-slate-50 text-slate-600 px-3 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
-                        {isImporting ? "⏳ Cargando..." : "📊 Banco (CSV)"}
-                      </button>
-                    </div>
-                    
-                    {confianzaIA !== null && evidenciaIA && (
-                      <div className="mt-1 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl animate-fade-in-up">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="relative flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                          </span>
-                          <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">
-                            Auditoría IA: Confianza {confianzaIA}%
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-emerald-600 font-medium italic">
-                          "{evidenciaIA}"
-                        </p>
-                      </div>
-                    )}
-
-                    {urlArchivoTemporal && (
-                      <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-bold animate-fade-in-up">
-                        <span>📎 {nombreArchivoTemporal || 'Documento adjunto'} listo para guardar</span>
-                        <button type="button" onClick={() => {setUrlArchivoTemporal(null); setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);}} className="ml-auto text-rose-500 hover:text-rose-700">✖</button>
-                      </div>
-                    )}
-                  </div>
-
-                  <form onSubmit={guardarDato} className="space-y-4">
-                    <div className="grid grid-cols-3 gap-3 mb-2 bg-slate-100 p-1.5 rounded-2xl">
-                      <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
-                      <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
-                      <button type="button" onClick={() => setTipoTransaccion('proyecto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
-                    </div>
-
-                    {tipoTransaccion !== 'proyecto' ? (
-                      <>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
-                            <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                            </div>
-                            <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
-                            <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
-                                <option value="21">21% (General)</option>
-                                <option value="10">10% (Reducido)</option>
-                                <option value="4">4% (Superreducido)</option>
-                                <option value="0">0% (Exento)</option>
-                            </select>
-                            </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
-                          <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
-                            {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">NIF/CIF Emisor (Opcional)</label>
-                              <input type="text" placeholder="Ej: B12345678" value={cifEmisor} onChange={(e) => setCifEmisor(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nº Factura (Opcional)</label>
-                              <input type="text" placeholder="Ej: F-2026-104" value={numFactura} onChange={(e) => setNumFactura(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
-                              <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta Proyecto</label>
-                              <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
-                            </div>
-                        </div>
-
-                        <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex justify-between items-center mt-2 shadow-sm">
-                           <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Total Operación (Con IVA)</span>
-                           <span className="text-sm font-black text-blue-600">
-                               {currentTotal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                           </span>
+                          <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputCsvRef} onChange={manejarImportarCSV} />
+                          <button type="button" onClick={() => fileInputCsvRef.current?.click()} disabled={isImporting} className="justify-center text-[10px] font-bold bg-slate-50 text-slate-600 px-3 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition flex items-center gap-1 shadow-sm disabled:opacity-50">
+                            {isImporting ? "⏳ Cargando..." : "📊 Banco (CSV)"}
+                          </button>
                         </div>
                         
-                        <div className="flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                            <div className="flex justify-between items-center">
-                               <label className="text-[10px] font-black text-slate-600 uppercase">Estado Financiero</label>
-                               <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden">
-                                  {/* 🚀 BOTÓN DINÁMICO AUTO-CORRECTOR */}
-                                  <button type="button" onClick={() => setEstadoPago(tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
-                                      {tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO'}
-                                  </button>
-                                  <button type="button" onClick={() => setEstadoPago('PENDIENTE')} className={`px-3 py-1.5 text-[10px] font-bold transition border-l border-slate-200 ${estadoPago === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}>
-                                      PENDIENTE
-                                  </button>
-                               </div>
+                        {confianzaIA !== null && evidenciaIA && (
+                          <div className="mt-1 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl animate-fade-in-up">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                              </span>
+                              <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">
+                                Auditoría IA: Confianza {confianzaIA}%
+                              </span>
                             </div>
-                            
-                            {tipoTransaccion === 'gasto' && (
-                                <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                                    <input type="checkbox" id="vehiculo" checked={isVehiculo} onChange={(e) => setIsVehiculo(e.target.checked)} className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" />
-                                    <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
-                                        🚘 Gasto Vehículo (Deducir 50% IVA)
-                                    </label>
-                                </div>
-                            )}
+                            <p className="text-[10px] text-emerald-600 font-medium italic">
+                              "{evidenciaIA}"
+                            </p>
+                          </div>
+                        )}
+
+                        {urlArchivoTemporal && (
+                          <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-700 font-bold animate-fade-in-up">
+                            <span>📎 {nombreArchivoTemporal || 'Documento adjunto'} listo para guardar</span>
+                            <button type="button" onClick={() => {setUrlArchivoTemporal(null); setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);}} className="ml-auto text-rose-500 hover:text-rose-700">✖</button>
+                          </div>
+                        )}
+                      </div>
+
+                      <form onSubmit={guardarDato} className="space-y-4">
+                        <div className="grid grid-cols-3 gap-3 mb-2 bg-slate-100 p-1.5 rounded-2xl">
+                          <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
+                          <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
+                          <button type="button" onClick={() => setTipoTransaccion('proyecto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
                         </div>
 
-                      </>
-                    ) : (
-                      <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
-                         <div>
-                            <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">Nombre del Proyecto / Evento *</label>
-                            <input type="text" placeholder="Ej: Boda Madrid o Mantenimiento Web" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-2.5 bg-white border border-purple-200 text-slate-900 rounded-lg text-sm font-black outline-none focus:ring-2 focus:ring-purple-500/30 shadow-sm" />
-                         </div>
-                         
-                         <div>
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
-                             <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 text-slate-900 rounded-lg text-xs font-bold outline-none" />
-                         </div>
+                        {tipoTransaccion !== 'proyecto' ? (
+                          <>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
+                                <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                </div>
+                                <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
+                                <select value={ivaSeleccionado} onChange={(e) => setIvaSeleccionado(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                    <option value="21">21% (General)</option>
+                                    <option value="10">10% (Reducido)</option>
+                                    <option value="4">4% (Superreducido)</option>
+                                    <option value="0">0% (Exento)</option>
+                                </select>
+                                </div>
+                            </div>
 
-                         <div className="border-t border-emerald-100 pt-3 mt-2">
-                             <div className="flex justify-between items-center mb-3">
-                                <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Ingresos Asociados (Ventas, Propinas...)</span>
-                                <button type="button" onClick={() => setProyectoIngresos([...proyectoIngresos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasIngreso[0] || "Ventas", iva: "21" }])} className="text-[9px] font-bold bg-white text-emerald-600 px-2 py-1.5 rounded-md border border-emerald-200 shadow-sm hover:bg-emerald-50">+ Ingreso</button>
-                             </div>
-                             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                {proyectoIngresos.map((ing, idx) => (
-                                   <div key={ing.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-emerald-100 items-end">
-                                      <div className="w-full sm:flex-1">
-                                         <input type="text" placeholder="Ej: Servicio principal" value={ing.concepto} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, concepto: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
-                                      </div>
-                                      <div className="w-full sm:w-20">
-                                         <input type="text" inputMode="decimal" placeholder="€ Valor" value={ing.importe} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, importe: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-emerald-600 text-xs font-bold outline-none bg-transparent" />
-                                      </div>
-                                      <div className="w-full sm:w-16">
-                                         <select value={ing.iva} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, iva: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                            <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                                         </select>
-                                      </div>
-                                      <div className="w-full sm:w-24">
-                                         <select value={ing.categoria} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, categoria: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                            {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
-                                         </select>
-                                      </div>
-                                      <button type="button" onClick={() => setProyectoIngresos(proyectoIngresos.filter(pi => pi.id !== ing.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
-                                   </div>
-                                ))}
-                             </div>
-                         </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Categoría</label>
+                              <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                {(tipoTransaccion === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </div>
 
-                         <div className="border-t border-rose-100 pt-3 mt-2">
-                             <div className="flex justify-between items-center mb-3">
-                                <span className="text-[10px] font-black text-rose-700 uppercase tracking-widest">Gastos Asociados (Compras, Nóminas...)</span>
-                                <button type="button" onClick={() => setProyectoGastos([...proyectoGastos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }])} className="text-[9px] font-bold bg-white text-rose-600 px-2 py-1.5 rounded-md border border-rose-200 shadow-sm hover:bg-rose-50">+ Coste</button>
-                             </div>
-                             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                {proyectoGastos.map((g, idx) => (
-                                   <div key={g.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-slate-200 items-end">
-                                      <div className="w-full sm:flex-1">
-                                         <input type="text" placeholder="Ej: Alquiler furgoneta" value={g.concepto} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, concepto: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
-                                      </div>
-                                      <div className="w-full sm:w-20">
-                                         <input type="text" inputMode="decimal" placeholder="€ Coste" value={g.importe} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, importe: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-rose-600 text-xs font-bold outline-none bg-transparent" />
-                                      </div>
-                                      <div className="w-full sm:w-16">
-                                         <select value={g.iva} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, iva: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                            <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                                         </select>
-                                      </div>
-                                      <div className="w-full sm:w-24">
-                                         <select value={g.categoria} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, categoria: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
-                                            {categoriasGasto.map(c => <option key={c} value={c}>{c}</option>)}
-                                         </select>
-                                      </div>
-                                      <button type="button" onClick={() => setProyectoGastos(proyectoGastos.filter(pg => pg.id !== g.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">NIF/CIF Emisor (Opcional)</label>
+                                  <input type="text" placeholder="Ej: B12345678" value={cifEmisor} onChange={(e) => setCifEmisor(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nº Factura (Opcional)</label>
+                                  <input type="text" placeholder="Ej: F-2026-104" value={numFactura} onChange={(e) => setNumFactura(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
+                                  <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta Proyecto</label>
+                                  <input type="text" placeholder="Ej: Boda Madrid" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                </div>
+                            </div>
+
+                            <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex justify-between items-center mt-2 shadow-sm">
+                               <span className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Total Operación (Con IVA)</span>
+                               <span className="text-sm font-black text-blue-600">
+                                   {currentTotal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                               </span>
+                            </div>
+                            
+                            <div className="flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                <div className="flex justify-between items-center">
+                                   <label className="text-[10px] font-black text-slate-600 uppercase">Estado Financiero</label>
+                                   <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                      <button type="button" onClick={() => setEstadoPago(tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO')} className={`px-3 py-1.5 text-[10px] font-bold transition ${estadoPago !== 'PENDIENTE' ? (tipoTransaccion === 'gasto' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') : 'text-slate-500 hover:bg-slate-50'}`}>
+                                          {tipoTransaccion === 'gasto' ? 'PAGADO' : 'COBRADO'}
+                                      </button>
+                                      <button type="button" onClick={() => setEstadoPago('PENDIENTE')} className={`px-3 py-1.5 text-[10px] font-bold transition border-l border-slate-200 ${estadoPago === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                          PENDIENTE
+                                      </button>
                                    </div>
-                                ))}
-                             </div>
-                         </div>
-                         
-                         <div className="bg-purple-100/50 p-4 rounded-xl border border-purple-200 flex justify-between items-center mt-2 shadow-sm">
+                                </div>
+                                
+                                {tipoTransaccion === 'gasto' && (
+                                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                                        <input type="checkbox" id="vehiculo" checked={isVehiculo} onChange={(e) => setIsVehiculo(e.target.checked)} className="w-4 h-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500" />
+                                        <label htmlFor="vehiculo" className="text-xs font-bold text-orange-800 cursor-pointer select-none">
+                                            🚘 Gasto Vehículo (Deducir 50% IVA)
+                                        </label>
+                                    </div>
+                                )}
+                            </div>
+
+                          </>
+                        ) : (
+                          <div className="space-y-4 bg-purple-50/50 border border-purple-100 p-4 rounded-2xl">
                              <div>
-                                 <span className="text-[10px] font-black text-purple-900 uppercase block">Beneficio Limpio Esperado</span>
-                                 <span className="text-[9px] text-purple-600 font-medium">Ingresos - Gastos asignados</span>
+                                <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">Nombre del Proyecto / Evento *</label>
+                                <input type="text" placeholder="Ej: Boda Madrid o Mantenimiento Web" value={proyecto} onChange={(e) => setProyecto(e.target.value)} className="w-full p-2.5 bg-white border border-purple-200 text-slate-900 rounded-lg text-sm font-black outline-none focus:ring-2 focus:ring-purple-500/30 shadow-sm" />
                              </div>
-                             <div className="text-right">
-                                 <span className={`text-xl font-black ${proyMargen >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                     {proyMargen >= 0 ? '+' : ''}{proyMargen.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                                 </span>
-                                 <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded border ${proyMargen >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
-                                     {proyMargenPorcentaje.toFixed(1)}%
-                                 </span>
+                             
+                             <div>
+                                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha Cierre</label>
+                                 <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-2.5 bg-white border border-slate-200 text-slate-900 rounded-lg text-xs font-bold outline-none" />
                              </div>
-                         </div>
-                      </div>
-                    )}
 
-                    <button type="submit" disabled={isSaving} className={`w-full text-white font-bold py-3 rounded-xl disabled:opacity-50 mt-2 transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/30' : 'bg-slate-900 hover:bg-slate-800'}`}>
-                        {isSaving ? "Procesando..." : tipoTransaccion === 'proyecto' ? "Guardar Proyecto Completo" : "Asignar Movimiento"}
-                    </button>
-                  </form>
-                </div>
+                             <div className="border-t border-emerald-100 pt-3 mt-2">
+                                 <div className="flex justify-between items-center mb-3">
+                                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Ingresos Asociados (Ventas, Propinas...)</span>
+                                    <button type="button" onClick={() => setProyectoIngresos([...proyectoIngresos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasIngreso[0] || "Ventas", iva: "21" }])} className="text-[9px] font-bold bg-white text-emerald-600 px-2 py-1.5 rounded-md border border-emerald-200 shadow-sm hover:bg-emerald-50">+ Ingreso</button>
+                                 </div>
+                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                    {proyectoIngresos.map((ing, idx) => (
+                                       <div key={ing.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-emerald-100 items-end">
+                                          <div className="w-full sm:flex-1">
+                                             <input type="text" placeholder="Ej: Servicio principal" value={ing.concepto} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, concepto: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
+                                          </div>
+                                          <div className="w-full sm:w-20">
+                                             <input type="text" inputMode="decimal" placeholder="€ Valor" value={ing.importe} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, importe: e.target.value} : pi))} className="w-full p-1.5 border-b border-slate-200 text-emerald-600 text-xs font-bold outline-none bg-transparent" />
+                                          </div>
+                                          <div className="w-full sm:w-16">
+                                             <select value={ing.iva} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, iva: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                             </select>
+                                          </div>
+                                          <div className="w-full sm:w-24">
+                                             <select value={ing.categoria} onChange={(e) => setProyectoIngresos(proyectoIngresos.map(pi => pi.id === ing.id ? {...pi, categoria: e.target.value} : pi))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                {categoriasIngreso.map(c => <option key={c} value={c}>{c}</option>)}
+                                             </select>
+                                          </div>
+                                          <button type="button" onClick={() => setProyectoIngresos(proyectoIngresos.filter(pi => pi.id !== ing.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                       </div>
+                                    ))}
+                                 </div>
+                             </div>
+
+                             <div className="border-t border-rose-100 pt-3 mt-2">
+                                 <div className="flex justify-between items-center mb-3">
+                                    <span className="text-[10px] font-black text-rose-700 uppercase tracking-widest">Gastos Asociados (Compras, Nóminas...)</span>
+                                    <button type="button" onClick={() => setProyectoGastos([...proyectoGastos, { id: Date.now(), concepto: "", importe: "", categoria: categoriasGasto[0] || "Logística", iva: "21" }])} className="text-[9px] font-bold bg-white text-rose-600 px-2 py-1.5 rounded-md border border-rose-200 shadow-sm hover:bg-rose-50">+ Coste</button>
+                                 </div>
+                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                    {proyectoGastos.map((g, idx) => (
+                                       <div key={g.id} className="flex flex-col sm:flex-row gap-2 bg-white p-2.5 rounded-xl border border-slate-200 items-end">
+                                          <div className="w-full sm:flex-1">
+                                             <input type="text" placeholder="Ej: Alquiler furgoneta" value={g.concepto} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, concepto: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-slate-900 text-xs font-semibold outline-none bg-transparent" />
+                                          </div>
+                                          <div className="w-full sm:w-20">
+                                             <input type="text" inputMode="decimal" placeholder="€ Coste" value={g.importe} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, importe: e.target.value} : pg))} className="w-full p-1.5 border-b border-slate-200 text-rose-600 text-xs font-bold outline-none bg-transparent" />
+                                          </div>
+                                          <div className="w-full sm:w-16">
+                                             <select value={g.iva} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, iva: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                             </select>
+                                          </div>
+                                          <div className="w-full sm:w-24">
+                                             <select value={g.categoria} onChange={(e) => setProyectoGastos(proyectoGastos.map(pg => pg.id === g.id ? {...pg, categoria: e.target.value} : pg))} className="w-full p-1.5 bg-slate-50 border border-slate-200 text-slate-900 rounded text-[10px] outline-none">
+                                                {categoriasGasto.map(c => <option key={c} value={c}>{c}</option>)}
+                                             </select>
+                                          </div>
+                                          <button type="button" onClick={() => setProyectoGastos(proyectoGastos.filter(pg => pg.id !== g.id))} className="text-slate-400 hover:text-rose-500 p-1.5 mb-0.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                                       </div>
+                                    ))}
+                                 </div>
+                             </div>
+                             
+                             <div className="bg-purple-100/50 p-4 rounded-xl border border-purple-200 flex justify-between items-center mt-2 shadow-sm">
+                                 <div>
+                                     <span className="text-[10px] font-black text-purple-900 uppercase block">Beneficio Limpio Esperado</span>
+                                     <span className="text-[9px] text-purple-600 font-medium">Ingresos - Gastos asignados</span>
+                                 </div>
+                                 <div className="text-right">
+                                     <span className={`text-xl font-black ${proyMargen >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                         {proyMargen >= 0 ? '+' : ''}{proyMargen.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                                     </span>
+                                     <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded border ${proyMargen >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
+                                         {proyMargenPorcentaje.toFixed(1)}%
+                                     </span>
+                                 </div>
+                             </div>
+                          </div>
+                        )}
+
+                        <button type="submit" disabled={isSaving} className={`w-full text-white font-bold py-3 rounded-xl disabled:opacity-50 mt-2 transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/30' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                            {isSaving ? "Procesando..." : tipoTransaccion === 'proyecto' ? "Guardar Proyecto Completo" : "Asignar Movimiento"}
+                        </button>
+                      </form>
+                    </div>
+                ) : (
+                    <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100 flex flex-col items-center justify-center text-center h-full min-h-[300px]">
+                        <span className="text-5xl mb-4">👁️</span>
+                        <h3 className="text-lg font-black text-blue-900 mb-2">Modo Asesor Activo</h3>
+                        <p className="text-sm text-blue-700 font-medium max-w-sm">
+                            Estás visualizando los datos de tu cliente en <strong className="font-black">Solo Lectura</strong>. Puedes utilizar los filtros, ver las métricas en tiempo real y descargar el Libro Mayor (CSV/PDF) para generar los modelos tributarios.
+                        </p>
+                    </div>
+                )}
               </div>
 
               <div className="xl:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between min-h-[350px]">
@@ -1603,7 +1675,8 @@ export default function Home() {
                       <th className="px-4 md:px-6 py-3">Base Imponible</th>
                       <th className="px-4 md:px-6 py-3">Impuestos</th>
                       <th className="px-4 md:px-6 py-3">Total Final</th>
-                      <th className="px-4 md:px-6 py-3 text-right">Acciones</th>
+                      {/* 🚀 CANDADO MODO ASESOR: Oculta la columna Acciones si es lectura */}
+                      {rolUsuario !== 'LECTURA' && <th className="px-4 md:px-6 py-3 text-right">Acciones</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
@@ -1626,7 +1699,6 @@ export default function Home() {
                       const tagProyectoMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
                       const proyectoEtiqueta = tagProyectoMatch ? tagProyectoMatch[1] : null;
                       
-                      // 🚀 AUTO-SANACIÓN VISUAL: Fuerza la etiqueta correcta si no está "Pendiente"
                       let estadoLabelDB = item.estado_pago || 'PAGADO';
                       const estadoFinal = estadoLabelDB === 'PENDIENTE' ? 'PENDIENTE' : (isIngreso ? 'COBRADO' : 'PAGADO');
                       const estadoColor = estadoFinal === 'PENDIENTE' ? 'text-amber-600 bg-amber-50 border-amber-200' : 
@@ -1713,21 +1785,24 @@ export default function Home() {
                              {signoVisual}{totalFinal.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
                           </td>
 
-                          <td className="px-4 md:px-6 py-3.5 text-right flex justify-end gap-2 items-center">
-                            {!isPresupuesto && !isAbono && (
-                                <button onClick={() => marcarComoPagado(item.id)} className={`text-[9px] font-black px-2 py-1 rounded border ${estadoColor} hover:opacity-70 transition`} title="Cambiar estado de pago (Clic para alternar)">
-                                    {estadoFinal}
+                          {/* 🚀 CANDADO MODO ASESOR: Oculta los botones de edición si es lectura */}
+                          {rolUsuario !== 'LECTURA' && (
+                              <td className="px-4 md:px-6 py-3.5 text-right flex justify-end gap-2 items-center">
+                                {!isPresupuesto && !isAbono && (
+                                    <button onClick={() => marcarComoPagado(item.id)} className={`text-[9px] font-black px-2 py-1 rounded border ${estadoColor} hover:opacity-70 transition`} title="Cambiar estado de pago (Clic para alternar)">
+                                        {estadoFinal}
+                                    </button>
+                                )}
+                                {!isPresupuesto && !isAbono && (
+                                    <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar manual">
+                                      <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                    </button>
+                                )}
+                                <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar registro">
+                                  <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
-                            )}
-                            {!isPresupuesto && !isAbono && (
-                                <button onClick={() => iniciarEdicion(item)} className="text-blue-400 hover:text-blue-600 p-1 rounded-lg" title="Editar manual">
-                                  <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                </button>
-                            )}
-                            <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar registro">
-                              <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                          </td>
+                              </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -1834,6 +1909,60 @@ export default function Home() {
             )}
           </button>
         </div>
+
+        {/* 🚀 MODAL MODO ASESOR */}
+        {showAsesorModal && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 flex flex-col" translate="no">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">👥 Modo Asesor</h3>
+                        <button onClick={() => setShowAsesorModal(false)} className="text-slate-400 hover:text-rose-500 transition">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                    
+                    <div className="p-6 space-y-6">
+                        <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                            <h4 className="text-sm font-bold text-blue-800 mb-1">Invita a tu Gestor Fiscal</h4>
+                            <p className="text-xs text-blue-600 font-medium mb-4">Tu asesor podrá entrar a TaxGuard con su email, ver tus números y descargar el Libro Mayor para generar los impuestos, <strong className="font-black">pero no podrá borrar ni editar facturas.</strong></p>
+                            
+                            <form onSubmit={manejarInvitarAsesor} className="flex gap-2">
+                                <input 
+                                    type="email" 
+                                    required
+                                    value={asesorEmail} 
+                                    onChange={(e) => setAsesorEmail(e.target.value)} 
+                                    placeholder="email@gestoria.com" 
+                                    className="flex-1 p-2.5 bg-white border border-blue-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" 
+                                />
+                                <button type="submit" disabled={isInviting} className="bg-blue-600 text-white font-bold px-4 py-2.5 rounded-lg hover:bg-blue-500 transition disabled:opacity-50">
+                                    {isInviting ? "..." : "Invitar"}
+                                </button>
+                            </form>
+                        </div>
+
+                        {listaAsesores.length > 0 && (
+                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                                <h4 className="text-sm font-bold text-slate-800 mb-3">Asesores con Acceso a {empresaId}</h4>
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                    {listaAsesores.map((asesor) => (
+                                        <div key={asesor.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-bold text-slate-900">{asesor.asesorEmail}</span>
+                                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Rol: {asesor.rol}</span>
+                                            </div>
+                                            <button onClick={() => manejarRevocarAsesor(asesor.id)} className="text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-3 py-1.5 rounded-md hover:bg-rose-100 transition">
+                                                Revocar Acceso
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* MODAL CONFIGURACIÓN */}
         {showConfig && (
