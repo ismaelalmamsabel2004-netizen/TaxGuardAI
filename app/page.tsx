@@ -1,15 +1,28 @@
 "use client";
 
 import ReactMarkdown from 'react-markdown';
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useUser, UserButton, SignInButton, SignUpButton, Show } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
 import { Toaster, toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente } from './actions';
+import { transaccionSchema, mapearErroresZod, parsearImporte } from '../lib/validations';
+import { obtenerAjustes, obtenerAjustesSilencioso, guardarAjustes } from '../lib/settingsClient';
 
 Font.register({
   family: 'Roboto',
@@ -41,6 +54,21 @@ const pdfStyles = StyleSheet.create({
 // 🚀 SOLUCIÓN B2B: Extraemos las etiquetas fuera para que el PDF las vea
 const etiquetasFiltro: Record<string, string> = {
   all: "Histórico Completo", week: "Última Semana", month: "Último Mes", quarter: "Último Trimestre", year: "Último Año"
+};
+
+// 🚀 RENDIMIENTO: funciones puras sin dependencias de estado, fuera del componente
+// para que no se recreen en cada render.
+const determinarRangoDias = (tipoFiltro: string) => {
+  if (tipoFiltro === 'week') return 7;
+  if (tipoFiltro === 'month') return 30;
+  if (tipoFiltro === 'quarter') return 90;
+  if (tipoFiltro === 'year') return 365;
+  return Infinity;
+};
+
+const parseFechaTS = (item: any) => {
+  const [d, m, y] = item.name.split('/');
+  return new Date(Number(y), Number(m) - 1, Number(d)).getTime();
 };
 
 const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => {
@@ -106,6 +134,8 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [data, setData] = useState<any[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [sortConfig, setSortConfig] = useState<{ key: 'fecha' | 'categoria' | 'importe'; direction: 'asc' | 'desc' }>({ key: 'fecha', direction: 'desc' });
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]); 
   
@@ -195,6 +225,12 @@ export default function Home() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
 
+  // 🛡️ BLINDAJE DE DATOS: errores de validación por campo + confirmaciones destructivas
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [editFormErrors, setEditFormErrors] = useState<Record<string, string>>({});
+  const [deleteTargetId, setDeleteTargetId] = useState<any | null>(null);
+  const [empresaAEliminar, setEmpresaAEliminar] = useState<string | null>(null);
+
   const proyIngresosNumTotal = proyectoIngresos.reduce((acc, i) => acc + (parseFloat(i.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
   const proyGastosNumTotal = proyectoGastos.reduce((acc, g) => acc + (parseFloat(g.importe.replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0), 0);
   const proyMargen = proyIngresosNumTotal - proyGastosNumTotal;
@@ -229,13 +265,9 @@ export default function Home() {
     }
   };
 
-  const syncSettingsToCloud = async (ajustes: any) => {
-    try {
-      await fetch('/api/settings', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ajustes)
-      });
-    } catch (error) {}
-  };
+  // 🛡️ BLINDAJE DE CONEXIÓN: ya no falla en silencio. Devuelve true/false para que
+  // cada acción solo muestre "Guardado con éxito" si realmente se guardó.
+  const syncSettingsToCloud = (ajustes: any) => guardarAjustes(ajustes);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -250,8 +282,7 @@ export default function Home() {
         setEspaciosCliente(clientes);
     });
 
-    fetch('/api/settings')
-      .then(res => res.ok ? res.json() : {})
+    obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          if (planDetectado === 'free') { router.push('/precios'); return; }
@@ -292,8 +323,8 @@ export default function Home() {
     setEmpresaId(valorSeleccionado);
     
     if (!valorSeleccionado.startsWith("CLIENTE|")) {
-        const res = await fetch('/api/settings');
-        const actuales: any = await res.json(); 
+        const actuales = await obtenerAjustes();
+        if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
         await syncSettingsToCloud({ ...actuales, empresaActiva: valorSeleccionado });
     }
   };
@@ -301,10 +332,10 @@ export default function Home() {
   const salirModoAsesor = async () => {
     const miEmpresaPrincipal = empresas[0] || "Mi Empresa Principal";
     setEmpresaId(miEmpresaPrincipal);
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json(); 
-    await syncSettingsToCloud({ ...actuales, empresaActiva: miEmpresaPrincipal });
-    toast.success("Modo Propietario Activo", { description: "Has vuelto a tu espacio personal." });
+    const actuales = await obtenerAjustes();
+    if (!actuales) return;
+    const guardadoOk = await syncSettingsToCloud({ ...actuales, empresaActiva: miEmpresaPrincipal });
+    if (guardadoOk) toast.success("Modo Propietario Activo", { description: "Has vuelto a tu espacio personal." });
   };
 
   const agregarEmpresa = async () => {
@@ -314,62 +345,66 @@ export default function Home() {
       setEmpresaId(nuevaEmpresa);
       setNuevaEmpresa("");
       
-      const res = await fetch('/api/settings');
-      const actuales: any = await res.json();
-      await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaEmpresa });
-      toast.success("Espacio creado", { description: `Se ha creado el espacio: ${nuevaEmpresa}` });
+      const actuales = await obtenerAjustes();
+      if (!actuales) return;
+      const guardadoOk = await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaEmpresa });
+      if (guardadoOk) toast.success("Espacio creado", { description: `Se ha creado el espacio: ${nuevaEmpresa}` });
     }
   };
 
-  const eliminarEmpresa = async (nombre: string) => {
-    const confirmacion = window.confirm(`⚠️ ATENCIÓN: ¿Estás seguro de que deseas borrar el espacio de trabajo "${nombre}"?`);
-    if (!confirmacion) return;
+  // 🛡️ La confirmación real ocurre en el AlertDialog premium (ver JSX); esta función ya llega "confirmada".
+  const confirmarEliminarEmpresa = async () => {
+    if (!empresaAEliminar) return;
+    const nombre = empresaAEliminar;
+    setEmpresaAEliminar(null);
 
     const nuevaPapelera = [...papelera, { nombre, fecha: Date.now() }];
-    setPapelera(nuevaPapelera);
-
     const lista = empresas.filter(e => e !== nombre);
-    setEmpresas(lista);
-    
     const nuevaActiva = empresaId === nombre ? (lista[0] || "Mi Empresa Principal") : empresaId;
+
+    const actuales = await obtenerAjustes();
+    if (!actuales) return; // 🛡️ Si no podemos leer el estado real, no tocamos nada localmente ni en la nube.
+
+    setPapelera(nuevaPapelera);
+    setEmpresas(lista);
     setEmpresaId(nuevaActiva);
 
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json();
-    await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaActiva, papelera: nuevaPapelera });
-    toast.info("Espacio borrado", { description: `El espacio ${nombre} se movió a la papelera.` });
+    const guardadoOk = await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nuevaActiva, papelera: nuevaPapelera });
+    if (guardadoOk) toast.info("Espacio borrado", { description: `El espacio ${nombre} se movió a la papelera.` });
   };
 
   const recuperarDePapelera = async (nombre: string) => {
     const lista = [...empresas, nombre];
-    setEmpresas(lista);
-
     const nuevaPapelera = papelera.filter(item => item.nombre !== nombre);
+
+    const actuales = await obtenerAjustes();
+    if (!actuales) return;
+
+    setEmpresas(lista);
     setPapelera(nuevaPapelera);
     setEmpresaId(nombre);
 
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json();
-    await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nombre, papelera: nuevaPapelera });
-    toast.success("Restaurado", { description: `El espacio "${nombre}" ha sido restaurado.` });
+    const guardadoOk = await syncSettingsToCloud({ ...actuales, empresas: lista, empresaActiva: nombre, papelera: nuevaPapelera });
+    if (guardadoOk) toast.success("Restaurado", { description: `El espacio "${nombre}" ha sido restaurado.` });
   };
 
   useEffect(() => {
-    if (!empresaId || planActivo === 'loading' || planActivo === 'free') return; 
+    if (!empresaId || planActivo === 'loading' || planActivo === 'free') return;
 
     setRolUsuario("LOADING");
     setData([]);
+    setIsLoadingData(true);
 
     verificarRolUsuario(empresaId).then(res => {
         setRolUsuario(res.rol);
-        
+
         obtenerDatosSupabase(empresaId).then(d => {
           if (d && d.length > 0) setData(d);
-        });
+          setIsLoadingData(false);
+        }).catch(() => setIsLoadingData(false));
     });
 
-    fetch('/api/settings')
-      .then(res => res.ok ? res.json() : {})
+    obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
          const idAjuste = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
 
@@ -416,8 +451,7 @@ export default function Home() {
 
   const guardarPerfil = async () => {
     const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
-    setPerfilEmpresa(nuevoPerfil);
-    
+
     const nuevasIngreso = catsIngresoInput.split(',').map(c => c.trim()).filter(c => c);
     const nuevasGasto = catsGastoInput.split(',').map(c => c.trim()).filter(c => c);
     
@@ -425,12 +459,14 @@ export default function Home() {
        ingreso: nuevasIngreso.length > 0 ? nuevasIngreso : defaultIngresos,
        gasto: nuevasGasto.length > 0 ? nuevasGasto : defaultGastos
     };
-    
+
+    const actuales = await obtenerAjustes();
+    if (!actuales) return; // 🛡️ Sin conexión: no aplicamos los cambios para no perder ajustes reales.
+
+    setPerfilEmpresa(nuevoPerfil);
     setCategoriasIngreso(catA_Guardar.ingreso);
     setCategoriasGasto(catA_Guardar.gasto);
 
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json();
     const perfilesObj = actuales.perfiles || {};
     perfilesObj[empresaId] = nuevoPerfil;
     const categoriasObj = actuales.categorias || {};
@@ -439,9 +475,11 @@ export default function Home() {
     const fiscalesObj = actuales.datosFiscales || {};
     fiscalesObj[empresaId] = datosFiscales;
 
-    await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj, datosFiscales: fiscalesObj });
-    setShowConfig(false);
-    toast.success("Configuración Guardada", { description: "Perfil de IA, categorías y datos fiscales actualizados." });
+    const guardadoOk = await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj, datosFiscales: fiscalesObj });
+    if (guardadoOk) {
+      setShowConfig(false);
+      toast.success("Configuración Guardada", { description: "Perfil de IA, categorías y datos fiscales actualizados." });
+    }
   };
 
   const cargarAsesores = async () => {
@@ -472,139 +510,174 @@ export default function Home() {
       }
   };
 
-  const determinarRangoDias = (tipoFiltro: string) => {
-    if (tipoFiltro === 'week') return 7;
-    if (tipoFiltro === 'month') return 30;
-    if (tipoFiltro === 'quarter') return 90;
-    if (tipoFiltro === 'year') return 365;
-    return Infinity;
-  };
-
-  const datosVisibles = data.filter(item => {
+  // 🚀 RENDIMIENTO: toda esta cadena de cálculos derivados (filtrado, orden, gráfico,
+  // KPIs, alertas...) se memoiza para que escribir en el buscador o cambiar de página
+  // no recalcule desde cero el Libro Mayor completo en cada pulsación de tecla.
+  const datosVisibles = useMemo(() => data.filter(item => {
     if (filtro === "all") return true;
     const ahora = new Date().getTime();
     const [d, m, y] = item.name.split('/');
     const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
     const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
     return diffDias <= determinarRangoDias(filtro);
-  });
+  }), [data, filtro]);
 
-  const datosFinancieros = datosVisibles.filter((item: any) => {
+  const datosFinancieros = useMemo(() => datosVisibles.filter((item: any) => {
      const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
      return !isPresupuesto;
-  });
+  }), [datosVisibles]);
 
-  const datosCronologicos = [...datosFinancieros].sort((a, b) => {
-    const pA = a.name.split('/');
-    const pB = b.name.split('/');
-    return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
-  });
+  const chartData = useMemo(() => {
+    const datosCronologicos = [...datosFinancieros].sort((a, b) => {
+      const pA = a.name.split('/');
+      const pB = b.name.split('/');
+      return new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime() - new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime();
+    });
 
-  const chartData = datosCronologicos.reduce((acc: any[], curr: any) => {
-    const [d, m, y] = curr.name.split('/');
-    let clave = curr.name; 
-    
-    if (filtro === 'year' || filtro === 'all') {
-      const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-      clave = `${nombresMeses[Number(m) - 1]} ${y}`; 
-    }
+    return datosCronologicos.reduce((acc: any[], curr: any) => {
+      const [d, m, y] = curr.name.split('/');
+      let clave = curr.name; 
+      
+      if (filtro === 'year' || filtro === 'all') {
+        const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        clave = `${nombresMeses[Number(m) - 1]} ${y}`; 
+      }
 
-    const baseVal = Math.abs(Number(curr.total));
-    const ivaVal = Number(curr.iva) || 0;
-    const totalConIva = baseVal * (1 + ivaVal / 100);
-    
-    const isIngreso = Number(curr.total) > 0;
-    
-    const existente = acc.find((item: any) => item.name === clave);
-    
-    if (existente) {
-      if (isIngreso) existente.Ingresos += totalConIva;
-      else existente.Gastos += totalConIva;
-    } else {
-      acc.push({ 
-        name: clave, 
-        rawDate: curr.name,
-        Ingresos: isIngreso ? totalConIva : 0, 
-        Gastos: !isIngreso ? totalConIva : 0 
-      });
-    }
-    return acc;
-  }, []);
+      const baseVal = Math.abs(Number(curr.total));
+      const ivaVal = Number(curr.iva) || 0;
+      const totalConIva = baseVal * (1 + ivaVal / 100);
+      
+      const isIngreso = Number(curr.total) > 0;
+      
+      const existente = acc.find((item: any) => item.name === clave);
+      
+      if (existente) {
+        if (isIngreso) existente.Ingresos += totalConIva;
+        else existente.Gastos += totalConIva;
+      } else {
+        acc.push({ 
+          name: clave, 
+          rawDate: curr.name,
+          Ingresos: isIngreso ? totalConIva : 0, 
+          Gastos: !isIngreso ? totalConIva : 0 
+        });
+      }
+      return acc;
+    }, []);
+  }, [datosFinancieros, filtro]);
 
-  const datosTabla = [...datosVisibles].sort((a, b) => {
+  const datosTabla = useMemo(() => [...datosVisibles].sort((a, b) => {
     const pA = a.name.split('/');
     const pB = b.name.split('/');
     return new Date(Number(pB[2]), Number(pB[1]) - 1, Number(pB[0])).getTime() - new Date(Number(pA[2]), Number(pA[1]) - 1, Number(pA[0])).getTime();
-  });
+  }), [datosVisibles]);
 
-  const proyectosUnicos = Array.from(new Set(datosTabla.map(item => {
+  const proyectosUnicos = useMemo(() => Array.from(new Set(datosTabla.map(item => {
       const match = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
       return match ? match[1] : null;
-  }).filter(Boolean))) as string[];
+  }).filter(Boolean))) as string[], [datosTabla]);
 
-  const facturasPendientes = datosFinancieros.filter(d => d.estado_pago === 'PENDIENTE');
+  const facturasPendientes = useMemo(() => datosFinancieros.filter(d => d.estado_pago === 'PENDIENTE'), [datosFinancieros]);
   
-  const cobrosPendientesTotal = facturasPendientes.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0);
-  const pagosPendientesTotal = facturasPendientes.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0);
+  const cobrosPendientesTotal = useMemo(() => facturasPendientes.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0), [facturasPendientes]);
+  const pagosPendientesTotal = useMemo(() => facturasPendientes.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0), [facturasPendientes]);
 
-  let datosTablaFiltrados = datosTabla.filter(item => {
-    if (chartFilter) {
-      const [d, m, y] = item.name.split('/');
-      if (filtro === 'year' || filtro === 'all') {
-         const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-         const mesGrafica = `${nombresMeses[Number(m) - 1]} ${y}`;
-         if (mesGrafica !== chartFilter) return false;
-      } else {
-         if (item.name !== chartFilter) return false;
+  const datosTablaFiltrados = useMemo(() => {
+    const filtrados = datosTabla.filter(item => {
+      if (chartFilter) {
+        const [d, m, y] = item.name.split('/');
+        if (filtro === 'year' || filtro === 'all') {
+           const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+           const mesGrafica = `${nombresMeses[Number(m) - 1]} ${y}`;
+           if (mesGrafica !== chartFilter) return false;
+        } else {
+           if (item.name !== chartFilter) return false;
+        }
       }
-    }
-    if (searchTerm) {
-       const searchLower = searchTerm.toLowerCase();
-       const coincideCategoria = item.categoria?.toLowerCase().includes(searchLower);
-       const coincideMonto = Math.abs(item.total).toString().includes(searchLower);
-       const coincideFactura = item.numero_factura?.toLowerCase().includes(searchLower);
-       const coincideCliente = item.cliente_nombre?.toLowerCase().includes(searchLower);
-       const coincideProyecto = item.concepto_detalle?.toLowerCase().includes(searchLower);
-       const coincideCif = item.cif?.toLowerCase().includes(searchLower);
-       if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente && !coincideProyecto && !coincideCif) return false;
-    }
+      if (searchTerm) {
+         const searchLower = searchTerm.toLowerCase();
+         const coincideCategoria = item.categoria?.toLowerCase().includes(searchLower);
+         const coincideMonto = Math.abs(item.total).toString().includes(searchLower);
+         const coincideFactura = item.numero_factura?.toLowerCase().includes(searchLower);
+         const coincideCliente = item.cliente_nombre?.toLowerCase().includes(searchLower);
+         const coincideProyecto = item.concepto_detalle?.toLowerCase().includes(searchLower);
+         const coincideCif = item.cif?.toLowerCase().includes(searchLower);
+         if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente && !coincideProyecto && !coincideCif) return false;
+      }
 
-    const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
-    const isAbono = item.numero_factura?.startsWith('R-');
-    const isIngreso = Number(item.total) > 0 && !isPresupuesto;
-    const isGasto = Number(item.total) < 0 && !isAbono && !isPresupuesto;
+      const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
+      const isAbono = item.numero_factura?.startsWith('R-');
+      const isIngreso = Number(item.total) > 0 && !isPresupuesto;
+      const isGasto = Number(item.total) < 0 && !isAbono && !isPresupuesto;
 
-    if (filtroDoc === 'ingresos' && !isIngreso) return false;
-    if (filtroDoc === 'gastos' && !isGasto) return false;
-    if (filtroDoc === 'presupuestos' && !isPresupuesto) return false;
-    if (filtroDoc === 'abonos' && !isAbono) return false;
-    if (filtroDoc === 'pendientes' && item.estado_pago !== 'PENDIENTE') return false;
-    
-    if (filtroDoc === 'proyectos') {
-        const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
-        if (!matchProy) return false; 
-        
-        if (proyectoSeleccionadoFiltro !== 'todos' && matchProy[1] !== proyectoSeleccionadoFiltro) return false;
-        if (subFiltroProyecto === 'ingresos' && Number(item.total) <= 0) return false;
-        if (subFiltroProyecto === 'gastos' && Number(item.total) >= 0) return false;
-    }
+      if (filtroDoc === 'ingresos' && !isIngreso) return false;
+      if (filtroDoc === 'gastos' && !isGasto) return false;
+      if (filtroDoc === 'presupuestos' && !isPresupuesto) return false;
+      if (filtroDoc === 'abonos' && !isAbono) return false;
+      if (filtroDoc === 'pendientes' && item.estado_pago !== 'PENDIENTE') return false;
+      
+      if (filtroDoc === 'proyectos') {
+          const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
+          if (!matchProy) return false; 
+          
+          if (proyectoSeleccionadoFiltro !== 'todos' && matchProy[1] !== proyectoSeleccionadoFiltro) return false;
+          if (subFiltroProyecto === 'ingresos' && Number(item.total) <= 0) return false;
+          if (subFiltroProyecto === 'gastos' && Number(item.total) >= 0) return false;
+      }
 
-    return true;
-  });
+      return true;
+    });
+
+    // 🚀 LIBRO MAYOR PRO: ordenación por columna (fecha, categoría o importe), ascendente o descendente
+    return [...filtrados].sort((a, b) => {
+      let comparacion = 0;
+      if (sortConfig.key === 'fecha') comparacion = parseFechaTS(a) - parseFechaTS(b);
+      else if (sortConfig.key === 'categoria') comparacion = (a.categoria || '').localeCompare(b.categoria || '');
+      else if (sortConfig.key === 'importe') comparacion = Math.abs(Number(a.total)) - Math.abs(Number(b.total));
+      return sortConfig.direction === 'asc' ? comparacion : -comparacion;
+    });
+  }, [datosTabla, chartFilter, filtro, searchTerm, filtroDoc, proyectoSeleccionadoFiltro, subFiltroProyecto, sortConfig]);
+
+  const toggleSort = (key: 'fecha' | 'categoria' | 'importe') => {
+    setSortConfig(prev => prev.key === key ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: key === 'fecha' ? 'desc' : 'asc' });
+    setCurrentPage(1);
+  };
+
+  const EncabezadoOrdenable = ({ label, columnKey }: { label: string; columnKey: 'fecha' | 'categoria' | 'importe' }) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(columnKey)}
+      className={`flex items-center gap-1 uppercase tracking-wider font-bold transition hover:text-slate-700 ${sortConfig.key === columnKey ? 'text-blue-600' : ''}`}
+      title={`Ordenar por ${label}`}
+    >
+      {label}
+      <span className="flex flex-col -space-y-1 text-[8px] leading-none">
+        <span className={sortConfig.key === columnKey && sortConfig.direction === 'asc' ? 'text-blue-600' : 'text-slate-300'}>▲</span>
+        <span className={sortConfig.key === columnKey && sortConfig.direction === 'desc' ? 'text-blue-600' : 'text-slate-300'}>▼</span>
+      </span>
+    </button>
+  );
 
   const totalPages = Math.ceil(datosTablaFiltrados.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentItems = datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage);
+  const currentItems = useMemo(() => datosTablaFiltrados.slice(startIndex, startIndex + itemsPerPage), [datosTablaFiltrados, startIndex, itemsPerPage]);
 
-  const ingresosTotales = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
-  const gastosTotales = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
-  const beneficioNeto = ingresosTotales - gastosTotales;
+  const { ingresosTotales, gastosTotales, beneficioNeto, ivaRepercutido, ivaSoportado, liquidacionIva } = useMemo(() => {
+    const ingresos = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
+    const gastos = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100)), 0);
+    const ivaRep = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
+    const ivaSop = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
+    return {
+      ingresosTotales: ingresos,
+      gastosTotales: gastos,
+      beneficioNeto: ingresos - gastos,
+      ivaRepercutido: ivaRep,
+      ivaSoportado: ivaSop,
+      liquidacionIva: ivaRep - ivaSop,
+    };
+  }, [datosFinancieros]);
 
-  const ivaRepercutido = datosFinancieros.filter(d => Number(d.total) > 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
-  const ivaSoportado = datosFinancieros.filter(d => Number(d.total) < 0).reduce((sum, item) => sum + (Math.abs(Number(item.total)) * ((Number(item.iva) || 0) / 100)), 0);
-  const liquidacionIva = ivaRepercutido - ivaSoportado;
-
-  const generarAlertas = () => {
+  const alertasDinamicas = useMemo(() => {
     const alertas: { tipo: string, titulo: string, texto: string }[] = [];
     if (datosFinancieros.length === 0) return alertas;
 
@@ -617,9 +690,7 @@ export default function Home() {
     } 
 
     return alertas;
-  };
-
-  const alertasDinamicas = generarAlertas();
+  }, [datosFinancieros, facturasPendientes, beneficioNeto]);
 
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -704,9 +775,23 @@ export default function Home() {
 
   const guardarDato = async (e: React.FormEvent) => {
     e.preventDefault(); 
-    
+    setFormErrors({});
+
     if (!empresaId) return toast.warning("Espacio Requerido", { description: "Por favor, selecciona un Espacio de Trabajo." });
-    if (!mes) return toast.warning("Fecha Requerida", { description: "Por favor, selecciona una fecha operativa." });
+
+    // 🛡️ BLINDAJE DE DATOS: validación estricta con Zod antes de tocar la base de datos.
+    // El modo "proyecto" tiene sus propios importes por línea, así que solo exigimos la fecha.
+    if (tipoTransaccion === 'proyecto') {
+      if (!mes) return toast.warning("Fecha Requerida", { description: "Por favor, selecciona una fecha operativa." });
+    } else {
+      const validacion = transaccionSchema.safeParse({ mes, ingreso, categoria, cifEmisor });
+      if (!validacion.success) {
+        const errores = mapearErroresZod(validacion.error);
+        setFormErrors(errores);
+        toast.error("Revisa el formulario", { description: Object.values(errores)[0] });
+        return;
+      }
+    }
 
     setIsSaving(true);
     
@@ -714,8 +799,7 @@ export default function Home() {
       const [y, m, d] = mes.split('-');
       const fecha = `${d}/${m}/${y}`;
       
-      const textoLimpio = ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
-      const numeroLimpio = parseFloat(textoLimpio);
+      const numeroLimpio = parsearImporte(ingreso);
 
       if (isNaN(numeroLimpio) && tipoTransaccion !== 'proyecto') {
          setIsSaving(false);
@@ -828,9 +912,11 @@ export default function Home() {
     }
   };
 
-  const eliminarDato = async (id: any) => {
-    const confirmacion = window.confirm("¿Seguro que deseas eliminar esta transacción?");
-    if (!confirmacion) return;
+  // 🛡️ Ya no usamos window.confirm: la confirmación se muestra con un AlertDialog premium (ver JSX).
+  const confirmarEliminarDato = async () => {
+    if (deleteTargetId === null) return;
+    const id = deleteTargetId;
+    setDeleteTargetId(null);
 
     const res = await borrarDatoSupabase(id.toString(), empresaId);
     if (res.success) {
@@ -838,11 +924,12 @@ export default function Home() {
       setData(restantes);
       toast.success("Registro Eliminado", { description: "La transacción se ha borrado correctamente." });
     } else {
-        toast.error("Error", { description: res.error });
+        toast.error("Error", { description: res.error || "No se pudo borrar la transacción." });
     }
   };
 
   const iniciarEdicion = (item: any) => {
+    setEditFormErrors({});
     setEditingId(item.id);
     const [d, m, y] = item.name.split('/');
     const tagMatch = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
@@ -865,10 +952,25 @@ export default function Home() {
   };
 
   const guardarEdicion = async (id: any) => {
+    setEditFormErrors({});
+
+    // 🛡️ BLINDAJE DE DATOS: misma validación estricta que en el alta de movimientos.
+    const validacion = transaccionSchema.safeParse({
+      mes: editFormData.mes,
+      ingreso: editFormData.ingreso,
+      categoria: editFormData.categoria,
+    });
+    if (!validacion.success) {
+      const errores = mapearErroresZod(validacion.error);
+      setEditFormErrors(errores);
+      toast.error("Revisa los cambios", { description: Object.values(errores)[0] });
+      return;
+    }
+
     try {
       const [y, m, d] = editFormData.mes.split('-');
       const fecha = `${d}/${m}/${y}`;
-      const numeroLimpio = parseFloat(editFormData.ingreso.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+      const numeroLimpio = parsearImporte(editFormData.ingreso);
       
       if (isNaN(numeroLimpio)) return toast.error("Importe Inválido", { description: "El importe introducido no es válido." });
 
@@ -1038,6 +1140,43 @@ export default function Home() {
   return (
     <>
       <Toaster position="bottom-right" richColors theme="light" />
+
+      {/* 🛡️ Confirmación de borrado premium: sustituye al window.confirm() nativo del navegador */}
+      <AlertDialog open={deleteTargetId !== null} onOpenChange={(open) => { if (!open) setDeleteTargetId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. El movimiento se borrará de forma permanente del Libro Mayor y de tus cálculos de IVA.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarEliminarDato} className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-500">
+              Sí, eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 🛡️ Confirmación de borrado premium: sustituye al window.confirm() nativo del navegador */}
+      <AlertDialog open={empresaAEliminar !== null} onOpenChange={(open) => { if (!open) setEmpresaAEliminar(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Borrar el espacio "{empresaAEliminar}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se moverá a la papelera de reciclaje durante 7 días, tiempo en el que podrás restaurarlo sin perder ningún dato. Transcurrido ese plazo se eliminará de forma permanente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarEliminarEmpresa} className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-500">
+              Sí, borrar espacio
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative" translate="no">
           
@@ -1324,18 +1463,24 @@ export default function Home() {
                    <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 lg:gap-6 relative z-10 w-full xl:w-auto justify-between xl:justify-end">
                       <div className="text-left xl:text-right w-[45%] lg:w-auto">
                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Cobrado</p>
-                         <p className="text-base md:text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
+                         {isLoadingData ? <Skeleton className="h-6 w-24 bg-slate-700" /> : (
+                           <p className="text-base md:text-lg font-black text-emerald-400">+{ivaRepercutido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
+                         )}
                       </div>
                       <div className="text-left xl:text-right w-[45%] lg:w-auto">
                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">IVA Pagado</p>
-                         <p className="text-base md:text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
+                         {isLoadingData ? <Skeleton className="h-6 w-24 bg-slate-700" /> : (
+                           <p className="text-base md:text-lg font-black text-rose-400">-{ivaSoportado.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</p>
+                         )}
                       </div>
                       <div className="text-left xl:text-right w-full lg:w-auto xl:pl-6 xl:border-l xl:border-slate-700 pt-4 xl:pt-0 border-t border-slate-700 xl:border-t-0">
                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Liquidación</p>
-                         <p className={`text-xl md:text-2xl font-black tracking-tight flex items-center gap-2 ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
-                            <span>{liquidacionIva > 0 ? 'Pagar:' : 'A favor:'}</span>
-                            <span>{Math.abs(liquidacionIva).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
-                         </p>
+                         {isLoadingData ? <Skeleton className="h-8 w-32 bg-slate-700" /> : (
+                           <p className={`text-xl md:text-2xl font-black tracking-tight flex items-center gap-2 ${liquidacionIva > 0 ? 'text-amber-400' : 'text-blue-400'}`}>
+                              <span>{liquidacionIva > 0 ? 'Pagar:' : 'A favor:'}</span>
+                              <span>{Math.abs(liquidacionIva).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                           </p>
+                         )}
                       </div>
                    </div>
                 </div>
@@ -1343,16 +1488,22 @@ export default function Home() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Ingresos)</span>
-                    <span className="text-2xl md:text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                    {isLoadingData ? <Skeleton className="h-8 w-32 mt-3" /> : (
+                      <span className="text-2xl md:text-3xl font-black text-emerald-500 tracking-tight mt-3">+ {ingresosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                    )}
                   </div>
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Gastos)</span>
-                    <span className="text-2xl md:text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                    {isLoadingData ? <Skeleton className="h-8 w-32 mt-3" /> : (
+                      <span className="text-2xl md:text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                    )}
                   </div>
                   <div className="col-span-1 sm:col-span-2 lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
                     <div className={`absolute top-0 left-0 w-1 h-full ${beneficioNeto >= 0 ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Flujo de Caja Libre</span>
-                    <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                    {isLoadingData ? <Skeleton className="h-9 w-40 mt-3 ml-2" /> : (
+                      <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                    )}
                   </div>
                 </div>
 
@@ -1403,9 +1554,9 @@ export default function Home() {
 
                           <form onSubmit={guardarDato} className="space-y-4">
                             <div className="grid grid-cols-3 gap-3 mb-2 bg-slate-100 p-1.5 rounded-2xl">
-                              <button type="button" onClick={() => setTipoTransaccion('ingreso')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
-                              <button type="button" onClick={() => setTipoTransaccion('gasto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
-                              <button type="button" onClick={() => setTipoTransaccion('proyecto')} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
+                              <button type="button" onClick={() => { setTipoTransaccion('ingreso'); setFormErrors({}); }} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'ingreso' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>+ Ingreso</button>
+                              <button type="button" onClick={() => { setTipoTransaccion('gasto'); setFormErrors({}); }} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'gasto' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>- Gasto</button>
+                              <button type="button" onClick={() => { setTipoTransaccion('proyecto'); setFormErrors({}); }} className={`py-2 rounded-xl text-[10px] sm:text-xs font-bold transition shadow-sm ${tipoTransaccion === 'proyecto' ? 'bg-purple-600 text-white border border-purple-700' : 'text-slate-500 hover:text-slate-700'}`}>🎯 Proyecto</button>
                             </div>
 
                             {tipoTransaccion !== 'proyecto' ? (
@@ -1413,7 +1564,8 @@ export default function Home() {
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                                     <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Fecha Operativa</label>
-                                    <input type="date" value={mes} onChange={(e) => setMes(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                    <input type="date" value={mes} onChange={(e) => { setMes(e.target.value); if (formErrors.mes) setFormErrors({ ...formErrors, mes: '' }); }} className={`w-full p-3 bg-white border text-slate-900 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 ${formErrors.mes ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                    {formErrors.mes && <p className="text-[10px] font-bold text-rose-500 mt-1">{formErrors.mes}</p>}
                                     </div>
                                     <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Tipo de IVA</label>
@@ -1436,7 +1588,8 @@ export default function Home() {
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
                                     <div>
                                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">NIF/CIF Emisor (Opcional)</label>
-                                      <input type="text" placeholder="Ej: B12345678" value={cifEmisor} onChange={(e) => setCifEmisor(e.target.value.toUpperCase())} className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                      <input type="text" placeholder="Ej: B12345678" value={cifEmisor} onChange={(e) => { setCifEmisor(e.target.value.toUpperCase()); if (formErrors.cifEmisor) setFormErrors({ ...formErrors, cifEmisor: '' }); }} className={`w-full p-2 bg-white border text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 ${formErrors.cifEmisor ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                      {formErrors.cifEmisor && <p className="text-[10px] font-bold text-rose-500 mt-1">{formErrors.cifEmisor}</p>}
                                     </div>
                                     <div>
                                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nº Factura (Opcional)</label>
@@ -1447,7 +1600,8 @@ export default function Home() {
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                                     <div>
                                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Base Imponible (€)</label>
-                                      <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => setIngreso(e.target.value)} className="w-full p-3 bg-white border border-slate-300 text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                      <input type="text" inputMode="decimal" placeholder="Ej: 500.50" value={ingreso} onChange={(e) => { setIngreso(e.target.value); if (formErrors.ingreso) setFormErrors({ ...formErrors, ingreso: '' }); }} className={`w-full p-3 bg-white border text-slate-900 placeholder-slate-400 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 ${formErrors.ingreso ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                      {formErrors.ingreso && <p className="text-[10px] font-bold text-rose-500 mt-1">{formErrors.ingreso}</p>}
                                     </div>
                                     <div>
                                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Etiqueta Proyecto</label>
@@ -1605,7 +1759,13 @@ export default function Home() {
                     </div>
                     <p className="text-[11px] text-slate-400 font-medium mb-4">Gráficas libres de presupuestos (solo ingresos y gastos reales).</p>
                     <div className="flex-1 min-h-[220px]">
-                      {isMounted && chartData.length > 0 ? (
+                      {isLoadingData ? (
+                        <div className="h-full flex items-end justify-between gap-3 px-2 pb-4">
+                          {[40, 70, 45, 90, 60, 75, 50].map((h, i) => (
+                            <Skeleton key={i} className="w-full rounded-t-lg" style={{ height: `${h}%` }} />
+                          ))}
+                        </div>
+                      ) : isMounted && chartData.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} onClick={(state) => {
                              if (state && state.activeLabel) {
@@ -1641,7 +1801,7 @@ export default function Home() {
                   <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
                     <div className="flex items-center gap-3">
                        <h3 className="text-md font-bold text-slate-900">Libro Mayor Integrado</h3>
-                       <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black px-2 py-0.5 rounded-full">{datosTablaFiltrados.length} registros</span>
+                       <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black px-2 py-0.5 rounded-full">{isLoadingData ? '...' : datosTablaFiltrados.length} registros</span>
                     </div>
                     
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
@@ -1704,9 +1864,9 @@ export default function Home() {
                     <table className="min-w-full divide-y divide-slate-100 text-left whitespace-nowrap">
                       <thead className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-20">
                         <tr>
-                          <th className="px-4 md:px-6 py-3">Fecha</th>
-                          <th className="px-4 md:px-6 py-3">Categoría / Doc</th>
-                          <th className="px-4 md:px-6 py-3">Base Imponible</th>
+                          <th className="px-4 md:px-6 py-3"><EncabezadoOrdenable label="Fecha" columnKey="fecha" /></th>
+                          <th className="px-4 md:px-6 py-3"><EncabezadoOrdenable label="Categoría / Doc" columnKey="categoria" /></th>
+                          <th className="px-4 md:px-6 py-3"><EncabezadoOrdenable label="Base Imponible" columnKey="importe" /></th>
                           <th className="px-4 md:px-6 py-3">Impuestos</th>
                           <th className="px-4 md:px-6 py-3">Total Final</th>
                           {/* 🚀 CANDADO MODO ASESOR: Oculta la columna Acciones si es lectura */}
@@ -1714,7 +1874,17 @@ export default function Home() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                        {currentItems.map((item: any, index: number) => {
+                        {isLoadingData && Array.from({ length: 6 }).map((_, i) => (
+                          <tr key={`skeleton-${i}`}>
+                            <td className="px-4 md:px-6 py-3.5"><Skeleton className="h-4 w-16" /></td>
+                            <td className="px-4 md:px-6 py-3.5"><Skeleton className="h-4 w-24" /></td>
+                            <td className="px-4 md:px-6 py-3.5"><Skeleton className="h-4 w-20" /></td>
+                            <td className="px-4 md:px-6 py-3.5"><Skeleton className="h-4 w-16" /></td>
+                            <td className="px-4 md:px-6 py-3.5"><Skeleton className="h-4 w-20" /></td>
+                            {rolUsuario !== 'LECTURA' && <td className="px-4 md:px-6 py-3.5"><Skeleton className="h-4 w-12 ml-auto" /></td>}
+                          </tr>
+                        ))}
+                        {!isLoadingData && currentItems.map((item: any, index: number) => {
                           const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
                           const isAbono = item.numero_factura?.startsWith('R-');
                           const isIngreso = Number(item.total) > 0 && !isPresupuesto;
@@ -1741,10 +1911,11 @@ export default function Home() {
                           if (editingId === item.id) {
                             return (
                               <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
-                                <td className="px-4 py-2">
-                                   <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none" />
+                                <td className="px-4 py-2 align-top">
+                                   <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className={`w-full p-1.5 border rounded text-xs outline-none ${editFormErrors.mes ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                   {editFormErrors.mes && <p className="text-[10px] font-bold text-rose-500 mt-1">{editFormErrors.mes}</p>}
                                 </td>
-                                <td className="px-4 py-2 flex gap-1">
+                                <td className="px-4 py-2 flex gap-1 align-top">
                                    <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1">
                                      {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
                                    </select>
@@ -1753,8 +1924,9 @@ export default function Home() {
                                       <option value="PENDIENTE">PENDIENTE</option>
                                    </select>
                                 </td>
-                                <td className="px-4 py-2">
-                                   <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className="w-full w-24 p-1.5 border border-blue-300 rounded text-xs outline-none" />
+                                <td className="px-4 py-2 align-top">
+                                   <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className={`w-full w-24 p-1.5 border rounded text-xs outline-none ${editFormErrors.ingreso ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                   {editFormErrors.ingreso && <p className="text-[10px] font-bold text-rose-500 mt-1 whitespace-normal">{editFormErrors.ingreso}</p>}
                                 </td>
                                 <td className="px-4 py-2">
                                    <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
@@ -1832,7 +2004,7 @@ export default function Home() {
                                           <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                         </button>
                                     )}
-                                    <button onClick={() => item.id && eliminarDato(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar registro">
+                                    <button onClick={() => item.id && setDeleteTargetId(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-lg" title="Eliminar registro">
                                       <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                     </button>
                                   </td>
@@ -1840,7 +2012,7 @@ export default function Home() {
                             </tr>
                           );
                         })}
-                        {datosTablaFiltrados.length === 0 && (
+                        {!isLoadingData && datosTablaFiltrados.length === 0 && (
                           <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">No se encontraron registros para esta búsqueda o filtro.</td></tr>
                         )}
                       </tbody>
@@ -2063,6 +2235,26 @@ export default function Home() {
                               <label className="block text-[10px] font-bold text-purple-800 uppercase mb-1">Dirección Fiscal Completa</label>
                               <textarea value={datosFiscales.direccion} onChange={(e) => setDatosFiscales({...datosFiscales, direccion: e.target.value})} placeholder="Ej: Calle Principal 123, 28001 Madrid" rows={2} className="w-full p-2.5 bg-white border border-purple-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500/20 resize-none" />
                             </div>
+                          </div>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                          <h4 className="text-sm font-bold text-slate-800 mb-1">Tus Espacios de Trabajo</h4>
+                          <p className="text-[10px] text-slate-500 font-medium mb-3">Borrar un espacio lo mueve a la papelera durante 7 días antes de eliminarlo para siempre.</p>
+                          <div className="space-y-2">
+                             {empresas.map(e => (
+                               <div key={e} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-slate-200">
+                                  <span className="text-xs font-bold text-slate-700 truncate mr-2">{e}</span>
+                                  <button
+                                    onClick={() => setEmpresaAEliminar(e)}
+                                    disabled={empresas.length <= 1}
+                                    title={empresas.length <= 1 ? "No puedes borrar tu único espacio de trabajo" : "Borrar este espacio"}
+                                    className="text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-2 py-1 rounded-md hover:bg-rose-100 transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-50"
+                                  >
+                                    🗑️ Borrar
+                                  </button>
+                               </div>
+                             ))}
                           </div>
                       </div>
 

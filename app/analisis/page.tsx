@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,6 +9,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 import { Toaster, toast } from 'sonner';
 
 import { obtenerDatosSupabase } from '../actions';
+import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#6366f1', '#14b8a6', '#64748b'];
 
@@ -28,14 +30,9 @@ export default function AnalisisAvanzado() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [simulacionActiva, setSimulacionActiva] = useState("General");
 
-  const [chartDataEvolucion, setChartDataEvolucion] = useState<any[]>([]);
-  const [chartDataGastos, setChartDataGastos] = useState<any[]>([]);
-  const [chartDataProyectos, setChartDataProyectos] = useState<any[]>([]);
-  
-  const [kpis, setKpis] = useState({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
-  const [trends, setTrends] = useState({ ingresos: 0, gastos: 0, beneficio: 0 });
-
   const [planActivo, setPlanActivo] = useState('loading');
+  // 🚀 UX PREMIUM: evita pantallas en blanco/parpadeos en KPIs y gráficos mientras llegan los datos
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   // 🚀 ESTADOS PARA EL MODAL DE SOPORTE
   const [showSupportModal, setShowSupportModal] = useState(false);
@@ -48,8 +45,7 @@ export default function AnalisisAvanzado() {
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
-    fetch('/api/settings')
-      .then(res => res.ok ? res.json() : {})
+    obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          
@@ -72,22 +68,22 @@ export default function AnalisisAvanzado() {
          }
 
          if (activa) {
-            obtenerDatosSupabase(activa).then(d => setAllData(d));
+            setIsLoadingData(true);
+            obtenerDatosSupabase(activa).then(d => { setAllData(d); setIsLoadingData(false); });
+         } else {
+            setIsLoadingData(false);
          }
       });
   }, [isLoaded, isSignedIn, router]);
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
+    const actuales = await obtenerAjustes();
+    if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
+
     setEmpresaId(nuevaEmpresa);
     setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Selecciona un escenario para analizar este nuevo espacio de trabajo.");
-    
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json();
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
-    });
+
+    await guardarAjustes({ ...actuales, empresaActiva: nuevaEmpresa });
 
     if (actuales.perfiles && actuales.perfiles[nuevaEmpresa]) {
        setPerfilEmpresa(actuales.perfiles[nuevaEmpresa]);
@@ -95,7 +91,8 @@ export default function AnalisisAvanzado() {
        setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
     }
 
-    obtenerDatosSupabase(nuevaEmpresa).then(d => setAllData(d));
+    setIsLoadingData(true);
+    obtenerDatosSupabase(nuevaEmpresa).then(d => { setAllData(d); setIsLoadingData(false); });
   };
 
   const gestionarSuscripcion = async () => {
@@ -121,14 +118,15 @@ export default function AnalisisAvanzado() {
       toast.success("Copiado", { description: "Correo copiado al portapapeles!" });
   };
 
-  useEffect(() => {
+  // 🚀 RENDIMIENTO: se calculaba con un useEffect + 5 useState (doble render en cada
+  // cambio de datos/filtro: uno con los valores viejos y otro con los nuevos tras el
+  // setState). Con useMemo el valor correcto está disponible desde el primer render.
+  const { chartDataEvolucion, chartDataGastos, chartDataProyectos, kpis, trends } = useMemo(() => {
+    const kpisVacios = { ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 };
+    const trendsVacios = { ingresos: 0, gastos: 0, beneficio: 0 };
+
     if (!allData || allData.length === 0) {
-       setChartDataEvolucion([]); 
-       setChartDataGastos([]); 
-       setChartDataProyectos([]);
-       setKpis({ ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 });
-       setTrends({ ingresos: 0, gastos: 0, beneficio: 0 });
-       return;
+       return { chartDataEvolucion: [] as any[], chartDataGastos: [] as any[], chartDataProyectos: [] as any[], kpis: kpisVacios, trends: trendsVacios };
     }
 
     const ahora = new Date().getTime();
@@ -221,10 +219,6 @@ export default function AnalisisAvanzado() {
         };
     }).sort((a, b) => b.margen - a.margen);
 
-    setChartDataEvolucion(evolutionArray);
-    setChartDataGastos(gastosArray);
-    setChartDataProyectos(proyectosArray);
-    
     const beneficio = totalIngresos - totalGastos;
     const margen = totalIngresos > 0 ? (beneficio / totalIngresos) * 100 : 0;
     const prevBeneficio = prevIngresos - prevGastos;
@@ -241,17 +235,20 @@ export default function AnalisisAvanzado() {
 
     const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
 
-    setKpis({ 
-        ingresos: totalIngresos, gastos: totalGastos, beneficio, margen, beneficioLiquido, provisionImpuestos, 
-        runwayMeses: globalRunway
-    });
-    
-    setTrends({ 
-        ingresos: calcTrend(totalIngresos, prevIngresos), 
-        gastos: calcTrend(totalGastos, prevGastos), 
-        beneficio: calcTrend(beneficio, prevBeneficio) 
-    });
-
+    return {
+      chartDataEvolucion: evolutionArray,
+      chartDataGastos: gastosArray,
+      chartDataProyectos: proyectosArray,
+      kpis: { 
+          ingresos: totalIngresos, gastos: totalGastos, beneficio, margen, beneficioLiquido, provisionImpuestos, 
+          runwayMeses: globalRunway
+      },
+      trends: { 
+          ingresos: calcTrend(totalIngresos, prevIngresos), 
+          gastos: calcTrend(totalGastos, prevGastos), 
+          beneficio: calcTrend(beneficio, prevBeneficio) 
+      },
+    };
   }, [allData, filtroTiempo]);
 
   const generarAuditoria = async (tipoSimulacion: string) => {
@@ -515,37 +512,41 @@ export default function AnalisisAvanzado() {
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
                       <div className="flex items-center mb-1">
                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Ingresos</span>
-                         {renderTrend(trends.ingresos, false)}
+                         {!isLoadingData && renderTrend(trends.ingresos, false)}
                       </div>
-                      <span className="text-2xl font-black text-slate-800">{kpis.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                      {isLoadingData ? <Skeleton className="h-7 w-28 mt-0.5" /> : <span className="text-2xl font-black text-slate-800">{kpis.ingresos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>}
                    </div>
                    
                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
                       <div className="flex items-center mb-1">
                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Gastos</span>
-                         {renderTrend(trends.gastos, true)}
+                         {!isLoadingData && renderTrend(trends.gastos, true)}
                       </div>
-                      <span className="text-2xl font-black text-rose-500">{kpis.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                      {isLoadingData ? <Skeleton className="h-7 w-28 mt-0.5" /> : <span className="text-2xl font-black text-rose-500">{kpis.gastos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>}
                    </div>
                    
                    <div className={`p-5 rounded-2xl border flex flex-col justify-center ${kpis.beneficio >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
                       <div className="flex items-center mb-1">
                          <span className={`text-[10px] font-bold uppercase tracking-widest ${kpis.beneficio >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>Beneficio (Bruto)</span>
-                         {renderTrend(trends.beneficio, false)}
+                         {!isLoadingData && renderTrend(trends.beneficio, false)}
                       </div>
-                      <span className={`text-2xl font-black tracking-tight ${kpis.beneficio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                         {kpis.beneficio >= 0 ? '+' : ''}{kpis.beneficio.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                      </span>
+                      {isLoadingData ? <Skeleton className="h-7 w-28 mt-0.5" /> : (
+                         <span className={`text-2xl font-black tracking-tight ${kpis.beneficio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {kpis.beneficio >= 0 ? '+' : ''}{kpis.beneficio.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                         </span>
+                      )}
                    </div>
                    
                    <div className="bg-blue-50 p-5 rounded-2xl border border-blue-200 flex flex-col justify-between">
                       <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest mb-1">Margen Operativo</span>
-                      <div className="flex items-center justify-between">
-                         <span className="text-2xl font-black text-blue-600">{kpis.margen.toFixed(1)}%</span>
-                         <span className={`text-[9px] font-black px-2 py-1 rounded border flex items-center gap-1 uppercase tracking-wider ${health.color}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${health.dot}`}></span> {health.label}
-                         </span>
-                      </div>
+                      {isLoadingData ? <Skeleton className="h-7 w-20" /> : (
+                         <div className="flex items-center justify-between">
+                            <span className="text-2xl font-black text-blue-600">{kpis.margen.toFixed(1)}%</span>
+                            <span className={`text-[9px] font-black px-2 py-1 rounded border flex items-center gap-1 uppercase tracking-wider ${health.color}`}>
+                               <span className={`w-1.5 h-1.5 rounded-full ${health.dot}`}></span> {health.label}
+                            </span>
+                         </div>
+                      )}
                    </div>
                 </div>
 
@@ -555,9 +556,11 @@ export default function AnalisisAvanzado() {
                        <div className="flex items-center mb-1">
                           <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Caja Libre (Beneficio Líquido)</span>
                        </div>
-                       <span className="text-3xl font-black tracking-tight text-white">
-                          {kpis.beneficioLiquido >= 0 ? '+' : ''}{kpis.beneficioLiquido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
-                       </span>
+                       {isLoadingData ? <Skeleton className="h-8 w-32 bg-white/20" /> : (
+                          <span className="text-3xl font-black tracking-tight text-white">
+                             {kpis.beneficioLiquido >= 0 ? '+' : ''}{kpis.beneficioLiquido.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €
+                          </span>
+                       )}
                        <span className="text-[10px] font-medium text-indigo-200 mt-1">Tu dinero real (Impuestos ya restados)</span>
                     </div>
 
@@ -566,7 +569,7 @@ export default function AnalisisAvanzado() {
                           <span className="text-rose-500 text-sm">🏛️</span>
                           <span className="text-[10px] font-bold text-rose-700 uppercase tracking-widest">Hucha Hacienda (Intocable)</span>
                        </div>
-                       <span className="text-2xl font-black text-rose-600">{kpis.provisionImpuestos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                       {isLoadingData ? <Skeleton className="h-7 w-28" /> : <span className="text-2xl font-black text-rose-600">{kpis.provisionImpuestos.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>}
                        <span className="text-[9px] font-bold text-rose-500 mt-1">Provisión calculada de IVA + IRPF</span>
                     </div>
 
@@ -575,7 +578,7 @@ export default function AnalisisAvanzado() {
                           <span className="text-emerald-400 text-sm">🛡️</span>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Supervivencia (Runway)</span>
                        </div>
-                       <span className="text-2xl font-black text-white">{kpis.runwayMeses > 0 ? kpis.runwayMeses.toFixed(1) + ' Meses' : 'Riesgo Crítico'}</span>
+                       {isLoadingData ? <Skeleton className="h-7 w-28 bg-slate-700" /> : <span className="text-2xl font-black text-white">{kpis.runwayMeses > 0 ? kpis.runwayMeses.toFixed(1) + ' Meses' : 'Riesgo Crítico'}</span>}
                        <span className="text-[9px] font-medium text-slate-500 mt-1">Vida del negocio con ingresos a cero</span>
                     </div>
                 </div>
@@ -587,7 +590,11 @@ export default function AnalisisAvanzado() {
                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Evolución P&L (Mensual)</h3>
                       </div>
                       <div className="flex-1 w-full min-h-[300px]">
-                         {chartDataEvolucion.length > 0 ? (
+                         {isLoadingData ? (
+                            <div className="h-full w-full flex items-end gap-3 px-2">
+                               {[60, 85, 45, 70, 55, 90, 40].map((h, i) => <Skeleton key={i} className="flex-1" style={{ height: `${h}%` }} />)}
+                            </div>
+                         ) : chartDataEvolucion.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
                                <BarChart data={chartDataEvolucion} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -616,7 +623,11 @@ export default function AnalisisAvanzado() {
                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Distribución de Gastos</h3>
                       </div>
                       <div className="h-[220px] w-full relative">
-                         {chartDataGastos.length > 0 ? (
+                         {isLoadingData ? (
+                            <div className="h-full w-full flex items-center justify-center">
+                               <Skeleton className="w-[180px] h-[180px] rounded-full" />
+                            </div>
+                         ) : chartDataGastos.length > 0 ? (
                             <>
                                <ResponsiveContainer width="100%" height="100%">
                                   <PieChart>

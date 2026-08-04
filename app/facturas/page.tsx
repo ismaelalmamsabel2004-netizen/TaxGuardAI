@@ -1,14 +1,30 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useUser, UserButton, Show, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
 import { Toaster, toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase } from '../actions';
+import {
+  obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase,
+  obtenerContactosCRM, guardarContactoCRM, editarContactoCRM, borrarContactoCRM, migrarContactosCRMDesdeJSON,
+} from '../actions';
+import { contactoCrmSchema, mapearErroresZod, nifCifOpcional } from '../../lib/validations';
+import { obtenerAjustesSilencioso, guardarAjustes } from '../../lib/settingsClient';
 
 Font.register({
   family: 'Roboto',
@@ -240,14 +256,24 @@ export default function GeneradorFacturas() {
 
   const [planActivo, setPlanActivo] = useState('loading');
 
-  const [clientesCRM, setClientesCRM] = useState<{nombre: string, nif: string, direccion: string}[]>([]);
+  const [clientesCRM, setClientesCRM] = useState<{id: number, nombre: string, nif: string, direccion: string, email?: string, telefono?: string}[]>([]);
   const [showCRM, setShowCRM] = useState(false);
   const [showCRMModal, setShowCRMModal] = useState(false);
-  const [editandoClienteIndex, setEditandoClienteIndex] = useState<number | null>(null);
-  const [editCRMData, setEditCRMData] = useState({ nombre: "", nif: "", direccion: "" });
-  
+  const [editandoClienteId, setEditandoClienteId] = useState<number | null>(null);
+  const [editCRMData, setEditCRMData] = useState({ nombre: "", nif: "", direccion: "", email: "", telefono: "" });
+
   const [showNuevoCliente, setShowNuevoCliente] = useState(false);
-  const [nuevoClienteData, setNuevoClienteData] = useState({ nombre: "", nif: "", direccion: "" });
+
+  // 🛡️ BLINDAJE DE DATOS: errores de validación del CRM + confirmaciones destructivas premium
+  const [crmErrors, setCrmErrors] = useState<Record<string, string>>({});
+  const [crmEditErrors, setCrmEditErrors] = useState<Record<string, string>>({});
+  const [facturaErrors, setFacturaErrors] = useState<Record<string, string>>({});
+  // 🚀 UX PREMIUM: evita pantallas en blanco/parpadeos en el historial mientras llegan los datos
+  const [isLoadingHistorial, setIsLoadingHistorial] = useState(true);
+  const [crmIdToDelete, setCrmIdToDelete] = useState<number | null>(null);
+  const [docIdToDelete, setDocIdToDelete] = useState<any | null>(null);
+  const [facturaRectificativaPendiente, setFacturaRectificativaPendiente] = useState<any | null>(null);
+  const [nuevoClienteData, setNuevoClienteData] = useState({ nombre: "", nif: "", direccion: "", email: "", telefono: "" });
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: string, content: string}[]>([]);
@@ -266,8 +292,7 @@ export default function GeneradorFacturas() {
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
-    fetch('/api/settings')
-      .then(res => res.ok ? res.json() : {})
+    obtenerAjustesSilencioso()
       .then((data: any) => {
          const planDetectado = data.planSuscripcion || 'free';
          if (planDetectado === 'free') { router.push('/precios'); return; }
@@ -279,10 +304,22 @@ export default function GeneradorFacturas() {
          const activa = data.empresaActiva || listaEmpresas[0] || "";
          setEmpresaId(activa);
 
-         if (data.crm && data.crm[activa]) setClientesCRM(data.crm[activa]);
-         else setClientesCRM([]);
+         cargarContactosCRM(activa, data.crm?.[activa]);
       });
   }, [isLoaded, isSignedIn, router]);
+
+  // 🚀 CRM REAL: carga los contactos desde la tabla ContactoEmpresa y, si es la primera vez
+  // que este espacio se abre tras la migración, importa en silencio la agenda antigua guardada
+  // en el JSON de ajustes para que el usuario no pierda ni un solo contacto.
+  const cargarContactosCRM = async (empresa: string, contactosLegacyJSON?: any[]) => {
+      if (!empresa) return setClientesCRM([]);
+      let contactos = await obtenerContactosCRM(empresa);
+      if (contactos.length === 0 && contactosLegacyJSON && contactosLegacyJSON.length > 0) {
+          await migrarContactosCRMDesdeJSON(empresa, contactosLegacyJSON);
+          contactos = await obtenerContactosCRM(empresa);
+      }
+      setClientesCRM(contactos as any);
+  };
 
   useEffect(() => {
       if (empresaId && allSettings.datosFacturacion && allSettings.datosFacturacion[empresaId]) {
@@ -299,11 +336,13 @@ export default function GeneradorFacturas() {
 
   useEffect(() => {
     if (!empresaId) return;
+    setIsLoadingHistorial(true);
     obtenerDatosSupabase(empresaId).then(movimientos => {
          const anioActual = fecha.split('-')[0] || new Date().getFullYear().toString();
          
          const documentos = movimientos.filter((m: any) => m.numero_factura);
          setHistorialFacturas(documentos.sort((a,b) => b.id - a.id)); 
+         setIsLoadingHistorial(false);
 
          if (!facturaBloqueada) {
             const facturasF = documentos.filter((m: any) => {
@@ -329,13 +368,10 @@ export default function GeneradorFacturas() {
     setEmpresaId(nuevaEmpresa);
     const newSettings = { ...allSettings, empresaActiva: nuevaEmpresa };
     setAllSettings(newSettings);
-    
-    if (newSettings.crm && newSettings.crm[nuevaEmpresa]) setClientesCRM(newSettings.crm[nuevaEmpresa]);
-    else setClientesCRM([]);
 
-    await fetch('/api/settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
-    });
+    cargarContactosCRM(nuevaEmpresa, newSettings.crm?.[nuevaEmpresa]);
+
+    await guardarAjustes(newSettings);
   };
 
   const gestionarSuscripcion = async () => {
@@ -375,9 +411,7 @@ export default function GeneradorFacturas() {
           newSettings.datosFacturacion[empresaId].logo = base64Logo;
           
           setAllSettings(newSettings);
-          await fetch('/api/settings', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
-          });
+          await guardarAjustes(newSettings);
       };
       reader.readAsDataURL(file);
   };
@@ -389,12 +423,17 @@ export default function GeneradorFacturas() {
           newSettings.datosFacturacion[empresaId].logo = null;
       }
       setAllSettings(newSettings);
-      await fetch('/api/settings', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
-      });
+      await guardarAjustes(newSettings);
   };
 
   const guardarDatosEmisor = async () => {
+      // 🛡️ BLINDAJE DE DATOS: un NIF inválido guardado como predeterminado acabaría en TODAS tus facturas futuras
+      if (!nifCifOpcional.safeParse(miNif).success) {
+          setFacturaErrors({...facturaErrors, miNif: "Tu NIF/CIF no es válido. Revísalo antes de guardarlo como predeterminado."});
+          toast.error("NIF/CIF no válido", { description: "Revisa tu NIF/CIF antes de guardarlo como predeterminado." });
+          return;
+      }
+
       const newSettings = { ...allSettings };
       if (!newSettings.datosFacturacion) newSettings.datosFacturacion = {};
       if (!newSettings.datosFacturacion[empresaId]) newSettings.datosFacturacion[empresaId] = {};
@@ -405,10 +444,8 @@ export default function GeneradorFacturas() {
       };
       
       setAllSettings(newSettings);
-      await fetch('/api/settings', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings)
-      });
-      toast.success("Datos Fiscales Guardados", { description: `Los datos de ${empresaId} se guardaron por defecto.` });
+      const guardadoOk = await guardarAjustes(newSettings);
+      if (guardadoOk) toast.success("Datos Fiscales Guardados", { description: `Los datos de ${empresaId} se guardaron por defecto.` });
   };
 
   const addLinea = () => setLineasFactura([...lineasFactura, { id: Date.now(), concepto: "", cantidad: 1, precio: 0 }]);
@@ -441,6 +478,17 @@ export default function GeneradorFacturas() {
     if (!empresaId) return toast.warning("Falta Espacio", { description: "Por favor, selecciona un Espacio de Trabajo." });
     if (lineasFactura.some(l => !l.concepto)) return toast.warning("Campos Incompletos", { description: "Rellena la descripción de todos los conceptos." });
     if (baseNum <= 0) return toast.warning("Importe Inválido", { description: "Introduce un importe válido mayor a 0." });
+
+    // 🛡️ BLINDAJE DE DATOS: un NIF/CIF inválido no debe acabar impreso en un documento fiscal oficial
+    setFacturaErrors({});
+    const erroresNif: Record<string, string> = {};
+    if (!nifCifOpcional.safeParse(miNif).success) erroresNif.miNif = "Tu NIF/CIF no es válido. Revísalo antes de emitir el documento.";
+    if (!nifCifOpcional.safeParse(clienteNif).success) erroresNif.clienteNif = "El NIF/CIF del cliente no es válido. Revísalo antes de emitir el documento.";
+    if (Object.keys(erroresNif).length > 0) {
+      setFacturaErrors(erroresNif);
+      toast.error("Revisa los NIF/CIF", { description: Object.values(erroresNif)[0] });
+      return;
+    }
     
     setIsSaving(true);
     
@@ -461,20 +509,19 @@ export default function GeneradorFacturas() {
 
       if (res.success) {
         if (clienteNombre) {
-            const newSettings = { ...allSettings };
-            if (!newSettings.crm) newSettings.crm = {};
-            if (!newSettings.crm[empresaId]) newSettings.crm[empresaId] = [];
-            
-            const crmList = newSettings.crm[empresaId];
-            const existingIdx = crmList.findIndex((c: any) => c.nombre.toLowerCase() === clienteNombre.toLowerCase());
+            // 🚀 CRM REAL: guarda/actualiza el contacto directamente en la tabla ContactoEmpresa
+            const existente = clientesCRM.find(c => c.nombre.toLowerCase() === clienteNombre.toLowerCase());
             const clientData = { nombre: clienteNombre, nif: clienteNif, direccion: clienteDireccion };
-            
-            if (existingIdx >= 0) crmList[existingIdx] = clientData;
-            else crmList.push(clientData);
-            
-            setAllSettings(newSettings);
-            setClientesCRM(crmList);
-            fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+
+            if (existente) {
+                editarContactoCRM({ id: existente.id, empresaId, ...clientData }).then(() => {
+                    setClientesCRM(clientesCRM.map(c => c.id === existente.id ? { ...c, ...clientData } : c));
+                });
+            } else {
+                guardarContactoCRM({ empresaId, tipo: 'CLIENTE', ...clientData }).then(res => {
+                    if (res.success && res.contacto) setClientesCRM([...clientesCRM, res.contacto as any]);
+                });
+            }
         }
 
         setFacturaGuardada(true);
@@ -496,10 +543,7 @@ export default function GeneradorFacturas() {
       if (facOriginal.numero_factura?.startsWith('R-')) {
           return toast.error("Operación no permitida", { description: "No puedes emitir un abono de una factura rectificativa." });
       }
-
-      const confirmar = window.confirm(`⚠️ Vas a emitir una Factura Rectificativa (Abono) para la factura ${facOriginal.numero_factura || 'S/N'}.\n\nEsto anulará su importe en el Libro Mayor creando un registro en negativo. ¿Deseas continuar?`);
-      if (!confirmar) return;
-
+      // 🛡️ La confirmación real ocurre en el AlertDialog premium; esta función ya llega "confirmada".
       setIsSaving(true);
       try {
           const anioActual = new Date().getFullYear().toString();
@@ -645,43 +689,66 @@ export default function GeneradorFacturas() {
   };
 
   const guardarNuevoClienteCRM = async () => {
-      if (!nuevoClienteData.nombre) return toast.warning("Dato Obligatorio", { description: "El nombre del cliente es obligatorio." });
-      const newSettings = { ...allSettings };
-      if (!newSettings.crm) newSettings.crm = {};
-      if (!newSettings.crm[empresaId]) newSettings.crm[empresaId] = [];
+      setCrmErrors({});
+      // 🛡️ BLINDAJE DE DATOS: nombre obligatorio + NIF/CIF con dígito de control real (si se rellena)
+      const validacion = contactoCrmSchema.safeParse(nuevoClienteData);
+      if (!validacion.success) {
+          const errores = mapearErroresZod(validacion.error);
+          setCrmErrors(errores);
+          toast.error("Revisa los datos del cliente", { description: Object.values(errores)[0] });
+          return;
+      }
 
-      newSettings.crm[empresaId].push(nuevoClienteData);
-      setAllSettings(newSettings);
-      setClientesCRM(newSettings.crm[empresaId]);
-      await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
-      
+      const datosLimpios = { ...nuevoClienteData, nombre: nuevoClienteData.nombre.trim(), nif: nuevoClienteData.nif.trim().toUpperCase() };
+
+      // 🚀 CRM REAL: se guarda directamente en la tabla ContactoEmpresa
+      const res = await guardarContactoCRM({ empresaId, tipo: 'CLIENTE', ...datosLimpios });
+      if (!res.success) {
+          toast.error("Error al guardar", { description: res.error || "No se pudo guardar el contacto." });
+          return;
+      }
+      setClientesCRM([...clientesCRM, res.contacto as any]);
+
       setShowNuevoCliente(false);
-      setNuevoClienteData({ nombre: "", nif: "", direccion: "" });
+      setNuevoClienteData({ nombre: "", nif: "", direccion: "", email: "", telefono: "" });
       toast.success("Contacto Añadido", { description: "Cliente guardado en la agenda CRM." });
   };
 
-  const guardarCRMEditado = async () => {
-      const newSettings = { ...allSettings };
-      if (!newSettings.crm) newSettings.crm = {};
-      newSettings.crm[empresaId] = [...clientesCRM];
-      
-      setAllSettings(newSettings);
-      await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
-      setEditandoClienteIndex(null);
+  const guardarCRMEditado = async (id: number) => {
+      setCrmEditErrors({});
+      const validacion = contactoCrmSchema.safeParse(editCRMData);
+      if (!validacion.success) {
+          const errores = mapearErroresZod(validacion.error);
+          setCrmEditErrors(errores);
+          toast.error("Revisa los datos del cliente", { description: Object.values(errores)[0] });
+          return;
+      }
+
+      const datosLimpios = { ...editCRMData, nombre: editCRMData.nombre.trim(), nif: editCRMData.nif.trim().toUpperCase() };
+
+      // 🚀 CRM REAL: actualiza directamente el registro en ContactoEmpresa por su id
+      const res = await editarContactoCRM({ id, empresaId, ...datosLimpios });
+      if (!res.success) {
+          toast.error("Error al actualizar", { description: res.error || "No se pudo actualizar el contacto." });
+          return;
+      }
+      setClientesCRM(clientesCRM.map(c => c.id === id ? { ...c, ...datosLimpios } : c));
+      setEditandoClienteId(null);
       toast.success("Contacto Actualizado", { description: "Los cambios se guardaron correctamente." });
   };
 
-  const eliminarClienteCRM = async (index: number) => {
-      if(!window.confirm("¿Seguro que deseas borrar este cliente de tu agenda?")) return;
-      const newList = clientesCRM.filter((_, i) => i !== index);
-      setClientesCRM(newList);
-      
-      const newSettings = { ...allSettings };
-      if (!newSettings.crm) newSettings.crm = {};
-      newSettings.crm[empresaId] = newList;
-      
-      setAllSettings(newSettings);
-      await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+  // 🛡️ La confirmación real ocurre en el AlertDialog premium (ver JSX); esta función ya llega "confirmada".
+  const confirmarEliminarClienteCRM = async () => {
+      if (crmIdToDelete === null) return;
+      const id = crmIdToDelete;
+      setCrmIdToDelete(null);
+
+      const res = await borrarContactoCRM(id, empresaId);
+      if (res.error) {
+          toast.error("Error al borrar", { description: res.error });
+          return;
+      }
+      setClientesCRM(clientesCRM.filter(c => c.id !== id));
       toast.info("Contacto Eliminado", { description: "El cliente ha sido borrado de la agenda." });
   };
 
@@ -704,64 +771,78 @@ export default function GeneradorFacturas() {
       } catch(e) { toast.error("Error", { description: "Error al actualizar." }); }
   };
 
-  const eliminarDato = async (id: any) => {
-    const confirmacion = window.confirm("¿Seguro que deseas eliminar este documento?");
-    if (!confirmacion) return;
+  // 🛡️ La confirmación real ocurre en el AlertDialog premium (ver JSX); esta función ya llega "confirmada".
+  const confirmarEliminarDato = async () => {
+    if (docIdToDelete === null) return;
+    const id = docIdToDelete;
+    setDocIdToDelete(null);
 
-    const res = await borrarDatoSupabase(id.toString());
+    const res = await borrarDatoSupabase(id.toString(), empresaId);
     if (res.success) {
       setRefreshTrigger(prev => prev + 1);
       toast.success("Documento Eliminado", { description: "El registro ha sido borrado del historial." });
+    } else {
+      toast.error("Error", { description: res.error || "No se pudo borrar el documento." });
     }
   };
 
-  const filteredHistorial = historialFacturas.filter((fac: any) => {
-     const search = searchTerm.toLowerCase();
-     const numFac = fac.numero_factura?.toLowerCase() || "";
-     const cliente = fac.cliente_nombre?.toLowerCase() || "";
-     const conceptoStr = fac.concepto_detalle?.toLowerCase() || "";
-     const matchSearch = numFac.includes(search) || cliente.includes(search) || conceptoStr.includes(search);
-     if (!matchSearch) return false;
+  // 🚀 RENDIMIENTO: se recalcula solo si cambian el historial, la búsqueda o el filtro activo
+  // (antes se recalculaba en cada render, incluso al escribir en el chat de IA o abrir modales)
+  const filteredHistorial = useMemo(() => {
+    return historialFacturas.filter((fac: any) => {
+       const search = searchTerm.toLowerCase();
+       const numFac = fac.numero_factura?.toLowerCase() || "";
+       const cliente = fac.cliente_nombre?.toLowerCase() || "";
+       const conceptoStr = fac.concepto_detalle?.toLowerCase() || "";
+       const matchSearch = numFac.includes(search) || cliente.includes(search) || conceptoStr.includes(search);
+       if (!matchSearch) return false;
 
-     if (filtroHistorial === 'facturas' && !numFac.startsWith('f-')) return false;
-     if (filtroHistorial === 'presupuestos' && !numFac.startsWith('p-')) return false;
-     if (filtroHistorial === 'rectificativas' && !numFac.startsWith('r-')) return false;
+       if (filtroHistorial === 'facturas' && !numFac.startsWith('f-')) return false;
+       if (filtroHistorial === 'presupuestos' && !numFac.startsWith('p-')) return false;
+       if (filtroHistorial === 'rectificativas' && !numFac.startsWith('r-')) return false;
 
-     return true;
-  });
+       return true;
+    });
+  }, [historialFacturas, searchTerm, filtroHistorial]);
 
   const totalPages = Math.ceil(filteredHistorial.length / itemsPerPage);
   const currentItems = filteredHistorial.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const clientesFiltrados = clientesCRM.filter(c => c.nombre.toLowerCase().includes(clienteNombre.toLowerCase()));
+  const clientesFiltrados = useMemo(() => {
+    return clientesCRM.filter(c => c.nombre.toLowerCase().includes(clienteNombre.toLowerCase()));
+  }, [clientesCRM, clienteNombre]);
   
-  // 🚀 LÓGICA RADAR DE MOROSIDAD
-  const ahora = new Date().getTime();
-  const facturasPendientesArr = historialFacturas.filter((f: any) => {
-      const isPresu = f.numero_factura?.startsWith('P-');
-      const isRect = f.numero_factura?.startsWith('R-');
-      const isCobrada = f.concepto_detalle?.includes('[ESTADO: COBRADA]');
-      return !isPresu && !isRect && !isCobrada;
-  });
+  // 🚀 LÓGICA RADAR DE MOROSIDAD (RENDIMIENTO: solo depende del historial, no de la búsqueda)
+  const { facturasPendientesArr, totalPendienteMonto, totalVencidoMonto } = useMemo(() => {
+    const ahora = new Date().getTime();
+    const pendientesArr = historialFacturas.filter((f: any) => {
+        const isPresu = f.numero_factura?.startsWith('P-');
+        const isRect = f.numero_factura?.startsWith('R-');
+        const isCobrada = f.concepto_detalle?.includes('[ESTADO: COBRADA]');
+        return !isPresu && !isRect && !isCobrada;
+    });
 
-  let totalPendienteMonto = 0;
-  let totalVencidoMonto = 0;
+    let pendienteMonto = 0;
+    let vencidoMonto = 0;
 
-  facturasPendientesArr.forEach((f: any) => {
-      const base = Math.abs(Number(f.total));
-      const iva = Number(f.iva) || 0;
-      const totalFac = base + (base * (iva/100));
-      
-      totalPendienteMonto += totalFac;
+    pendientesArr.forEach((f: any) => {
+        const base = Math.abs(Number(f.total));
+        const iva = Number(f.iva) || 0;
+        const totalFac = base + (base * (iva/100));
+        
+        pendienteMonto += totalFac;
 
-      const [d, m, y] = f.name.split('/');
-      const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
-      const diasDesdeEmision = (ahora - fechaEmision) / (1000 * 3600 * 24);
-      
-      if (diasDesdeEmision > 30) {
-          totalVencidoMonto += totalFac;
-      }
-  });
+        const [d, m, y] = f.name.split('/');
+        const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+        const diasDesdeEmision = (ahora - fechaEmision) / (1000 * 3600 * 24);
+        
+        if (diasDesdeEmision > 30) {
+            vencidoMonto += totalFac;
+        }
+    });
+
+    return { facturasPendientesArr: pendientesArr, totalPendienteMonto: pendienteMonto, totalVencidoMonto: vencidoMonto };
+  }, [historialFacturas]);
 
   const faqs = [
       { q: "📝 ¿Cómo creo y envío una factura oficial a mi cliente?", a: "Rellena tus datos fiscales (pulsa 'Guardar como predeterminado' para no tener que repetirlos). Pon los datos del cliente, el concepto y el precio. Dale a 'Registrar en Libro Mayor' y luego descarga el PDF oficial para enviarlo." },
@@ -799,6 +880,66 @@ export default function GeneradorFacturas() {
   return (
     <>
       <Toaster position="bottom-right" richColors theme="light" />
+
+      {/* 🛡️ Confirmaciones premium: sustituyen los window.confirm() nativos del navegador */}
+      <AlertDialog open={docIdToDelete !== null} onOpenChange={(open) => { if (!open) setDocIdToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este documento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. El documento se borrará de forma permanente del historial de facturación.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarEliminarDato} className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-500">
+              Sí, eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={crmIdToDelete !== null} onOpenChange={(open) => { if (!open) setCrmIdToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Borrar este contacto de la agenda?</AlertDialogTitle>
+            <AlertDialogDescription>
+              El cliente se eliminará de tu CRM. Las facturas ya emitidas a su nombre no se verán afectadas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarEliminarClienteCRM} className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-500">
+              Sí, borrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={facturaRectificativaPendiente !== null} onOpenChange={(open) => { if (!open) setFacturaRectificativaPendiente(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Emitir Factura Rectificativa (Abono)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a anular la factura {facturaRectificativaPendiente?.numero_factura || 'S/N'} creando un registro en negativo en el Libro Mayor. Esta operación no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const fac = facturaRectificativaPendiente;
+                setFacturaRectificativaPendiente(null);
+                if (fac) generarFacturaRectificativa(fac);
+              }}
+              className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-500"
+            >
+              Sí, emitir abono
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Show when="signed-in">
         <div className="flex min-h-screen bg-[#F4F5F7] font-sans relative text-slate-800" translate="no">
           
@@ -954,7 +1095,8 @@ export default function GeneradorFacturas() {
                       <div className="space-y-4">
                          <div>
                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Tu NIF / CIF</label>
-                           <input type="text" value={miNif} onChange={(e) => setMiNif(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                           <input type="text" value={miNif} onChange={(e) => { setMiNif(e.target.value.toUpperCase()); if (facturaErrors.miNif) setFacturaErrors({...facturaErrors, miNif: ''}); }} className={`w-full p-2.5 bg-slate-50 border rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${facturaErrors.miNif ? 'border-rose-400 bg-rose-50' : 'border-slate-200 text-slate-900'}`} />
+                           {facturaErrors.miNif && <p className="text-[10px] font-bold text-rose-500 mt-1">{facturaErrors.miNif}</p>}
                          </div>
                          <div>
                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Tu Dirección Completa</label>
@@ -1029,9 +1171,9 @@ export default function GeneradorFacturas() {
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Contactos Recurrentes</span>
                                     <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded-sm">{clientesFiltrados.length}</span>
                                 </div>
-                                {clientesFiltrados.map((c, idx) => (
-                                    <div 
-                                        key={idx} 
+                                {clientesFiltrados.map((c) => (
+                                    <div
+                                        key={c.id}
                                         className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0 transition flex justify-between items-center"
                                         onClick={() => {
                                             setClienteNombre(c.nombre);
@@ -1052,7 +1194,8 @@ export default function GeneradorFacturas() {
 
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">NIF / CIF del Cliente</label>
-                        <input type="text" value={clienteNif} onChange={(e) => setClienteNif(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                        <input type="text" value={clienteNif} onChange={(e) => { setClienteNif(e.target.value.toUpperCase()); if (facturaErrors.clienteNif) setFacturaErrors({...facturaErrors, clienteNif: ''}); }} className={`w-full p-2.5 bg-slate-50 border rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20 ${facturaErrors.clienteNif ? 'border-rose-400 bg-rose-50' : 'border-slate-200 text-slate-900'}`} />
+                        {facturaErrors.clienteNif && <p className="text-[10px] font-bold text-rose-500 mt-1">{facturaErrors.clienteNif}</p>}
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Dirección del Cliente</label>
@@ -1230,7 +1373,7 @@ export default function GeneradorFacturas() {
                     <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 mb-4">
                        <div className="flex items-center gap-3">
                           <h3 className="text-md font-bold text-slate-900">Historial de Documentos</h3>
-                          <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-black px-2 py-0.5 rounded-full">{filteredHistorial.length}</span>
+                          <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-black px-2 py-0.5 rounded-full">{isLoadingHistorial ? '...' : filteredHistorial.length}</span>
                        </div>
                        <input 
                          type="text" 
@@ -1263,7 +1406,18 @@ export default function GeneradorFacturas() {
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
-                          {currentItems.map((fac: any) => {
+                          {isLoadingHistorial && Array.from({ length: 6 }).map((_, i) => (
+                             <tr key={`skeleton-${i}`}>
+                                <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                                <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                                <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
+                                <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                                <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
+                                <td className="px-4 py-3 text-center"><Skeleton className="h-4 w-16 mx-auto" /></td>
+                                <td className="px-4 py-3 text-right"><Skeleton className="h-6 w-28 ml-auto" /></td>
+                             </tr>
+                          ))}
+                          {!isLoadingHistorial && currentItems.map((fac: any) => {
                              const isRectificativa = fac.numero_factura?.startsWith('R-');
                              const isPresupuesto = fac.numero_factura?.startsWith('P-');
                              const isCobrada = fac.concepto_detalle?.includes('[ESTADO: COBRADA]');
@@ -1283,10 +1437,10 @@ export default function GeneradorFacturas() {
                              const signoOpe = isPresupuesto ? '+' : (isRectificativa ? '-' : '+');
                              const colorSig = isPresupuesto ? 'text-amber-600' : (isRectificativa ? 'text-rose-600' : 'text-emerald-600');
 
-                             const [d, m, y] = fac.name.split('/');
-                             const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
-                             const diasDesdeEmision = (ahora - fechaEmision) / (1000 * 3600 * 24);
-                             const isVencida = !isCobrada && !isPresupuesto && !isRectificativa && (diasDesdeEmision > 30);
+                            const [d, m, y] = fac.name.split('/');
+                            const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+                            const diasDesdeEmision = (Date.now() - fechaEmision) / (1000 * 3600 * 24);
+                            const isVencida = !isCobrada && !isPresupuesto && !isRectificativa && (diasDesdeEmision > 30);
 
                              if (editandoHistorialId === fac.id) {
                                  return (
@@ -1396,14 +1550,14 @@ export default function GeneradorFacturas() {
                                              {/* BOTÓN RECTIFICAR */}
                                              {!isRectificativa && !isPresupuesto && (
                                                  <button 
-                                                    onClick={() => generarFacturaRectificativa(fac)} 
+                                                    onClick={() => setFacturaRectificativaPendiente(fac)} 
                                                     className="text-rose-500 hover:text-rose-700 font-bold text-[10px] uppercase tracking-wider bg-rose-50 px-2 py-1.5 rounded-md transition border border-rose-100"
                                                     title="Anular factura y crear Abono"
                                                  >
                                                     Rectificar
                                                  </button>
                                              )}
-                                             <button onClick={() => eliminarDato(fac.id)} className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md transition border border-transparent hover:border-rose-100 hover:bg-rose-50" title="Eliminar documento">
+                                             <button onClick={() => setDocIdToDelete(fac.id)} className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md transition border border-transparent hover:border-rose-100 hover:bg-rose-50" title="Eliminar documento">
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                              </button>
                                          </div>
@@ -1411,7 +1565,7 @@ export default function GeneradorFacturas() {
                                  </tr>
                              );
                           })}
-                          {filteredHistorial.length === 0 && (
+                          {!isLoadingHistorial && filteredHistorial.length === 0 && (
                              <tr><td colSpan={7} className="px-6 py-10 text-center text-xs text-slate-400">No hay documentos que coincidan con este filtro.</td></tr>
                           )}
                        </tbody>
@@ -1443,7 +1597,7 @@ export default function GeneradorFacturas() {
                        <p className="text-xs text-slate-500 mt-1">Directorio de {empresaId}. Los clientes se añaden automáticamente al facturar.</p>
                    </div>
                    <div className="flex items-center gap-3">
-                       <button onClick={() => setShowNuevoCliente(!showNuevoCliente)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm">
+                       <button onClick={() => { setShowNuevoCliente(!showNuevoCliente); setCrmErrors({}); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm">
                            {showNuevoCliente ? "Cancelar" : "+ Nuevo Cliente"}
                        </button>
                        <button onClick={() => setShowCRMModal(false)} className="text-slate-400 hover:text-rose-500 transition p-2 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -1460,15 +1614,27 @@ export default function GeneradorFacturas() {
                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                                <div>
                                   <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Nombre</label>
-                                  <input type="text" value={nuevoClienteData.nombre} onChange={e => setNuevoClienteData({...nuevoClienteData, nombre: e.target.value})} placeholder="Ej: Mercadona SA" className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                  <input type="text" value={nuevoClienteData.nombre} onChange={e => { setNuevoClienteData({...nuevoClienteData, nombre: e.target.value}); if (crmErrors.nombre) setCrmErrors({...crmErrors, nombre: ''}); }} placeholder="Ej: Mercadona SA" className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmErrors.nombre ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                  {crmErrors.nombre && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmErrors.nombre}</p>}
                                </div>
                                <div>
                                   <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">NIF / CIF</label>
-                                  <input type="text" value={nuevoClienteData.nif} onChange={e => setNuevoClienteData({...nuevoClienteData, nif: e.target.value})} placeholder="A12345678" className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                  <input type="text" value={nuevoClienteData.nif} onChange={e => { setNuevoClienteData({...nuevoClienteData, nif: e.target.value.toUpperCase()}); if (crmErrors.nif) setCrmErrors({...crmErrors, nif: ''}); }} placeholder="A12345678" className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmErrors.nif ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                  {crmErrors.nif && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmErrors.nif}</p>}
                                </div>
                                <div>
                                   <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Dirección</label>
                                   <input type="text" value={nuevoClienteData.direccion} onChange={e => setNuevoClienteData({...nuevoClienteData, direccion: e.target.value})} placeholder="Calle Principal 1" className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                               </div>
+                               <div>
+                                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Email</label>
+                                  <input type="email" value={nuevoClienteData.email} onChange={e => { setNuevoClienteData({...nuevoClienteData, email: e.target.value}); if (crmErrors.email) setCrmErrors({...crmErrors, email: ''}); }} placeholder="contacto@empresa.com" className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmErrors.email ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                  {crmErrors.email && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmErrors.email}</p>}
+                               </div>
+                               <div>
+                                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Teléfono</label>
+                                  <input type="tel" value={nuevoClienteData.telefono} onChange={e => { setNuevoClienteData({...nuevoClienteData, telefono: e.target.value}); if (crmErrors.telefono) setCrmErrors({...crmErrors, telefono: ''}); }} placeholder="+34 600 000 000" className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmErrors.telefono ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                  {crmErrors.telefono && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmErrors.telefono}</p>}
                                </div>
                            </div>
                            <button onClick={guardarNuevoClienteCRM} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm hover:bg-blue-700 w-full sm:w-auto">
@@ -1484,9 +1650,9 @@ export default function GeneradorFacturas() {
                          <p className="text-xs text-slate-400">Rellena los datos de un cliente y pulsa "Registrar en Libro Mayor" para guardarlo automáticamente, o pulsa "+ Nuevo Cliente".</p>
                       </div>
                    ) : (
-                      clientesCRM.map((c, index) => (
-                         <div key={index} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between md:items-center gap-4 transition hover:border-blue-200 hover:shadow-md">
-                            {editandoClienteIndex === index ? (
+                      clientesCRM.map((c) => (
+                         <div key={c.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between md:items-center gap-4 transition hover:border-blue-200 hover:shadow-md">
+                            {editandoClienteId === c.id ? (
                                <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
                                   <div>
                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Nombre</label>
@@ -1494,11 +1660,22 @@ export default function GeneradorFacturas() {
                                   </div>
                                   <div>
                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">NIF / CIF</label>
-                                     <input type="text" value={editCRMData.nif} onChange={e => setEditCRMData({...editCRMData, nif: e.target.value})} className="w-full p-2.5 border border-blue-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                     <input type="text" value={editCRMData.nif} onChange={e => { setEditCRMData({...editCRMData, nif: e.target.value.toUpperCase()}); if (crmEditErrors.nif) setCrmEditErrors({...crmEditErrors, nif: ''}); }} className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmEditErrors.nif ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                     {crmEditErrors.nif && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmEditErrors.nif}</p>}
                                   </div>
                                   <div>
                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Dirección</label>
                                      <input type="text" value={editCRMData.direccion} onChange={e => setEditCRMData({...editCRMData, direccion: e.target.value})} className="w-full p-2.5 border border-blue-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                  </div>
+                                  <div>
+                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Email</label>
+                                     <input type="email" value={editCRMData.email} onChange={e => { setEditCRMData({...editCRMData, email: e.target.value}); if (crmEditErrors.email) setCrmEditErrors({...crmEditErrors, email: ''}); }} className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmEditErrors.email ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                     {crmEditErrors.email && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmEditErrors.email}</p>}
+                                  </div>
+                                  <div>
+                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Teléfono</label>
+                                     <input type="tel" value={editCRMData.telefono} onChange={e => { setEditCRMData({...editCRMData, telefono: e.target.value}); if (crmEditErrors.telefono) setCrmEditErrors({...crmEditErrors, telefono: ''}); }} className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmEditErrors.telefono ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                     {crmEditErrors.telefono && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmEditErrors.telefono}</p>}
                                   </div>
                                </div>
                             ) : (
@@ -1508,19 +1685,20 @@ export default function GeneradorFacturas() {
                                      <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold mr-2">NIF: {c.nif}</span>
                                      📍 {c.direccion}
                                   </p>
+                                  {(c.email || c.telefono) && (
+                                     <p className="text-[11px] font-medium text-slate-500 mt-1.5 flex flex-wrap items-center gap-3">
+                                        {c.email && <span className="inline-flex items-center gap-1">✉️ {c.email}</span>}
+                                        {c.telefono && <span className="inline-flex items-center gap-1">📞 {c.telefono}</span>}
+                                     </p>
+                                  )}
                                </div>
                             )}
                             
                             <div className="flex items-center gap-2 border-t border-slate-100 pt-3 md:border-0 md:pt-0">
-                               {editandoClienteIndex === index ? (
+                               {editandoClienteId === c.id ? (
                                   <>
-                                     <button onClick={() => {
-                                        const newList = [...clientesCRM];
-                                        newList[index] = editCRMData;
-                                        setClientesCRM(newList);
-                                        guardarCRMEditado();
-                                     }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Guardar</button>
-                                     <button onClick={() => setEditandoClienteIndex(null)} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200">Cancelar</button>
+                                     <button onClick={() => guardarCRMEditado(c.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Guardar</button>
+                                     <button onClick={() => { setEditandoClienteId(null); setCrmEditErrors({}); }} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200">Cancelar</button>
                                   </>
                                 ) : (
                                   <>
@@ -1530,8 +1708,8 @@ export default function GeneradorFacturas() {
                                          setClienteDireccion(c.direccion);
                                          setShowCRMModal(false);
                                      }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Usar en Factura</button>
-                                     <button onClick={() => { setEditandoClienteIndex(index); setEditCRMData(c); }} className="bg-slate-50 hover:bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200 hover:border-blue-200">Editar</button>
-                                     <button onClick={() => eliminarClienteCRM(index)} className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-rose-100">Borrar</button>
+                                     <button onClick={() => { setEditandoClienteId(c.id); setEditCRMData({ nombre: c.nombre, nif: c.nif, direccion: c.direccion, email: c.email || '', telefono: c.telefono || '' }); setCrmEditErrors({}); }} className="bg-slate-50 hover:bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200 hover:border-blue-200">Editar</button>
+                                     <button onClick={() => setCrmIdToDelete(c.id)} className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-rose-100">Borrar</button>
                                   </>
                                )}
                             </div>

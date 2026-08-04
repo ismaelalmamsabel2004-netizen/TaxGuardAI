@@ -4,48 +4,11 @@ import { prisma } from '../lib/prisma';
 import { auth, currentUser } from '@clerk/nextjs/server'; 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
+import { getContextoSeguro } from '../lib/authContext';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-// 🛡️ MOTOR DE SEGURIDAD B2B: IDENTIFICADOR COMPUESTO
-async function getContextoSeguro(empresaIdRaw?: string) {
-    const { userId } = await auth();
-    const user = await currentUser();
-    if (!userId || !user) throw new Error("No autenticado");
-
-    const miEmail = user.primaryEmailAddress?.emailAddress;
-    let realEmpresaId = empresaIdRaw || "Mi Empresa Principal";
-    let targetUserId = userId;
-    let rol = "PROPIETARIO";
-
-    // Si es un Asesor entrando al espacio de un cliente
-    if (empresaIdRaw && empresaIdRaw.startsWith("CLIENTE|")) {
-        const parts = empresaIdRaw.split('|');
-        if (parts.length === 3) {
-            targetUserId = parts[1];
-            realEmpresaId = parts[2] || "Mi Empresa Principal";
-            rol = "NINGUNO";
-
-            if (miEmail) {
-                const permiso = await prisma.permisoEmpresa.findFirst({
-                    where: { empresaId: realEmpresaId, propietarioId: targetUserId, asesorEmail: miEmail }
-                });
-                if (permiso) {
-                    rol = permiso.rol; // "LECTURA"
-                }
-            }
-        }
-    } else {
-        // Verificación extra por si la empresa se guardó como "undefined"
-        if (realEmpresaId === "undefined" || realEmpresaId.includes("CLIENTE_undefined")) {
-            realEmpresaId = "Mi Empresa Principal";
-        }
-    }
-
-    return { targetUserId, realEmpresaId, rol, userId, miEmail };
-}
 
 
 // ==========================================
@@ -371,5 +334,119 @@ export async function revocarAsesor(permisoId: number) {
         return { success: true };
     } catch (error) {
         return { error: "No se pudo revocar el acceso." };
+    }
+}
+
+// 🏢=============================================================🏢
+// 8. CRM REAL DE CLIENTES (Tabla ContactoEmpresa, ya no JSON fantasma)
+// 🏢=============================================================🏢
+
+export async function obtenerContactosCRM(empresaIdRaw?: string) {
+    try {
+        const ctx = await getContextoSeguro(empresaIdRaw);
+        if (ctx.rol === "NINGUNO") return [];
+
+        const contactos = await prisma.contactoEmpresa.findMany({
+            where: { userId: ctx.targetUserId, empresaId: ctx.realEmpresaId },
+            orderBy: { nombre: 'asc' },
+        });
+        return contactos;
+    } catch (error) {
+        return [];
+    }
+}
+
+export async function guardarContactoCRM(datos: any) {
+    try {
+        const ctx = await getContextoSeguro(datos.empresaId);
+        if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") {
+            return { error: "Acceso denegado: El Modo Asesor es de solo lectura." };
+        }
+
+        const contacto = await prisma.contactoEmpresa.create({
+            data: {
+                userId: ctx.targetUserId,
+                empresaId: ctx.realEmpresaId,
+                tipo: datos.tipo || "CLIENTE",
+                nombre: datos.nombre,
+                nif: datos.nif || null,
+                email: datos.email || null,
+                telefono: datos.telefono || null,
+                direccion: datos.direccion || null,
+            }
+        });
+        return { success: true, contacto };
+    } catch (error: any) {
+        return { error: "Error de servidor al guardar el contacto." };
+    }
+}
+
+export async function editarContactoCRM(datos: any) {
+    try {
+        const ctx = await getContextoSeguro(datos.empresaId);
+        if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") return { error: "Modo solo lectura." };
+
+        await prisma.contactoEmpresa.update({
+            where: { id: Number(datos.id), userId: ctx.targetUserId },
+            data: {
+                nombre: datos.nombre,
+                nif: datos.nif || null,
+                email: datos.email || null,
+                telefono: datos.telefono || null,
+                direccion: datos.direccion || null,
+            }
+        });
+        return { success: true };
+    } catch (error: any) {
+        return { error: "Error de servidor al actualizar el contacto." };
+    }
+}
+
+export async function borrarContactoCRM(id: number, empresaIdRaw: string) {
+    try {
+        const ctx = await getContextoSeguro(empresaIdRaw);
+        if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") return { error: "Modo solo lectura." };
+
+        await prisma.contactoEmpresa.delete({
+            where: { id: Number(id), userId: ctx.targetUserId }
+        });
+        return { success: true };
+    } catch (error: any) {
+        return { error: "Error de servidor al borrar el contacto." };
+    }
+}
+
+// 🚀 MIGRACIÓN TRANSPARENTE: la primera vez que detectamos contactos guardados a la antigua
+// usanza (JSON dentro de los ajustes), los copiamos a la tabla real para que el usuario nunca
+// note el cambio ni pierda su agenda. No se ejecuta si ya hay contactos reales para no duplicar.
+export async function migrarContactosCRMDesdeJSON(empresaIdRaw: string, contactosJSON: any[]) {
+    try {
+        if (!contactosJSON || contactosJSON.length === 0) return { migrated: 0 };
+        const ctx = await getContextoSeguro(empresaIdRaw);
+        if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") return { migrated: 0 };
+
+        const existentes = await prisma.contactoEmpresa.count({
+            where: { userId: ctx.targetUserId, empresaId: ctx.realEmpresaId }
+        });
+        if (existentes > 0) return { migrated: 0 };
+
+        const validos = contactosJSON.filter((c: any) => c && c.nombre && c.nombre.trim() !== "");
+        if (validos.length === 0) return { migrated: 0 };
+
+        await prisma.contactoEmpresa.createMany({
+            data: validos.map((c: any) => ({
+                userId: ctx.targetUserId,
+                empresaId: ctx.realEmpresaId,
+                tipo: "CLIENTE",
+                nombre: c.nombre,
+                nif: c.nif || null,
+                email: c.email || null,
+                telefono: c.telefono || null,
+                direccion: c.direccion || null,
+            }))
+        });
+        return { migrated: validos.length };
+    } catch (error) {
+        return { migrated: 0 };
     }
 }

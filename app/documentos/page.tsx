@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useUser, UserButton, Show } from "@clerk/nextjs";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'sonner';
 import { obtenerDatosSupabase, actualizarEstadoPago } from '../actions';
+import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function DocumentosPage() {
   const router = useRouter();
@@ -16,6 +18,8 @@ export default function DocumentosPage() {
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [empresaId, setEmpresaId] = useState(""); 
   const [planActivo, setPlanActivo] = useState('loading');
+  // 🚀 UX PREMIUM: evita pantallas en blanco/parpadeos mientras llegan los datos de Supabase
+  const [isLoadingData, setIsLoadingData] = useState(true);
   
   // 🚀 ESTADOS DE LA PÁGINA DOCUMENTOS
   const [searchTerm, setSearchTerm] = useState("");
@@ -31,8 +35,7 @@ export default function DocumentosPage() {
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
 
-    fetch('/api/settings')
-      .then(res => res.ok ? res.json() : {})
+    obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          if (planDetectado === 'free') { router.push('/precios'); return; }
@@ -50,20 +53,20 @@ export default function DocumentosPage() {
   useEffect(() => {
     if (!empresaId) return;
 
+    setIsLoadingData(true);
     obtenerDatosSupabase(empresaId).then(d => {
       if (d && d.length > 0) setData(d);
       else setData([]); // Si la empresa no tiene datos, vaciamos la tabla
+      setIsLoadingData(false);
     });
   }, [empresaId]);
 
   // 🚀 FUNCIONES DEL SIDEBAR Y SOPORTE
   const cambiarEmpresa = async (newId: string) => {
+    const actuales = await obtenerAjustes();
+    if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
     setEmpresaId(newId);
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json(); 
-    await fetch('/api/settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...actuales, empresaActiva: newId })
-    });
+    await guardarAjustes({ ...actuales, empresaActiva: newId });
   };
 
   const gestionarSuscripcion = async () => {
@@ -91,32 +94,40 @@ export default function DocumentosPage() {
 
   // 🚀 FUNCIONES DE LA TABLA
   const cambiarEstado = async (id: number, nuevoEstado: string) => {
-    const res = await actualizarEstadoPago(id, nuevoEstado);
+    const res = await actualizarEstadoPago(id, nuevoEstado, empresaId);
     if (res.success) {
       setData(data.map(item => item.id === id ? { ...item, estado_pago: nuevoEstado } : item));
     }
   };
 
-  const documentosFiltrados = data.filter(item => {
-    const matchSearch = 
-      (item.cliente_nombre?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (item.numero_factura?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (item.nombre_archivo?.toLowerCase() || "").includes(searchTerm.toLowerCase());
-      
-    const matchEstado = filtroEstado === "ALL" ? true : item.estado_pago === filtroEstado;
+  // 🚀 RENDIMIENTO: solo se recalcula cuando cambian los datos, la búsqueda o el filtro de estado
+  // (antes se recalculaba en cada render, incluso al abrir/cerrar modales que no afectan a esta tabla)
+  const documentosFiltrados = useMemo(() => {
+    return data.filter(item => {
+      const matchSearch = 
+        (item.cliente_nombre?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+        (item.numero_factura?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+        (item.nombre_archivo?.toLowerCase() || "").includes(searchTerm.toLowerCase());
+        
+      const matchEstado = filtroEstado === "ALL" ? true : item.estado_pago === filtroEstado;
 
-    return matchSearch && matchEstado;
-  });
+      return matchSearch && matchEstado;
+    });
+  }, [data, searchTerm, filtroEstado]);
 
-  const ingresosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) > 0);
-  const facturasPendientes = ingresosPendientes.length;
-  // 🚀 CORRECCIÓN CÁLCULO WIDGET SUPERIOR
-  const dineroPendiente = ingresosPendientes.reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + ((Number(curr.iva) || 0) / 100))), 0);
+  // 🚀 RENDIMIENTO: los widgets de morosidad solo dependen de "data", no de la búsqueda ni del
+  // filtro de estado, así que se calculan aparte para no recalcularse en cada tecleo del buscador.
+  const { facturasPendientes, dineroPendiente, recibosPendientes, dineroAPagar } = useMemo(() => {
+    const ingresosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) > 0);
+    const gastosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) < 0);
 
-  const gastosPendientes = data.filter(d => d.estado_pago === "PENDIENTE" && Number(d.total) < 0);
-  const recibosPendientes = gastosPendientes.length;
-  // 🚀 CORRECCIÓN CÁLCULO WIDGET SUPERIOR
-  const dineroAPagar = gastosPendientes.reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + ((Number(curr.iva) || 0) / 100))), 0);
+    return {
+      facturasPendientes: ingresosPendientes.length,
+      dineroPendiente: ingresosPendientes.reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + ((Number(curr.iva) || 0) / 100))), 0),
+      recibosPendientes: gastosPendientes.length,
+      dineroAPagar: gastosPendientes.reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + ((Number(curr.iva) || 0) / 100))), 0),
+    };
+  }, [data]);
 
   const exportarAExcel = () => {
     if (documentosFiltrados.length === 0) return toast.info("Sin datos", { description: "No hay datos para exportar en este filtro." });
@@ -263,20 +274,20 @@ export default function DocumentosPage() {
               <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl flex items-center gap-5 shadow-sm">
                   <div>
                       <p className="text-[10px] font-black uppercase text-rose-800 tracking-widest flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span> Morosidad</p>
-                      <p className="text-[11px] font-medium text-rose-600 mt-0.5">{facturasPendientes} ingresos sin cobrar</p>
+                      {isLoadingData ? <Skeleton className="h-3 w-28 mt-1.5" /> : <p className="text-[11px] font-medium text-rose-600 mt-0.5">{facturasPendientes} ingresos sin cobrar</p>}
                   </div>
                   <div className="text-right border-l border-rose-200 pl-4 min-w-[80px]">
-                      <p className="text-xl font-black text-rose-600">{dineroPendiente.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
+                      {isLoadingData ? <Skeleton className="h-6 w-16 ml-auto" /> : <p className="text-xl font-black text-rose-600">{dineroPendiente.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>}
                   </div>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-5 shadow-sm">
                   <div>
                       <p className="text-[10px] font-black uppercase text-amber-800 tracking-widest">Cuentas por Pagar</p>
-                      <p className="text-[11px] font-medium text-amber-600 mt-0.5">{recibosPendientes} gastos sin pagar</p>
+                      {isLoadingData ? <Skeleton className="h-3 w-28 mt-1.5" /> : <p className="text-[11px] font-medium text-amber-600 mt-0.5">{recibosPendientes} gastos sin pagar</p>}
                   </div>
                   <div className="text-right border-l border-amber-200 pl-4 min-w-[80px]">
-                      <p className="text-xl font-black text-amber-600">{dineroAPagar.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
+                      {isLoadingData ? <Skeleton className="h-6 w-16 ml-auto" /> : <p className="text-xl font-black text-amber-600">{dineroAPagar.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>}
                   </div>
               </div>
             </div>
@@ -314,7 +325,18 @@ export default function DocumentosPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
-                  {documentosFiltrados.map((item, idx) => {
+                  {isLoadingData && Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`skeleton-${i}`}>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-40" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-16" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-10" /></td>
+                      <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                      <td className="px-6 py-4 text-center"><Skeleton className="h-4 w-8 mx-auto" /></td>
+                      <td className="px-6 py-4 text-right"><Skeleton className="h-6 w-24 ml-auto" /></td>
+                    </tr>
+                  ))}
+                  {!isLoadingData && documentosFiltrados.map((item, idx) => {
                     const isGasto = Number(item.total) < 0;
                     const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
                     const isAbono = item.numero_factura?.startsWith('R-');
@@ -391,7 +413,7 @@ export default function DocumentosPage() {
                       </tr>
                     );
                   })}
-                  {documentosFiltrados.length === 0 && (
+                  {!isLoadingData && documentosFiltrados.length === 0 && (
                     <tr><td colSpan={7} className="px-6 py-16 text-center text-sm font-bold text-slate-400">No hay documentos en este filtro.</td></tr>
                   )}
                 </tbody>

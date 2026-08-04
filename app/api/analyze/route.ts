@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 // 🚀 Le damos hasta 60 segundos a Vercel para que nunca corte la respuesta a medias
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
+    // 🛡️ BLINDAJE CRÍTICO: sin esto, cualquiera en internet podía gastar tu presupuesto de IA sin iniciar sesión
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Acceso denegado. Inicia sesión para usar el Centro de Inteligencia." }, { status: 401 });
+    }
+
     const apiKey = process.env.GEMINI_API_KEY?.trim(); 
     if (!apiKey) return NextResponse.json({ analysis: "⚠️ Error de configuración en el servidor. Falta GEMINI_API_KEY." }, { status: 500 });
 

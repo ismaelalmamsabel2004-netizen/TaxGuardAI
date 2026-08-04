@@ -5,6 +5,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import PwaActivator from './PwaActivator';
+import OfflineBanner from '../components/OfflineBanner';
 import { esES } from '@clerk/localizations';
 
 const inter = Inter({ 
@@ -77,6 +78,7 @@ export default function RootLayout({
       >
         <body suppressHydrationWarning className={`${inter.variable} font-sans antialiased bg-background text-foreground`}>
           <PwaActivator />
+          <OfflineBanner />
           {children}
           <Analytics />
           <SpeedInsights />

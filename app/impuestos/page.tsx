@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,6 +8,7 @@ import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@
 import { Toaster, toast } from 'sonner';
 
 import { obtenerDatosSupabase } from '../actions';
+import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
 
 Font.register({
   family: 'Roboto',
@@ -426,8 +427,7 @@ export default function ModelosTributarios() {
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
-    fetch('/api/settings')
-      .then(res => res.ok ? res.json() : {})
+    obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          if (planDetectado === 'free') { router.push('/precios'); return; }
@@ -457,12 +457,10 @@ export default function ModelosTributarios() {
   }, [isLoaded, isSignedIn, router]);
 
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
+    const actuales = await obtenerAjustes();
+    if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
     setEmpresaId(nuevaEmpresa);
-    const res = await fetch('/api/settings');
-    const actuales: any = await res.json();
-    await fetch('/api/settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...actuales, empresaActiva: nuevaEmpresa })
-    });
+    await guardarAjustes({ ...actuales, empresaActiva: nuevaEmpresa });
 
     obtenerDatosSupabase(nuevaEmpresa).then(d => {
           setData(d);
@@ -501,12 +499,12 @@ export default function ModelosTributarios() {
       toast.success("Copiado", { description: "Correo de soporte copiado al portapapeles." });
   };
 
-  const getDatosValidos = () => {
-      return data.filter(d => d.categoria !== "Presupuestos");
-  };
+  // 🚀 RENDIMIENTO: los 6 modelos fiscales (303, 130, 390, 115, 347, 349) se recalculaban
+  // TODOS en cada render aunque el usuario solo viera uno (`modeloActivo`). Se memoizan
+  // para que solo se vuelvan a calcular cuando cambian los datos, el año o el trimestre.
+  const datosValidos = useMemo(() => data.filter(d => d.categoria !== "Presupuestos"), [data]);
 
-  const calcularModelo303 = () => {
-    const datosValidos = getDatosValidos();
+  const mod303 = useMemo(() => {
     const datosTrimestre = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, mesStr, anioStr] = d.name.split('/');
@@ -538,10 +536,9 @@ export default function ModelosTributarios() {
     }, 0);
 
     return { base21, cuota21, base10, cuota10, base4, cuota4, totalCuotaDevengada, baseDeducible, cuotaDeducible, resultado: totalCuotaDevengada - cuotaDeducible };
-  };
+  }, [datosValidos, anio, trimestre]);
 
-  const calcularModelo130 = () => {
-    const datosValidos = getDatosValidos();
+  const mod130 = useMemo(() => {
     const datosAcumulados = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, mesStr, anioStr] = d.name.split('/');
@@ -564,10 +561,9 @@ export default function ModelosTributarios() {
     if (rendimientoNeto > 0) pagoFraccionado = rendimientoNeto * 0.20; 
 
     return { ingresosTotales, gastosTotales, rendimientoNeto, pagoFraccionado };
-  };
+  }, [datosValidos, anio, trimestre]);
 
-  const calcularModelo390 = () => {
-    const datosValidos = getDatosValidos();
+  const mod390 = useMemo(() => {
     const datosAnio = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, , anioStr] = d.name.split('/');
@@ -600,10 +596,9 @@ export default function ModelosTributarios() {
         baseGastos, cuotaGastos, 
         resultadoAnual: totalCuotaDevengada - cuotaGastos 
     };
-  };
+  }, [datosValidos, anio]);
 
-  const calcularModelo115 = () => {
-    const datosValidos = getDatosValidos();
+  const mod115 = useMemo(() => {
     const datosTrimestre = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, mesStr, anioStr] = d.name.split('/');
@@ -624,10 +619,9 @@ export default function ModelosTributarios() {
     const totalRetencion = baseRetencion * 0.19; 
     
     return { baseRetencion, totalRetencion };
-  };
+  }, [datosValidos, anio, trimestre]);
 
-  const calcularModelo347 = () => {
-    const datosValidos = getDatosValidos();
+  const mod347 = useMemo(() => {
     const datosAnio = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, , anioStr] = d.name.split('/');
@@ -646,10 +640,9 @@ export default function ModelosTributarios() {
        .sort((a,b) => b.importe - a.importe);
     
     return { detalle: superan3005 };
-  };
+  }, [datosValidos, anio]);
 
-  const calcularModelo349 = () => {
-    const datosValidos = getDatosValidos();
+  const mod349 = useMemo(() => {
     const datosTrimestre = datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, mesStr, anioStr] = d.name.split('/');
@@ -667,14 +660,7 @@ export default function ModelosTributarios() {
     const adquisiciones = operacionesIntra.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
     
     return { entregas, adquisiciones };
-  };
-
-  const mod303 = calcularModelo303();
-  const mod130 = calcularModelo130();
-  const mod390 = calcularModelo390();
-  const mod115 = calcularModelo115();
-  const mod347 = calcularModelo347();
-  const mod349 = calcularModelo349();
+  }, [datosValidos, anio, trimestre]);
 
   const faqs = [
     { q: "🏛️ ¿Me sirven estos borradores para presentarlos en la AEAT?", a: "Sí. Las casillas que te mostramos [01], [03], etc. coinciden exactamente con el formulario web de la Agencia Tributaria. Solo tienes que copiarlos." },

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { auth } from '@clerk/nextjs/server';
 import { GoogleGenerativeAI } from '@google/generative-ai'; // 🚀 B2B: Usamos el SDK oficial
+import { getContextoSeguro } from '../../../lib/authContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,13 @@ export async function POST(request: Request) {
 
     if (!csvText || !empresaId) {
       return NextResponse.json({ error: "Faltan datos obligatorios." }, { status: 400 });
+    }
+
+    // 🛡️ BLINDAJE: mismo control de permisos que el resto de la app. Sin esto, un asesor
+    // en modo "solo lectura" podía volcar un extracto bancario entero en el espacio de un cliente.
+    const ctx = await getContextoSeguro(empresaId);
+    if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") {
+      return NextResponse.json({ error: "Acceso denegado: el Modo Asesor es de solo lectura." }, { status: 403 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -85,8 +93,8 @@ export async function POST(request: Request) {
        const totalNum = Number(mov.total) || 0;
 
        return {
-         userId: userId,
-         empresaId: empresaId,
+         userId: ctx.targetUserId,
+         empresaId: ctx.realEmpresaId,
          fecha: fechaObj,
          baseImponible: Math.abs(totalNum),
          tipo: totalNum >= 0 ? 'INGRESO' : 'GASTO',
