@@ -5,7 +5,7 @@ import { useUser, UserButton, Show, SignInButton, SignUpButton } from "@clerk/ne
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font, Image } from '@react-pdf/renderer';
+import dynamic from 'next/dynamic';
 import { Toaster, toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -26,186 +26,16 @@ import {
 import { contactoCrmSchema, mapearErroresZod, nifCifOpcional } from '../../lib/validations';
 import { obtenerAjustesSilencioso, guardarAjustes } from '../../lib/settingsClient';
 
-Font.register({
-  family: 'Roboto',
-  fonts: [
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf', fontWeight: 300 },
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf', fontWeight: 400 },
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf', fontWeight: 500 },
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf', fontWeight: 700 },
-  ]
+// 🚀 RENDIMIENTO: @react-pdf/renderer se carga en su propio chunk, solo en el navegador y solo
+// cuando cada botón llega a pintarse, para no lastrar el JS inicial de la página de Facturación.
+const FacturaPDFButtonPrincipal = dynamic(() => import('../../components/pdf/FacturaPDFButton'), {
+  ssr: false,
+  loading: () => <button disabled className="w-full text-white/60 font-black py-4 rounded-xl bg-slate-700 flex items-center justify-center gap-2">⏳ Preparando PDF...</button>
 });
-
-const styles = StyleSheet.create({
-  page: { backgroundColor: '#ffffff', padding: 50, fontFamily: 'Roboto' },
-  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#2563eb', marginBottom: 40 },
-  headerContainerPresupuesto: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 30, borderBottomWidth: 2, borderBottomColor: '#f59e0b', marginBottom: 40 },
-  logoSection: { flexDirection: 'column', maxWidth: '60%' },
-  logoImage: { width: 140, height: 60, objectFit: 'contain', marginBottom: 8 },
-  logoText: { fontSize: 24, fontWeight: 700, color: '#0f172a', letterSpacing: -0.5, marginBottom: 4 },
-  logoSub: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 },
-  invoiceInfoBox: { alignItems: 'flex-end' },
-  invoiceBadge: { backgroundColor: '#eff6ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
-  presupuestoBadge: { backgroundColor: '#fffbeb', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginBottom: 8 },
-  invoiceBadgeText: { color: '#2563eb', fontSize: 14, fontWeight: 700, letterSpacing: 1 },
-  presupuestoBadgeText: { color: '#d97706', fontSize: 14, fontWeight: 700, letterSpacing: 1 },
-  invoiceDetailsText: { fontSize: 10, color: '#475569', marginBottom: 4 },
-  invoiceDetailsBold: { fontWeight: 700, color: '#0f172a' },
-  infoGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40 },
-  infoColumn: { width: '45%', flexDirection: 'column' },
-  infoLabel: { fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8, letterSpacing: 0.5 },
-  infoName: { fontSize: 12, color: '#0f172a', fontWeight: 700, marginBottom: 4 },
-  infoText: { fontSize: 10, color: '#475569', marginBottom: 3, lineHeight: 1.4 },
-  table: { width: '100%', marginBottom: 30 },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#f8fafc', borderTopWidth: 1, borderTopColor: '#e2e8f0', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  tableHeaderCell: { paddingVertical: 10, paddingHorizontal: 4, fontSize: 9, color: '#475569', fontWeight: 700, textTransform: 'uppercase' },
-  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  tableCell: { paddingVertical: 12, paddingHorizontal: 4, fontSize: 10, color: '#334155', lineHeight: 1.4 },
-  colCant: { width: '8%', textAlign: 'center' },
-  colConcepto: { width: '38%' },
-  colPrecio: { width: '15%', textAlign: 'right' },
-  colBase: { width: '15%', textAlign: 'right' },
-  colIva: { width: '9%', textAlign: 'right' },
-  colTotal: { width: '15%', textAlign: 'right' },
-  bottomSection: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-  paymentWrapper: { width: '40%' },
-  paymentBox: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#2563eb' },
-  paymentBoxPresupuesto: { padding: 15, backgroundColor: '#f8fafc', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#f59e0b' },
-  paymentTitle: { fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 },
-  paymentText: { fontSize: 10, color: '#0f172a', fontWeight: 500, marginBottom: 4 },
-  totalsWrapper: { width: '55%' },
-  totalsBox: { backgroundColor: '#f8fafc', borderRadius: 8, padding: 20 },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  totalLabel: { fontSize: 10, color: '#64748b' },
-  totalValue: { fontSize: 11, color: '#0f172a', fontWeight: 500 },
-  grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#cbd5e1' },
-  grandTotalLabel: { fontSize: 12, color: '#0f172a', fontWeight: 700, textTransform: 'uppercase' },
-  grandTotalValue: { fontSize: 16, color: '#2563eb', fontWeight: 700 },
-  grandTotalValuePresupuesto: { fontSize: 16, color: '#d97706', fontWeight: 700 },
-  footer: { position: 'absolute', bottom: 40, left: 50, right: 50, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 15, flexDirection: 'row', justifyContent: 'space-between' },
-  footerText: { fontSize: 8, color: '#94a3b8' },
-  footerBrand: { fontSize: 8, color: '#3b82f6', fontWeight: 700 }
+const FacturaPDFButtonHistorico = dynamic(() => import('../../components/pdf/FacturaPDFButton'), {
+  ssr: false,
+  loading: () => <button disabled className="text-slate-300 bg-slate-50 p-1.5 rounded-md border border-slate-200" title="Cargando..."><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
 });
-
-const FacturaPDF = ({ datos }: { datos: any }) => {
-  const isPresupuesto = datos.modo === 'presupuesto';
-  const isRectificativa = datos.numeroDocumento && datos.numeroDocumento.startsWith('R-');
-  
-  const docTypeLabel = isPresupuesto ? 'PRESUPUESTO' : (isRectificativa ? 'FACTURA RECTIFICATIVA' : 'FACTURA');
-  const mainColor = isPresupuesto ? '#d97706' : (isRectificativa ? '#e11d48' : '#2563eb');
-  const badgeBg = isPresupuesto ? '#fffbeb' : (isRectificativa ? '#ffe4e6' : '#eff6ff');
-  
-  const sign = isRectificativa ? -1 : 1;
-
-  return (
-    <Document>
-      <Page size="A4" style={styles.page}>
-        <View style={[styles.headerContainer, { borderBottomColor: mainColor }]}>
-          <View style={styles.logoSection}>
-            {datos.logo && (
-               <Image src={{ uri: datos.logo, method: 'GET', headers: { 'Cache-Control': 'no-cache' }, body: '' }} style={styles.logoImage} />
-            )}
-            <Text style={styles.logoText}>{datos.miEmpresa.toUpperCase()}</Text>
-            <Text style={styles.logoSub}>{isPresupuesto ? 'Propuesta Comercial' : 'Facturación Electrónica'}</Text>
-          </View>
-          <View style={styles.invoiceInfoBox}>
-            <View style={[styles.invoiceBadge, { backgroundColor: badgeBg }]}>
-               <Text style={[styles.invoiceBadgeText, { color: mainColor }]}>
-                  {docTypeLabel}
-               </Text>
-            </View>
-            <Text style={styles.invoiceDetailsText}>Nº Documento: <Text style={styles.invoiceDetailsBold}>{datos.numeroDocumento}</Text></Text>
-            <Text style={styles.invoiceDetailsText}>Fecha Emisión: <Text style={styles.invoiceDetailsBold}>{datos.fecha}</Text></Text>
-          </View>
-        </View>
-
-        <View style={styles.infoGrid}>
-          <View style={styles.infoColumn}>
-            <Text style={styles.infoLabel}>Información del Emisor</Text>
-            <Text style={styles.infoName}>{datos.miEmpresa}</Text>
-            <Text style={styles.infoText}>NIF/CIF: {datos.miNif}</Text>
-            <Text style={styles.infoText}>{datos.miDireccion}</Text>
-          </View>
-          <View style={styles.infoColumn}>
-            <Text style={styles.infoLabel}>{isPresupuesto ? 'Preparado Para' : 'Facturado A'}</Text>
-            <Text style={styles.infoName}>{datos.clienteNombre}</Text>
-            <Text style={styles.infoText}>NIF/CIF: {datos.clienteNif}</Text>
-            <Text style={styles.infoText}>{datos.clienteDireccion}</Text>
-          </View>
-        </View>
-
-        <View style={styles.table}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, styles.colCant]}>CANT</Text>
-            <Text style={[styles.tableHeaderCell, styles.colConcepto]}>CONCEPTO</Text>
-            <Text style={[styles.tableHeaderCell, styles.colPrecio]}>PRECIO UN.</Text>
-            <Text style={[styles.tableHeaderCell, styles.colBase]}>BASE</Text>
-            <Text style={[styles.tableHeaderCell, styles.colIva]}>IVA %</Text>
-            <Text style={[styles.tableHeaderCell, styles.colTotal]}>TOTAL</Text>
-          </View>
-          {datos.lineasFactura.map((linea: any, index: number) => {
-            const importe = Number(linea.cantidad) * Number(linea.precio) * sign;
-            return (
-              <View key={linea.id || index} style={styles.tableRow}>
-                <Text style={[styles.tableCell, styles.colCant]}>{linea.cantidad}</Text>
-                <Text style={[styles.tableCell, styles.colConcepto]}>{linea.concepto}</Text>
-                <Text style={[styles.tableCell, styles.colPrecio]}>{(Number(linea.precio) * sign).toFixed(2)} €</Text>
-                <Text style={[styles.tableCell, styles.colBase]}>{importe.toFixed(2)} €</Text>
-                <Text style={[styles.tableCell, styles.colIva]}>{datos.ivaSeleccionado}%</Text>
-                <Text style={[styles.tableCell, styles.colTotal]}>{(importe * (1 + datos.ivaNum/100)).toFixed(2)} €</Text>
-              </View>
-            );
-          })}
-        </View>
-
-        <View style={styles.bottomSection}>
-           <View style={styles.paymentWrapper}>
-              <View style={[styles.paymentBox, { borderLeftColor: mainColor }]}>
-                 <Text style={styles.paymentTitle}>Método de Pago</Text>
-                 <Text style={styles.paymentText}>{datos.metodoPago}</Text>
-                 {datos.metodoPago === 'Transferencia' && datos.iban && (
-                    <Text style={styles.paymentText}>IBAN: {datos.iban}</Text>
-                 )}
-              </View>
-           </View>
-           <View style={styles.totalsWrapper}>
-             <View style={styles.totalsBox}>
-               <View style={styles.totalRow}>
-                 <Text style={styles.totalLabel}>Subtotal Operación:</Text>
-                 <Text style={styles.totalValue}>{(Number(datos.baseImponible) * sign).toFixed(2)} €</Text>
-               </View>
-               <View style={styles.totalRow}>
-                 <Text style={styles.totalLabel}>Impuestos (IVA {datos.ivaSeleccionado}%):</Text>
-                 <Text style={styles.totalValue}>{(Number(datos.cuotaIva) * sign).toFixed(2)} €</Text>
-               </View>
-               
-               {datos.cuotaIrpf > 0 && (
-                   <View style={styles.totalRow}>
-                     <Text style={styles.totalLabel}>Retención IRPF (-{datos.irpfSeleccionado}%):</Text>
-                     <Text style={{...styles.totalValue, color: '#ef4444'}}>{(Number(datos.cuotaIrpf) * -sign).toFixed(2)} €</Text>
-                   </View>
-               )}
-
-               <View style={styles.grandTotalRow}>
-                 <Text style={styles.grandTotalLabel}>{isPresupuesto ? 'Total Estimado' : 'Total a Pagar'}</Text>
-                 <Text style={[styles.grandTotalValue, { color: mainColor }]}>{(Number(datos.totalFinal) * sign).toFixed(2)} €</Text>
-               </View>
-             </View>
-           </View>
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            {isPresupuesto 
-              ? 'Documento informativo de valoración económica. Este presupuesto no tiene validez como factura fiscal.' 
-              : 'Documento fiscal válido. Este documento acredita la prestación de servicios detallada.'}
-          </Text>
-          <Text style={styles.footerBrand}>Generado de forma segura mediante TaxGuard AI</Text>
-        </View>
-      </Page>
-    </Document>
-  );
-};
 
 export default function GeneradorFacturas() {
   const router = useRouter();
@@ -286,6 +116,9 @@ export default function GeneradorFacturas() {
   const [faqSearch, setFaqSearch] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
+  // 🛡️ BLINDAJE DE ESTADO: ignora respuestas tardías si el usuario cambia de empresa muy rápido
+  const empresaSolicitadaRef = useRef<string>("");
+
   useEffect(() => {
     setIsMounted(true);
     
@@ -302,6 +135,7 @@ export default function GeneradorFacturas() {
          const listaEmpresas = data.empresas || ["Alperez"];
          setEmpresas(listaEmpresas);
          const activa = data.empresaActiva || listaEmpresas[0] || "";
+         empresaSolicitadaRef.current = activa;
          setEmpresaId(activa);
 
          cargarContactosCRM(activa, data.crm?.[activa]);
@@ -318,6 +152,7 @@ export default function GeneradorFacturas() {
           await migrarContactosCRMDesdeJSON(empresa, contactosLegacyJSON);
           contactos = await obtenerContactosCRM(empresa);
       }
+      if (empresaSolicitadaRef.current !== empresa) return; // Respuesta obsoleta: ya se cambió de empresa
       setClientesCRM(contactos as any);
   };
 
@@ -336,8 +171,10 @@ export default function GeneradorFacturas() {
 
   useEffect(() => {
     if (!empresaId) return;
+    empresaSolicitadaRef.current = empresaId;
     setIsLoadingHistorial(true);
     obtenerDatosSupabase(empresaId).then(movimientos => {
+         if (empresaSolicitadaRef.current !== empresaId) return; // Respuesta obsoleta: ya se cambió de empresa
          const anioActual = fecha.split('-')[0] || new Date().getFullYear().toString();
          
          const documentos = movimientos.filter((m: any) => m.numero_factura);
@@ -365,6 +202,7 @@ export default function GeneradorFacturas() {
 
   // 🚀 FUNCIONES SOPORTE VIP Y GESTIÓN
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
+    empresaSolicitadaRef.current = nuevaEmpresa;
     setEmpresaId(nuevaEmpresa);
     const newSettings = { ...allSettings, empresaActiva: nuevaEmpresa };
     setAllSettings(newSettings);
@@ -397,23 +235,72 @@ export default function GeneradorFacturas() {
       toast.success("Copiado", { description: "Correo copiado al portapapeles." });
   };
 
+  // 🚀 RENDIMIENTO: el logo se guarda dentro del mismo JSON de ajustes que TODAS las páginas de la
+  // app descargan en cada carga. Sin comprimirlo, una foto sin optimizar (varios MB) ralentizaría
+  // toda la aplicación, no solo esta pantalla. Lo reescalamos a un tamaño de sobra para un logo
+  // (400px) y lo recodificamos en JPEG con buena calidad antes de guardarlo.
+  const comprimirImagenLogo = (file: File, maxDim = 400, calidad = 0.85): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+            else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject(new Error('No se pudo procesar la imagen.'));
+          // Fondo blanco de base para que los PNG con transparencia no se vean negros al pasarlos a JPEG
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', calidad));
+        };
+        img.onerror = () => reject(new Error('El archivo no es una imagen válida.'));
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-          const base64Logo = event.target?.result as string;
+
+      if (!file.type.startsWith('image/')) {
+          toast.error("Formato no válido", { description: "Sube una imagen (PNG, JPG o WEBP)." });
+          e.target.value = "";
+          return;
+      }
+      if (file.size > 8 * 1024 * 1024) {
+          toast.error("Imagen demasiado grande", { description: "El máximo permitido es 8MB." });
+          e.target.value = "";
+          return;
+      }
+
+      try {
+          const base64Logo = await comprimirImagenLogo(file);
           setLogo(base64Logo);
-          
+
           const newSettings = { ...allSettings };
           if (!newSettings.datosFacturacion) newSettings.datosFacturacion = {};
           if (!newSettings.datosFacturacion[empresaId]) newSettings.datosFacturacion[empresaId] = {};
           newSettings.datosFacturacion[empresaId].logo = base64Logo;
-          
+
           setAllSettings(newSettings);
           await guardarAjustes(newSettings);
-      };
-      reader.readAsDataURL(file);
+          toast.success("Logo actualizado", { description: "Se ha optimizado automáticamente para que la app siga yendo rápida." });
+      } catch (err) {
+          toast.error("Error al procesar el logo", { description: "Prueba con otra imagen." });
+      } finally {
+          e.target.value = "";
+      }
   };
 
   const quitarLogo = async () => {
@@ -522,6 +409,15 @@ export default function GeneradorFacturas() {
                     if (res.success && res.contacto) setClientesCRM([...clientesCRM, res.contacto as any]);
                 });
             }
+        }
+
+        // 🛡️ BLINDAJE LEGAL: si el servidor detectó que ese número ya existía (dos pestañas, doble
+        // clic...) y lo corrigió automáticamente, actualizamos el estado local para que el PDF y el
+        // siguiente número propuesto reflejen el número real que se ha guardado.
+        const numeroFinal = (res as any).numero_factura_final;
+        if (numeroFinal && numeroFinal !== numDocumento) {
+            if (isPresupuesto) setNumeroPresupuesto(numeroFinal); else setNumeroFactura(numeroFinal);
+            toast.info("Numeración ajustada", { description: `Ya existía el nº ${numDocumento}, así que se ha asignado el siguiente disponible: ${numeroFinal}.` });
         }
 
         setFacturaGuardada(true);
@@ -1297,18 +1193,17 @@ export default function GeneradorFacturas() {
                     <div className="mt-8 space-y-3">
                        {/* BOTÓN DESCARGAR PDF DINÁMICO */}
                        {isMounted && (
-                           <PDFDownloadLink 
-                               document={<FacturaPDF datos={datosPDF} />} 
+                           <FacturaPDFButtonPrincipal
+                               datos={datosPDF}
                                fileName={modoActivo === 'factura' ? `${numeroFactura}_${clienteNombre || 'Cliente'}.pdf` : `${numeroPresupuesto}_${clienteNombre || 'Cliente'}.pdf`}
                            >
-                               {/* @ts-ignore */}
-                               {({ loading }) => (
+                               {(loading: boolean) => (
                                    <button disabled={loading} className={`w-full text-white font-black py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 ${modoActivo === 'presupuesto' ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'}`}>
                                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                       {loading ? "Generando PDF..." : modoActivo === 'presupuesto' ? "Descargar Presupuesto PDF" : "Descargar Factura PDF"}
                                    </button>
                                )}
-                           </PDFDownloadLink>
+                           </FacturaPDFButtonPrincipal>
                        )}
                        
                        {/* BOTÓN GUARDAR (Dinámico para Factura o Presupuesto) */}
@@ -1518,17 +1413,16 @@ export default function GeneradorFacturas() {
 
                                              {/* BOTÓN DESCARGAR PDF HISTÓRICO */}
                                              {isMounted && (
-                                                 <PDFDownloadLink
-                                                     document={<FacturaPDF datos={getDatosPdfHistorico(fac)} />}
+                                                 <FacturaPDFButtonHistorico
+                                                     datos={getDatosPdfHistorico(fac)}
                                                      fileName={`${fac.numero_factura}_${fac.cliente_nombre || 'Cliente'}.pdf`}
                                                  >
-                                                     {/* @ts-ignore */}
-                                                     {({ loading }) => (
+                                                     {(loading: boolean) => (
                                                          <button disabled={loading} className="text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-md transition border border-slate-200" title="Descargar PDF original">
                                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                                          </button>
                                                      )}
-                                                 </PDFDownloadLink>
+                                                 </FacturaPDFButtonHistorico>
                                              )}
 
                                              {/* BOTÓN CONVERTIR O DUPLICAR */}

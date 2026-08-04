@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useUser, UserButton, Show, SignInButton } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -39,6 +39,10 @@ export default function AnalisisAvanzado() {
   const [faqSearch, setFaqSearch] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
+  // 🛡️ BLINDAJE DE ESTADO: ignora respuestas tardías si el usuario cambia de empresa muy rápido
+  // (evita mezclar los datos financieros de dos empresas distintas en pantalla).
+  const empresaSolicitadaRef = useRef<string>("");
+
   useEffect(() => {
     setIsMounted(true);
     
@@ -59,6 +63,7 @@ export default function AnalisisAvanzado() {
          const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa"];
          setEmpresas(listaEmpresas);
          const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         empresaSolicitadaRef.current = activa;
          setEmpresaId(activa);
 
          if (activa && ajustesGuardados.perfiles && ajustesGuardados.perfiles[activa]) {
@@ -69,7 +74,11 @@ export default function AnalisisAvanzado() {
 
          if (activa) {
             setIsLoadingData(true);
-            obtenerDatosSupabase(activa).then(d => { setAllData(d); setIsLoadingData(false); });
+            obtenerDatosSupabase(activa).then(d => {
+              if (empresaSolicitadaRef.current !== activa) return; // Respuesta obsoleta
+              setAllData(d);
+              setIsLoadingData(false);
+            });
          } else {
             setIsLoadingData(false);
          }
@@ -80,6 +89,7 @@ export default function AnalisisAvanzado() {
     const actuales = await obtenerAjustes();
     if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
 
+    empresaSolicitadaRef.current = nuevaEmpresa;
     setEmpresaId(nuevaEmpresa);
     setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Selecciona un escenario para analizar este nuevo espacio de trabajo.");
 
@@ -92,7 +102,11 @@ export default function AnalisisAvanzado() {
     }
 
     setIsLoadingData(true);
-    obtenerDatosSupabase(nuevaEmpresa).then(d => { setAllData(d); setIsLoadingData(false); });
+    obtenerDatosSupabase(nuevaEmpresa).then(d => {
+      if (empresaSolicitadaRef.current !== nuevaEmpresa) return; // Respuesta obsoleta
+      setAllData(d);
+      setIsLoadingData(false);
+    });
   };
 
   const gestionarSuscripcion = async () => {

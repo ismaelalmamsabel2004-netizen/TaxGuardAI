@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useUser, UserButton, Show } from "@clerk/nextjs";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'sonner';
 import { obtenerDatosSupabase, actualizarEstadoPago } from '../actions';
 import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
+import { celdaCSVSegura } from '../../lib/csvExport';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function DocumentosPage() {
@@ -20,6 +21,8 @@ export default function DocumentosPage() {
   const [planActivo, setPlanActivo] = useState('loading');
   // 🚀 UX PREMIUM: evita pantallas en blanco/parpadeos mientras llegan los datos de Supabase
   const [isLoadingData, setIsLoadingData] = useState(true);
+  // 🛡️ BLINDAJE DE ESTADO: ignora respuestas tardías si el usuario cambia de empresa muy rápido
+  const empresaSolicitadaRef = useRef<string>("");
   
   // 🚀 ESTADOS DE LA PÁGINA DOCUMENTOS
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,8 +56,10 @@ export default function DocumentosPage() {
   useEffect(() => {
     if (!empresaId) return;
 
+    empresaSolicitadaRef.current = empresaId;
     setIsLoadingData(true);
     obtenerDatosSupabase(empresaId).then(d => {
+      if (empresaSolicitadaRef.current !== empresaId) return; // Respuesta obsoleta: ya se cambió de empresa
       if (d && d.length > 0) setData(d);
       else setData([]); // Si la empresa no tiene datos, vaciamos la tabla
       setIsLoadingData(false);
@@ -147,7 +152,7 @@ export default function DocumentosPage() {
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
       const archivo = item.url_archivo || "Sin adjunto";
 
-      csvContent += `${doc};${nif};${item.name};${signo}${fNum(baseNum)};${ivaPorcentaje}%;${signo}${fNum(totalConIva)};${item.estado_pago};${archivo}\n`;
+      csvContent += `${celdaCSVSegura(doc)};${celdaCSVSegura(nif)};${item.name};${signo}${fNum(baseNum)};${ivaPorcentaje}%;${signo}${fNum(totalConIva)};${item.estado_pago};${celdaCSVSegura(archivo)}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

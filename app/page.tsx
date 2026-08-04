@@ -6,7 +6,7 @@ import { useUser, UserButton, SignInButton, SignUpButton, Show } from "@clerk/ne
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
-import { Document, Page, Text, View, StyleSheet, PDFDownloadLink, Font } from '@react-pdf/renderer';
+import dynamic from 'next/dynamic';
 import { Toaster, toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -20,35 +20,16 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente } from './actions';
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente, generarRecurrentesPendientes } from './actions';
 import { transaccionSchema, mapearErroresZod, parsearImporte } from '../lib/validations';
 import { obtenerAjustes, obtenerAjustesSilencioso, guardarAjustes } from '../lib/settingsClient';
+import { celdaCSVSegura } from '../lib/csvExport';
 
-Font.register({
-  family: 'Roboto',
-  fonts: [
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf', fontWeight: 300 },
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf', fontWeight: 400 },
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf', fontWeight: 500 },
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf', fontWeight: 700 },
-  ]
-});
-
-const pdfStyles = StyleSheet.create({
-  page: { backgroundColor: '#ffffff', padding: 40, fontFamily: 'Roboto' },
-  header: { borderBottomWidth: 2, borderBottomColor: '#2563eb', paddingBottom: 15, marginBottom: 20 },
-  title: { fontSize: 22, fontWeight: 700, color: '#0f172a' },
-  subtitle: { fontSize: 10, color: '#64748b', marginTop: 5 },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#f1f5f9', paddingVertical: 8, paddingHorizontal: 5, borderBottomWidth: 1, borderBottomColor: '#cbd5e1', marginTop: 10 },
-  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingVertical: 8, paddingHorizontal: 5, alignItems: 'center' },
-  colFecha: { width: '15%', fontSize: 9, color: '#475569' },
-  colCat: { width: '30%', fontSize: 9, fontWeight: 700, color: '#334155' },
-  colProy: { width: '15%', fontSize: 9, color: '#8b5cf6', fontWeight: 700 },
-  colImporte: { width: '15%', fontSize: 9, textAlign: 'right', fontWeight: 700 },
-  colIva: { width: '10%', fontSize: 9, textAlign: 'right', color: '#64748b' },
-  colTotal: { width: '15%', fontSize: 9, textAlign: 'right', fontWeight: 700, color: '#0f172a' },
-  footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
-  footerText: { fontSize: 7, color: '#94a3b8' },
+// 🚀 RENDIMIENTO: @react-pdf/renderer se carga en su propio chunk, solo en el navegador y solo
+// cuando este botón llega a pintarse, para no lastrar el JS inicial de la Consola General.
+const LibroMayorPDFButton = dynamic(() => import('../components/pdf/LibroMayorPDFButton'), {
+  ssr: false,
+  loading: () => <button disabled className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-blue-50 text-blue-400 px-3 py-2 rounded-lg border border-blue-200 shadow-sm whitespace-nowrap opacity-50">⏳...</button>
 });
 
 // 🚀 SOLUCIÓN B2B: Extraemos las etiquetas fuera para que el PDF las vea
@@ -71,62 +52,6 @@ const parseFechaTS = (item: any) => {
   return new Date(Number(y), Number(m) - 1, Number(d)).getTime();
 };
 
-const LibroMayorPDF = ({ datos, empresaId, filtro }: any) => {
-  const nombreLimpio = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
-
-  return (
-    <Document>
-      <Page size="A4" style={pdfStyles.page}>
-        <View style={pdfStyles.header}>
-          <Text style={pdfStyles.title}>Libro Mayor - {nombreLimpio}</Text>
-          <Text style={pdfStyles.subtitle}>Extracto de operaciones. Filtro aplicado: {filtro}</Text>
-          <Text style={{ fontSize: 8, color: '#94a3b8', marginTop: 4 }}>Fecha de emisión: {new Date().toLocaleDateString('es-ES')}</Text>
-        </View>
-
-        <View style={pdfStyles.tableHeader}>
-          <Text style={pdfStyles.colFecha}>FECHA</Text>
-          <Text style={pdfStyles.colCat}>CATEGORÍA / DOC.</Text>
-          <Text style={pdfStyles.colProy}>PROYECTO</Text>
-          <Text style={pdfStyles.colImporte}>BASE IMP.</Text>
-          <Text style={pdfStyles.colIva}>IVA</Text>
-          <Text style={pdfStyles.colTotal}>TOTAL</Text>
-        </View>
-
-        {datos.map((item: any, i: number) => {
-          const isGasto = Number(item.total) < 0;
-          const baseNum = Math.abs(Number(item.total));
-          const ivaNum = Number(item.iva) || 0;
-          const totalOperacion = baseNum * (1 + ivaNum / 100);
-
-          const importeText = `${baseNum.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
-          const totalText = `${isGasto ? '-' : '+'}${totalOperacion.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`;
-          const colorImporte = isGasto ? '#e11d48' : '#10b981';
-          const matchProy = item.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
-          const proyText = matchProy ? matchProy[1] : "-";
-
-          return (
-            <View key={i} style={pdfStyles.tableRow}>
-              <Text style={pdfStyles.colFecha}>{item.name}</Text>
-              <Text style={pdfStyles.colCat}>
-                {item.categoria || 'General'} {item.numero_factura ? `(${item.numero_factura})` : ''}
-              </Text>
-              <Text style={pdfStyles.colProy}>{proyText}</Text>
-              <Text style={pdfStyles.colImporte}>{importeText}</Text>
-              <Text style={pdfStyles.colIva}>{item.iva === 0 || item.iva === "0" ? "Exento" : `${item.iva}%`}</Text>
-              <Text style={[pdfStyles.colTotal, { color: colorImporte }]}>{totalText}</Text>
-            </View>
-          );
-        })}
-
-        <View style={pdfStyles.footer}>
-          <Text style={pdfStyles.footerText}>Generado mediante TaxGuard AI</Text>
-          <Text style={pdfStyles.footerText}>SaaS Financiero B2B</Text>
-        </View>
-      </Page>
-    </Document>
-  );
-};
-
 export default function Home() {
   const router = useRouter(); 
   const { isSignedIn, isLoaded, user } = useUser();
@@ -134,6 +59,10 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [data, setData] = useState<any[]>([]);
+  // 🛡️ BLINDAJE DE ESTADO: guarda qué empresa se pidió por última vez, para poder ignorar
+  // respuestas "tardías" si el usuario cambia de espacio de trabajo varias veces muy rápido
+  // (evita mezclar datos financieros de dos empresas distintas en pantalla).
+  const empresaSolicitadaRef = useRef<string>("");
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: 'fecha' | 'categoria' | 'importe'; direction: 'asc' | 'desc' }>({ key: 'fecha', direction: 'desc' });
   const [empresas, setEmpresas] = useState<string[]>([]);
@@ -391,21 +320,40 @@ export default function Home() {
   useEffect(() => {
     if (!empresaId || planActivo === 'loading' || planActivo === 'free') return;
 
+    empresaSolicitadaRef.current = empresaId;
+
     setRolUsuario("LOADING");
     setData([]);
     setIsLoadingData(true);
 
-    verificarRolUsuario(empresaId).then(res => {
+    verificarRolUsuario(empresaId).then(async (res) => {
+        if (empresaSolicitadaRef.current !== empresaId) return; // Respuesta obsoleta: ya se cambió de empresa
         setRolUsuario(res.rol);
 
+        // 🔄 AUTOMATIZACIÓN DE RECURRENTES: antes de pintar el Libro Mayor, nos aseguramos de que
+        // los gastos/ingresos fijos que tocaba registrar desde la última visita ya estén al día.
+        if (res.rol === "PROPIETARIO") {
+            try {
+                const resultado = await generarRecurrentesPendientes(empresaId);
+                if (empresaSolicitadaRef.current === empresaId && resultado?.creadas > 0) {
+                    toast.success("Recurrentes al día", {
+                        description: `Se ${resultado.creadas === 1 ? 'ha generado' : 'han generado'} automáticamente ${resultado.creadas} movimiento${resultado.creadas === 1 ? '' : 's'} recurrente${resultado.creadas === 1 ? '' : 's'} que tocaba registrar.`
+                    });
+                }
+            } catch { /* si falla, seguimos sin bloquear la carga de datos */ }
+        }
+
+        if (empresaSolicitadaRef.current !== empresaId) return;
         obtenerDatosSupabase(empresaId).then(d => {
+          if (empresaSolicitadaRef.current !== empresaId) return; // Ignoramos datos de una empresa que ya no está seleccionada
           if (d && d.length > 0) setData(d);
           setIsLoadingData(false);
-        }).catch(() => setIsLoadingData(false));
+        }).catch(() => { if (empresaSolicitadaRef.current === empresaId) setIsLoadingData(false); });
     });
 
     obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
+         if (empresaSolicitadaRef.current !== empresaId) return; // Respuesta obsoleta: ignorada
          const idAjuste = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
 
          if (ajustesGuardados.metas && ajustesGuardados.metas[idAjuste]) {
@@ -489,9 +437,16 @@ export default function Home() {
 
   const manejarInvitarAsesor = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!asesorEmail) return;
+      const emailLimpio = asesorEmail.trim().toLowerCase();
+      if (!emailLimpio) return;
+      // 🛡️ BLINDAJE DE DATOS: sin esto, un email mal escrito se guardaba igualmente en la base de
+      // datos y el "asesor invitado" nunca podría entrar, sin que nadie se diera cuenta del error.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpio)) {
+          toast.error("Email no válido", { description: "Revisa el correo del asesor antes de invitarlo." });
+          return;
+      }
       setIsInviting(true);
-      const res = await invitarAsesor(empresaId, asesorEmail);
+      const res = await invitarAsesor(empresaId, emailLimpio);
       if (res.success) {
           toast.success("Asesor Invitado", { description: "Ahora puede visualizar tu libro mayor." });
           setAsesorEmail("");
@@ -695,6 +650,19 @@ export default function Home() {
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // 🛡️ BLINDAJE: feedback inmediato antes de subir nada (el servidor vuelve a comprobarlo por seguridad)
+    const TIPOS_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Archivo demasiado grande", { description: "El máximo permitido es 10MB. Comprime la imagen o el PDF." });
+      e.target.value = "";
+      return;
+    }
+    if (!TIPOS_PERMITIDOS.includes(file.type)) {
+      toast.error("Formato no soportado", { description: "Sube una imagen (JPG, PNG, WEBP) o un PDF." });
+      e.target.value = "";
+      return;
+    }
 
     setIsScanning(true);
     setConfianzaIA(null); 
@@ -1109,7 +1077,7 @@ export default function Home() {
       const proyectoStr = tagMatch ? tagMatch[1] : "-";
       const fNum = (num: number) => num.toFixed(2).replace('.', ',');
 
-      csvContent += `${row.name};${row.numero_factura || 'S/N'};${row.cif || 'S/N'};${proyectoStr};${row.categoria || "General"};${estadoLabel};${tipoTxt};${fNum(baseNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
+      csvContent += `${row.name};${celdaCSVSegura(row.numero_factura || 'S/N')};${celdaCSVSegura(row.cif || 'S/N')};${celdaCSVSegura(proyectoStr)};${celdaCSVSegura(row.categoria || "General")};${estadoLabel};${tipoTxt};${fNum(baseNum)};${ivaPorcentaje}%;${fNum(cuotaIva)};${fNum(totalFinal)}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1817,17 +1785,12 @@ export default function Home() {
                              ↓ CSV
                            </button>
                            {isMounted && (
-                               <PDFDownloadLink 
-                                   document={<LibroMayorPDF datos={datosTablaFiltrados} empresaId={empresaId} filtro={etiquetasFiltro[filtro] || 'Todas las Fechas'} />} 
+                               <LibroMayorPDFButton
+                                   datos={datosTablaFiltrados}
+                                   empresaId={empresaId}
+                                   filtro={etiquetasFiltro[filtro] || 'Todas las Fechas'}
                                    fileName={`LibroMayor_${nombreEmpresaVisual.replace(/\s+/g, '')}_${filtroDoc}.pdf`}
-                               >
-                                   {/* @ts-ignore */}
-                                   {({ loading }) => (
-                                       <button disabled={loading} className="flex-1 sm:flex-none flex justify-center items-center gap-2 text-xs font-bold bg-blue-50 text-blue-600 px-3 py-2 rounded-lg hover:bg-blue-100 border border-blue-200 shadow-sm transition whitespace-nowrap disabled:opacity-50">
-                                           {loading ? '⏳...' : '📄 PDF'}
-                                       </button>
-                                   )}
-                               </PDFDownloadLink>
+                               />
                            )}
                        </div>
                     </div>
