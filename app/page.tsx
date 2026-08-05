@@ -198,6 +198,42 @@ export default function Home() {
   // cada acción solo muestre "Guardado con éxito" si realmente se guardó.
   const syncSettingsToCloud = (ajustes: any) => guardarAjustes(ajustes);
 
+  // 📡 Estado de conexión real (sustituye al indicador decorativo "Servidores Cloud Conectados")
+  const [isOnline, setIsOnline] = useState(true);
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // 🎯 META MENSUAL: guarda el objetivo de beneficio del mes para esta empresa en la nube.
+  const guardarMeta = async () => {
+    const numeroLimpio = parseFloat(inputMeta.replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+    if (!Number.isFinite(numeroLimpio) || numeroLimpio <= 0) {
+      toast.error("Meta no válida", { description: "Introduce un importe numérico mayor que 0." });
+      return;
+    }
+    const actuales = await obtenerAjustes();
+    if (!actuales) return; // 🛡️ Sin conexión: no aplicamos cambios para no perder ajustes reales.
+
+    const idAjuste = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
+    const metasObj = actuales.metas || {};
+    metasObj[idAjuste] = numeroLimpio;
+
+    const guardadoOk = await syncSettingsToCloud({ ...actuales, metas: metasObj });
+    if (guardadoOk) {
+      setMetaMensual(numeroLimpio);
+      setEditandoMeta(false);
+      toast.success("Meta Actualizada", { description: `Tu objetivo de beneficio mensual ahora es de ${numeroLimpio.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €.` });
+    }
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
@@ -521,6 +557,25 @@ export default function Home() {
     }, []);
   }, [datosFinancieros, filtro]);
 
+  // 📊 Distribución de gastos por categoría (mismo periodo que el resto de KPIs de arriba).
+  // Reutiliza el import de PieChart/Pie/Cell que ya estaba en el archivo pero nunca se usaba.
+  const gastosPorCategoria = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    let totalGastos = 0;
+    datosFinancieros.forEach((item: any) => {
+      if (Number(item.total) >= 0) return;
+      const importe = Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100);
+      const cat = item.categoria || 'Otros';
+      mapa[cat] = (mapa[cat] || 0) + importe;
+      totalGastos += importe;
+    });
+    return Object.entries(mapa)
+      .map(([name, value]) => ({ name, value, porcentaje: totalGastos > 0 ? (value / totalGastos) * 100 : 0 }))
+      .sort((a, b) => b.value - a.value);
+  }, [datosFinancieros]);
+
+  const COLORES_CATEGORIA = ['#f43f5e', '#f97316', '#eab308', '#84cc16', '#06b6d4', '#6366f1', '#a855f7', '#ec4899', '#64748b'];
+
   const datosTabla = useMemo(() => [...datosVisibles].sort((a, b) => {
     const pA = a.name.split('/');
     const pB = b.name.split('/');
@@ -632,20 +687,130 @@ export default function Home() {
     };
   }, [datosFinancieros]);
 
+  // 🎯 Beneficio del MES NATURAL actual (independiente del filtro temporal de arriba),
+  // para poder comparar de forma fiable contra la Meta Mensual sin importar si el usuario
+  // está mirando "Histórico", "Trimestre" u otra ventana en el resto del dashboard.
+  const beneficioMesActual = useMemo(() => {
+    const hoy = new Date();
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+    return data.reduce((acc: number, item: any) => {
+      const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
+      if (isPresupuesto) return acc;
+      const [, m, y] = (item.name || '').split('/');
+      if (Number(m) !== mesActual || Number(y) !== anioActual) return acc;
+      const importeConIva = Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100);
+      return acc + (Number(item.total) >= 0 ? importeConIva : -importeConIva);
+    }, 0);
+  }, [data]);
+
+  const porcentajeMeta = metaMensual > 0 ? (beneficioMesActual / metaMensual) * 100 : 0;
+
+  // 🧠 CENTRO DE RIESGOS: motor de alertas proactivas. Además de los 2 avisos reactivos
+  // originales (pendientes de cobro/pago y flujo de caja negativo del periodo visible), añade
+  // 3 reglas que vigilan el histórico COMPLETO en segundo plano y avisan de cosas que el
+  // usuario normalmente solo descubriría tarde: un cierre de trimestre fiscal encima, un gasto
+  // que se ha disparado respecto a su media, o un cliente habitual que ha dejado de facturar.
   const alertasDinamicas = useMemo(() => {
     const alertas: { tipo: string, titulo: string, texto: string }[] = [];
-    if (datosFinancieros.length === 0) return alertas;
 
     if (facturasPendientes.length > 0) {
       alertas.push({ tipo: 'critico', titulo: '💸 Alerta de Tesorería', texto: `Tienes ${facturasPendientes.length} facturas pendientes de cobro o pago. Revisa el módulo superior.` });
     }
 
-    if (beneficioNeto < 0) {
+    if (datosFinancieros.length > 0 && beneficioNeto < 0) {
       alertas.push({ tipo: 'critico', titulo: '🚨 Flujo de Caja Negativo', texto: `Las salidas superan a las entradas en ${Math.abs(beneficioNeto).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €. Riesgo de liquidez.` });
-    } 
+    }
+
+    if (data.length === 0) return alertas;
+
+    // 🗓️ Recordatorio proactivo de cierre de trimestre fiscal (últimos 10 días de marzo/junio/septiembre/diciembre)
+    const hoy = new Date();
+    const mesActual = hoy.getMonth() + 1;
+    const diaActual = hoy.getDate();
+    if ([3, 6, 9, 12].includes(mesActual) && diaActual >= 20) {
+      const trimestreCerrando = mesActual / 3;
+      alertas.push({
+        tipo: 'advertencia',
+        titulo: '🗓️ Cierre de Trimestre Fiscal',
+        texto: `El ${trimestreCerrando}T está a punto de cerrar. Revisa tus Modelos 303 y 130 en "Modelos Tributarios" antes del plazo de presentación.`
+      });
+    }
+
+    // 📈 Picos de gasto por categoría: mes actual vs. media de los 3 meses anteriores
+    const gastosPorMes: Record<string, Record<string, number>> = {};
+    data.forEach((item: any) => {
+      if (Number(item.total) >= 0) return;
+      if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
+      const [, m, y] = (item.name || '').split('/');
+      if (!m || !y) return;
+      const clave = `${y}-${m}`;
+      const importe = Math.abs(Number(item.total)) * (1 + (Number(item.iva) || 0) / 100);
+      const cat = item.categoria || 'Otros';
+      gastosPorMes[clave] = gastosPorMes[clave] || {};
+      gastosPorMes[clave][cat] = (gastosPorMes[clave][cat] || 0) + importe;
+    });
+
+    const claveMesActual = `${hoy.getFullYear()}-${String(mesActual).padStart(2, '0')}`;
+    const clavesMesesAnteriores: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const ref = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+      clavesMesesAnteriores.push(`${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    const picosGasto: { titulo: string, texto: string, subida: number }[] = [];
+    if (gastosPorMes[claveMesActual]) {
+      Object.entries(gastosPorMes[claveMesActual]).forEach(([cat, totalActual]) => {
+        const historicos = clavesMesesAnteriores.map(k => gastosPorMes[k]?.[cat] || 0);
+        const mesesConDato = historicos.filter(v => v > 0).length;
+        if (mesesConDato < 2) return; // sin histórico suficiente para comparar con fiabilidad
+        const media = historicos.reduce((a, b) => a + b, 0) / mesesConDato;
+        if (media >= 50 && totalActual > media * 1.5) {
+          picosGasto.push({
+            titulo: `📈 Gasto inusual en "${cat}"`,
+            texto: `Este mes llevas ${totalActual.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} € en "${cat}", un ${(((totalActual / media) - 1) * 100).toFixed(0)}% más que tu media reciente (${media.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €).`,
+            subida: totalActual / media
+          });
+        }
+      });
+    }
+    picosGasto.sort((a, b) => b.subida - a.subida).slice(0, 2).forEach(p => {
+      alertas.push({ tipo: 'advertencia', titulo: p.titulo, texto: p.texto });
+    });
+
+    // 👤 Clientes habituales que han dejado de facturar (más de 60 días en silencio)
+    const clientesMap: Record<string, { ultimaFechaMs: number, meses: Set<string> }> = {};
+    data.forEach((item: any) => {
+      if (Number(item.total) <= 0 || !item.cliente_nombre || item.numero_factura?.startsWith('P-')) return;
+      const [d, m, y] = (item.name || '').split('/');
+      if (!d || !m || !y) return;
+      const fechaMs = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+      const nombre = item.cliente_nombre.trim();
+      if (!nombre) return;
+      if (!clientesMap[nombre]) clientesMap[nombre] = { ultimaFechaMs: 0, meses: new Set() };
+      clientesMap[nombre].ultimaFechaMs = Math.max(clientesMap[nombre].ultimaFechaMs, fechaMs);
+      clientesMap[nombre].meses.add(`${y}-${m}`);
+    });
+
+    const ahoraMs = Date.now();
+    const MS_60_DIAS = 60 * 24 * 60 * 60 * 1000;
+    const clientesEnSilencio: { nombre: string, dias: number }[] = [];
+    Object.entries(clientesMap).forEach(([nombre, info]) => {
+      if (info.meses.size < 2) return; // solo avisamos de clientes recurrentes conocidos
+      if (ahoraMs - info.ultimaFechaMs > MS_60_DIAS) {
+        clientesEnSilencio.push({ nombre, dias: Math.floor((ahoraMs - info.ultimaFechaMs) / (24 * 60 * 60 * 1000)) });
+      }
+    });
+    clientesEnSilencio.sort((a, b) => b.dias - a.dias).slice(0, 2).forEach(c => {
+      alertas.push({
+        tipo: 'advertencia',
+        titulo: `👤 Cliente en silencio: ${c.nombre}`,
+        texto: `Llevas ${c.dias} días sin facturar a "${c.nombre}", un cliente habitual. Puede que sea buen momento para retomar el contacto.`
+      });
+    });
 
     return alertas;
-  }, [datosFinancieros, facturasPendientes, beneficioNeto]);
+  }, [datosFinancieros, facturasPendientes, beneficioNeto, data]);
 
   const escanearFactura = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1325,9 +1490,9 @@ export default function Home() {
                       )}
                     </div>
 
-                    <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                      <span className="hidden sm:inline">Servidores Cloud Conectados</span>
+                    <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2" title={isOnline ? "Conectado a internet" : "Sin conexión a internet"}>
+                      <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span>
+                      <span className="hidden sm:inline">{isOnline ? 'Servidores Cloud Conectados' : 'Sin Conexión'}</span>
                     </div>
                   </div>
                 </header>
@@ -1453,7 +1618,7 @@ export default function Home() {
                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total (Ingresos)</span>
                     {isLoadingData ? <Skeleton className="h-8 w-32 mt-3" /> : (
@@ -1466,11 +1631,38 @@ export default function Home() {
                       <span className="text-2xl md:text-3xl font-black text-rose-500 tracking-tight mt-3">- {gastosTotales.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
                     )}
                   </div>
-                  <div className="col-span-1 sm:col-span-2 lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
                     <div className={`absolute top-0 left-0 w-1 h-full ${beneficioNeto >= 0 ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-2">Flujo de Caja Libre</span>
                     {isLoadingData ? <Skeleton className="h-9 w-40 mt-3 ml-2" /> : (
                       <span className={`text-3xl font-black tracking-tight mt-3 ml-2 ${beneficioNeto >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{beneficioNeto.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2})} €</span>
+                    )}
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">🎯 Meta del Mes</span>
+                      {rolUsuario !== 'LECTURA' && (
+                        <button onClick={() => setEditandoMeta(!editandoMeta)} title="Editar meta mensual" className="text-slate-300 hover:text-blue-600 transition p-1 -m-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        </button>
+                      )}
+                    </div>
+                    {isLoadingData ? <Skeleton className="h-8 w-32 mt-3" /> : editandoMeta ? (
+                      <div className="flex items-center gap-2 mt-2">
+                        <input type="text" inputMode="decimal" value={inputMeta} onChange={(e) => setInputMeta(e.target.value)} placeholder="Ej: 5000" autoFocus className="w-full p-2 bg-white border border-slate-300 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        <button onClick={guardarMeta} className="bg-blue-600 text-white text-[10px] font-bold px-3 py-2 rounded-lg hover:bg-blue-700 transition whitespace-nowrap">OK</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-baseline gap-1.5 mt-2">
+                          <span className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">{beneficioMesActual.toLocaleString('es-ES', {maximumFractionDigits: 0})} €</span>
+                          <span className="text-[11px] font-bold text-slate-400">/ {metaMensual.toLocaleString('es-ES', {maximumFractionDigits: 0})} €</span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2.5">
+                          <div className={`h-full rounded-full transition-all ${porcentajeMeta >= 100 ? 'bg-emerald-500' : porcentajeMeta >= 50 ? 'bg-blue-500' : porcentajeMeta >= 0 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${Math.max(0, Math.min(porcentajeMeta, 100))}%` }}></div>
+                        </div>
+                        <p className="text-[10px] font-bold text-slate-400 mt-1.5">{porcentajeMeta.toFixed(0)}% del objetivo de beneficio este mes</p>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1605,6 +1797,26 @@ export default function Home() {
                                             </label>
                                         </div>
                                     )}
+
+                                    <div className="flex flex-col gap-2 pt-2 border-t border-slate-200">
+                                        <div className="flex items-center gap-2">
+                                            <input type="checkbox" id="recurrente" checked={isRecurrent} onChange={(e) => setIsRecurrent(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-blue-300 focus:ring-blue-500" />
+                                            <label htmlFor="recurrente" className="text-xs font-bold text-blue-800 cursor-pointer select-none">
+                                                🔄 Movimiento Recurrente
+                                            </label>
+                                        </div>
+                                        {isRecurrent && (
+                                            <>
+                                                <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="w-full p-2 bg-white border border-blue-200 text-slate-900 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                                    <option value="Semanal">Cada semana</option>
+                                                    <option value="Mensual">Cada mes</option>
+                                                    <option value="Trimestral">Cada trimestre</option>
+                                                    <option value="Anual">Cada año</option>
+                                                </select>
+                                                <p className="text-[10px] text-blue-600 font-medium leading-relaxed">TaxGuard AI registrará automáticamente este movimiento cada vez que toque, sin que tengas que volver a introducirlo a mano.</p>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
 
                               </>
@@ -1765,6 +1977,55 @@ export default function Home() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-[300px]">
+                    <h3 className="text-md font-bold text-slate-900 mb-1">Distribución de Gastos</h3>
+                    <p className="text-[11px] text-slate-400 font-medium mb-4">Por categoría, en el periodo seleccionado.</p>
+                    <div className="flex-1 min-h-[200px]">
+                      {isLoadingData ? (
+                        <div className="h-full flex items-center justify-center"><Skeleton className="w-36 h-36 rounded-full" /></div>
+                      ) : isMounted && gastosPorCategoria.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={gastosPorCategoria} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={78} paddingAngle={2} isAnimationActive={false}>
+                              {gastosPorCategoria.map((_entry, index) => (
+                                <Cell key={`cat-cell-${index}`} fill={COLORES_CATEGORIA[index % COLORES_CATEGORIA.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              formatter={(value: any) => [`${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`, undefined]}
+                              contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-slate-400 text-xs font-bold">Sin gastos en este periodo</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 className="text-md font-bold text-slate-900 mb-1">Ranking de Categorías</h3>
+                    <p className="text-[11px] text-slate-400 font-medium mb-4">Dónde se va tu dinero, de mayor a menor gasto.</p>
+                    {gastosPorCategoria.length > 0 ? (
+                      <div className="space-y-3.5 flex-1 overflow-y-auto max-h-[220px] pr-1">
+                        {gastosPorCategoria.map((cat, idx) => (
+                          <div key={cat.name} className="flex items-center gap-3">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORES_CATEGORIA[idx % COLORES_CATEGORIA.length] }}></span>
+                            <span className="text-xs font-bold text-slate-700 flex-1 truncate">{cat.name}</span>
+                            <div className="w-24 sm:w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${cat.porcentaje}%`, backgroundColor: COLORES_CATEGORIA[idx % COLORES_CATEGORIA.length] }}></div>
+                            </div>
+                            <span className="text-xs font-black text-slate-900 w-20 text-right">{cat.value.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center text-slate-400 text-xs font-bold">Sin gastos en este periodo</div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between mb-8">
                   <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center bg-white z-10 gap-4">
                     <div className="flex items-center gap-3">
@@ -1802,6 +2063,7 @@ export default function Home() {
                          <button onClick={() => {setFiltroDoc('ingresos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'ingresos' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>Ingresos Reales</button>
                          <button onClick={() => {setFiltroDoc('gastos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'gastos' ? 'bg-rose-500 text-white border-rose-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Gastos / Compras</button>
                          <button onClick={() => {setFiltroDoc('pendientes'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'pendientes' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>⏳ Pendientes</button>
+                         <button onClick={() => {setFiltroDoc('abonos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'abonos' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'}`}>↩️ Abonos</button>
                          
                          <button onClick={() => {setFiltroDoc('proyectos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'proyectos' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600'}`}>🎯 Modo Proyectos</button>
                          <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Presupuestos</button>
