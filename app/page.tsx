@@ -25,6 +25,7 @@ import { transaccionSchema, mapearErroresZod, parsearImporte } from '../lib/vali
 import { obtenerAjustes, obtenerAjustesSilencioso, guardarAjustes } from '../lib/settingsClient';
 import { celdaCSVSegura } from '../lib/csvExport';
 import { esEspacioCliente, guardarEspacioSesion, limpiarEspacioSesion, resolverEspacioInicial, nombreEspacioVisible } from '../lib/workspaceSession';
+import SoporteVIPModal, { SoporteVIPNavButton } from '../components/SoporteVIP';
 
 // 🚀 RENDIMIENTO: @react-pdf/renderer se carga en su propio chunk, solo en el navegador y solo
 // cuando este botón llega a pintarse, para no lastrar el JS inicial de la Consola General.
@@ -132,6 +133,7 @@ export default function Home() {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
   
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   const [sectorInput, setSectorInput] = useState("");
@@ -1462,6 +1464,8 @@ export default function Home() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
                   Gestor Documental
                 </Link>
+
+                <SoporteVIPNavButton onClick={() => { setShowSupportModal(true); setIsSidebarOpen(false); }} />
               </nav>
             </div>
             
@@ -2467,6 +2471,13 @@ export default function Home() {
                 </div>
             </div>
         )}
+
+        <SoporteVIPModal
+          open={showSupportModal}
+          onClose={() => setShowSupportModal(false)}
+          empresaId={nombreEmpresaVisual}
+          modulo="consola"
+        />
 
         {/* 🚀 MODAL CONFIGURACIÓN AMPLIADO B2B */}
         {showConfig && (

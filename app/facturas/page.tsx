@@ -29,6 +29,7 @@ import { contactoCrmSchema, mapearErroresZod, nifCifOpcional } from '../../lib/v
 import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
 import EspacioTrabajoSelect from '../../components/EspacioTrabajoSelect';
 import BannerModoAsesor from '../../components/BannerModoAsesor';
+import SoporteVIPModal, { SoporteVIPNavButton } from '../../components/SoporteVIP';
 import {
   esEspacioCliente,
   guardarEspacioSesion,
@@ -132,8 +133,6 @@ export default function GeneradorFacturas() {
 
   // 🚀 ESTADOS PARA EL MODAL DE SOPORTE VIP
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [faqSearch, setFaqSearch] = useState("");
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   // 🛡️ BLINDAJE DE ESTADO: ignora respuestas tardías si el usuario cambia de empresa muy rápido
   const empresaSolicitadaRef = useRef<string>("");
@@ -301,18 +300,6 @@ export default function GeneradorFacturas() {
     } catch (error) {
       toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
-  };
-
-  const abrirGmailWeb = (tipo: string) => {
-      const email = "soporte.taxguard@gmail.com";
-      const subject = tipo === "ayuda" ? `Asistencia Técnica TaxGuard AI - ${empresaId}` : `Sugerencia de Mejora - TaxGuard AI - ${empresaId}`;
-      const body = `Hola equipo de TaxGuard AI,%0A%0AEscribe aquí tu ${tipo === 'ayuda' ? 'consulta o problema' : 'idea para mejorar la plataforma'}:%0A%0A`;
-      window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${subject}&body=${body}`, '_blank');
-  };
-
-  const copiarCorreoSoporte = () => {
-      navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      toast.success("Copiado", { description: "Correo copiado al portapapeles." });
   };
 
   // 🚀 RENDIMIENTO: el logo se guarda dentro del mismo JSON de ajustes que TODAS las páginas de la
@@ -961,14 +948,6 @@ export default function GeneradorFacturas() {
     return { facturasPendientesArr: pendientesArr, totalPendienteMonto: pendienteMonto, totalVencidoMonto: vencidoMonto };
   }, [historialFacturas]);
 
-  const faqs = [
-      { q: "📝 ¿Cómo creo y envío una factura oficial a mi cliente?", a: "Rellena tus datos fiscales (pulsa 'Guardar como predeterminado' para no tener que repetirlos). Pon los datos del cliente, el concepto y el precio. Dale a 'Registrar en Libro Mayor' y luego descarga el PDF oficial para enviarlo." },
-      { q: "💰 ¿Cómo marco una factura como cobrada?", a: "En el historial, pulsa 'Cobrar'. El estado se guarda en el mismo campo que usa la Consola y Documentos (ya no depende de una etiqueta en el concepto). Puedes revertirlo con 'Pendiente'." },
-      { q: "🪄 ¿Qué diferencia hay entre Presupuesto y Factura?", a: "Un Presupuesto es una propuesta. No suman en tus ingresos y son 'invisibles' para los impuestos. Cuando tu cliente lo acepte, busca el presupuesto en el historial y pulsa el botón '🪄 Convertir'." },
-      { q: "❌ Me he equivocado en una factura ya emitida. ¿La borro?", a: "¡Cuidado! La ley prohíbe borrar o saltarse la numeración de facturas ya emitidas. En el Historial, busca la factura con el error y pulsa 'Rectificar'. Se creará un Abono en negativo para anularla legalmente." }
-  ];
-  const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
-
   if (!isMounted) return null;
 
   if (planActivo === 'loading' && isSignedIn) {
@@ -1123,11 +1102,7 @@ export default function GeneradorFacturas() {
                   Gestor Documental
                 </Link>
 
-                <div className="pt-4 mt-4 border-t border-slate-800">
-                    <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
-                      <span className="text-lg group-hover:scale-110 transition-transform">🎧</span> Soporte VIP
-                    </button>
-                </div>
+                <SoporteVIPNavButton onClick={() => { setShowSupportModal(true); setIsSidebarOpen(false); }} />
               </nav>
             </div>
             
@@ -2020,6 +1995,12 @@ export default function GeneradorFacturas() {
           </div>
         )}
 
+        <SoporteVIPModal
+          open={showSupportModal}
+          onClose={() => setShowSupportModal(false)}
+          empresaId={nombreEspacioVisible(empresaId)}
+          modulo="facturas"
+        />
       </Show>
 
       {/* RUTA DE ESCAPE PARA LOS NO REGISTRADOS */}
