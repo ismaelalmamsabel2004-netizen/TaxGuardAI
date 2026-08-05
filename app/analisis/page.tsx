@@ -135,12 +135,41 @@ export default function AnalisisAvanzado() {
   // 🚀 RENDIMIENTO: se calculaba con un useEffect + 5 useState (doble render en cada
   // cambio de datos/filtro: uno con los valores viejos y otro con los nuevos tras el
   // setState). Con useMemo el valor correcto está disponible desde el primer render.
-  const { chartDataEvolucion, chartDataGastos, chartDataProyectos, kpis, trends } = useMemo(() => {
+  const {
+    chartDataEvolucion,
+    chartDataGastos,
+    chartDataProyectos,
+    kpis,
+    trends,
+    alertasRiesgo,
+    topClientes,
+    proyeccionCashflow,
+    simulacionPrecios,
+    etiquetaFiltro,
+  } = useMemo(() => {
     const kpisVacios = { ingresos: 0, gastos: 0, beneficio: 0, margen: 0, beneficioLiquido: 0, provisionImpuestos: 0, runwayMeses: 0 };
     const trendsVacios = { ingresos: 0, gastos: 0, beneficio: 0 };
+    const vaciosExtra = {
+      alertasRiesgo: [] as { tipo: 'critico' | 'advertencia' | 'info'; titulo: string; texto: string }[],
+      topClientes: [] as { nombre: string; importe: number; pct: number }[],
+      proyeccionCashflow: [] as { name: string; Ingresos: number; Gastos: number; Saldo: number; meses: number }[],
+      simulacionPrecios: {
+        ingresosActuales: 0, beneficioActual: 0, margenActual: 0,
+        ingresosSimulados: 0, beneficioSimulado: 0, margenSimulado: 0,
+        deltaBeneficio: 0, hipotesis: 'Precio +10% y volumen −5%',
+      },
+      etiquetaFiltro: '12 meses',
+    };
 
     if (!allData || allData.length === 0) {
-       return { chartDataEvolucion: [] as any[], chartDataGastos: [] as any[], chartDataProyectos: [] as any[], kpis: kpisVacios, trends: trendsVacios };
+       return {
+         chartDataEvolucion: [] as any[],
+         chartDataGastos: [] as any[],
+         chartDataProyectos: [] as any[],
+         kpis: kpisVacios,
+         trends: trendsVacios,
+         ...vaciosExtra,
+       };
     }
 
     const ahora = new Date().getTime();
@@ -249,6 +278,197 @@ export default function AnalisisAvanzado() {
 
     const calcTrend = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : ((curr - prev) / prev) * 100;
 
+    // ——— Centro de Riesgos ———
+    const pendientes = allData.filter(d => {
+      if (d.categoria === 'Presupuestos' || d.numero_factura?.startsWith('P-')) return false;
+      return d.estado_pago === 'PENDIENTE';
+    });
+    const cobrosPendientes = pendientes.filter(d => Number(d.total) > 0);
+    const pagosPendientes = pendientes.filter(d => Number(d.total) < 0);
+    const importeCobrosPend = cobrosPendientes.reduce((acc, d) => {
+      const base = Math.abs(Number(d.total));
+      const iva = Number(d.iva) || 0;
+      return acc + base * (1 + iva / 100);
+    }, 0);
+    const importePagosPend = pagosPendientes.reduce((acc, d) => {
+      const base = Math.abs(Number(d.total));
+      const iva = Number(d.iva) || 0;
+      return acc + base * (1 + iva / 100);
+    }, 0);
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const vencidas = pendientes.filter(d => {
+      if (!d.raw_fecha_vencimiento && !d.fecha_vencimiento) return false;
+      const fv = d.raw_fecha_vencimiento
+        ? new Date(d.raw_fecha_vencimiento)
+        : (() => {
+            const parts = String(d.fecha_vencimiento).split('/');
+            if (parts.length !== 3) return null;
+            return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+          })();
+      if (!fv || Number.isNaN(fv.getTime())) return false;
+      return fv < hoy;
+    });
+
+    // Pico de gasto: categoría del periodo vs media mensual histórica de esa categoría
+    const gastosPorCatMes: Record<string, Record<string, number>> = {};
+    allData.forEach(item => {
+      if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
+      if (!(Number(item.total) < 0)) return;
+      if (!item.name?.includes('/')) return;
+      const [, m, y] = item.name.split('/');
+      const cat = item.categoria || 'General';
+      const key = `${y}-${Number(m)}`;
+      const base = Math.abs(Number(item.total));
+      const iva = Number(item.iva) || 0;
+      const total = base * (1 + iva / 100);
+      if (!gastosPorCatMes[cat]) gastosPorCatMes[cat] = {};
+      gastosPorCatMes[cat][key] = (gastosPorCatMes[cat][key] || 0) + total;
+    });
+    const picosGasto: { categoria: string; actual: number; media: number; ratio: number }[] = [];
+    const mesActualKey = `${hoy.getFullYear()}-${hoy.getMonth() + 1}`;
+    Object.keys(gastosPorCatMes).forEach(cat => {
+      const meses = Object.keys(gastosPorCatMes[cat]);
+      if (meses.length < 2) return;
+      const actual = gastosPorCatMes[cat][mesActualKey] || 0;
+      if (actual <= 0) return;
+      const historicos = meses.filter(k => k !== mesActualKey).map(k => gastosPorCatMes[cat][k]);
+      const media = historicos.reduce((a, b) => a + b, 0) / Math.max(1, historicos.length);
+      if (media > 50 && actual > media * 1.5) {
+        picosGasto.push({ categoria: cat, actual, media, ratio: actual / media });
+      }
+    });
+    picosGasto.sort((a, b) => b.ratio - a.ratio);
+
+    const alertasRiesgo: { tipo: 'critico' | 'advertencia' | 'info'; titulo: string; texto: string }[] = [];
+    if (importeCobrosPend > 0) {
+      alertasRiesgo.push({
+        tipo: 'critico',
+        titulo: 'Cobros pendientes',
+        texto: `${cobrosPendientes.length} factura(s) por cobrar · ${importeCobrosPend.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`,
+      });
+    }
+    if (importePagosPend > 0) {
+      alertasRiesgo.push({
+        tipo: 'advertencia',
+        titulo: 'Pagos pendientes',
+        texto: `${pagosPendientes.length} factura(s) por pagar · ${importePagosPend.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`,
+      });
+    }
+    if (vencidas.length > 0) {
+      alertasRiesgo.push({
+        tipo: 'critico',
+        titulo: 'Facturas vencidas',
+        texto: `${vencidas.length} documento(s) han superado la fecha de vencimiento.`,
+      });
+    }
+    if (globalRunway > 0 && globalRunway < 3) {
+      alertasRiesgo.push({
+        tipo: 'critico',
+        titulo: 'Runway crítico',
+        texto: `Solo ${globalRunway.toFixed(1)} meses de supervivencia con ingresos a cero.`,
+      });
+    }
+    if (margen < 5 && totalIngresos > 0) {
+      alertasRiesgo.push({
+        tipo: 'advertencia',
+        titulo: 'Margen bajo',
+        texto: `El margen operativo del periodo es del ${margen.toFixed(1)}% (umbral de alerta: 5%).`,
+      });
+    }
+    if (picosGasto[0]) {
+      const p = picosGasto[0];
+      alertasRiesgo.push({
+        tipo: 'advertencia',
+        titulo: `Pico en ${p.categoria}`,
+        texto: `Este mes lleva ${(p.ratio).toFixed(1)}× la media histórica (${p.actual.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €).`,
+      });
+    }
+
+    // ——— Concentración clientes (ingresos del periodo) ———
+    const clientesMap: Record<string, number> = {};
+    allData.forEach(item => {
+      if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
+      if (!(Number(item.total) > 0)) return;
+      if (!item.name?.includes('/')) return;
+      const [d, m, y] = item.name.split('/');
+      const fechaItem = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+      const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
+      if (diffDias > diasFiltro) return;
+      const nombre = (item.cliente_nombre || 'Sin cliente').trim() || 'Sin cliente';
+      const base = Math.abs(Number(item.total));
+      const iva = Number(item.iva) || 0;
+      clientesMap[nombre] = (clientesMap[nombre] || 0) + base * (1 + iva / 100);
+    });
+    const topClientes = Object.keys(clientesMap)
+      .map(nombre => ({ nombre, importe: clientesMap[nombre], pct: totalIngresos > 0 ? (clientesMap[nombre] / totalIngresos) * 100 : 0 }))
+      .sort((a, b) => b.importe - a.importe)
+      .slice(0, 5);
+
+    // ——— Proyección tesorería 30/90 (determinista) ———
+    const ingresoMedioMensual = globalIngresos / Math.max(1, globalMesesActivos.size);
+    const gastoMedioMensual = globalGastoMedioMensual;
+
+    // Recurrentes mensuales estimados
+    let recurrentesIngresoMes = 0;
+    let recurrentesGastoMes = 0;
+    allData.forEach(item => {
+      if (!item.isRecurrent) return;
+      if (item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-')) return;
+      const base = Math.abs(Number(item.total));
+      const iva = Number(item.iva) || 0;
+      const total = base * (1 + iva / 100);
+      const freq = (item.frecuencia || 'mensual').toLowerCase();
+      const factor = freq.includes('anual') ? 1 / 12 : freq.includes('trimes') ? 1 / 3 : freq.includes('seman') ? 4.3 : 1;
+      if (Number(item.total) > 0) recurrentesIngresoMes += total * factor;
+      else recurrentesGastoMes += total * factor;
+    });
+
+    // Evitar doble conteo: si hay recurrentes etiquetados, úsalos; si no, media histórica
+    const proyIngresoMes = recurrentesIngresoMes > 0
+      ? recurrentesIngresoMes + Math.max(0, ingresoMedioMensual - recurrentesIngresoMes) * 0.5
+      : ingresoMedioMensual;
+    const proyGastoMes = recurrentesGastoMes > 0
+      ? recurrentesGastoMes + Math.max(0, gastoMedioMensual - recurrentesGastoMes) * 0.5
+      : gastoMedioMensual;
+
+    const cajaInicial = globalCajaLibre;
+    const proyeccionCashflow = [1, 2, 3].map(mes => {
+      const ingresos = proyIngresoMes * mes;
+      const gastos = proyGastoMes * mes;
+      const saldo = cajaInicial + ingresos - gastos;
+      return {
+        name: mes === 1 ? '30 días' : mes === 2 ? '60 días' : '90 días',
+        Ingresos: Number(ingresos.toFixed(2)),
+        Gastos: Number(gastos.toFixed(2)),
+        Saldo: Number(saldo.toFixed(2)),
+        meses: mes,
+      };
+    });
+
+    // ——— Simulación precios +10% / −5% volumen ———
+    const ingresosSim = totalIngresos * 1.10 * 0.95;
+    const gastosSim = totalGastos; // costes fijos del periodo se mantienen
+    const beneficioSim = ingresosSim - gastosSim;
+    const margenSim = ingresosSim > 0 ? (beneficioSim / ingresosSim) * 100 : 0;
+    const simulacionPrecios = {
+      ingresosActuales: Number(totalIngresos.toFixed(2)),
+      beneficioActual: Number(beneficio.toFixed(2)),
+      margenActual: Number(margen.toFixed(2)),
+      ingresosSimulados: Number(ingresosSim.toFixed(2)),
+      beneficioSimulado: Number(beneficioSim.toFixed(2)),
+      margenSimulado: Number(margenSim.toFixed(2)),
+      deltaBeneficio: Number((beneficioSim - beneficio).toFixed(2)),
+      hipotesis: 'Precio +10% y volumen −5%',
+    };
+
+    const etiquetaFiltro =
+      filtroTiempo === 'week' ? '7 días' :
+      filtroTiempo === 'month' ? '30 días' :
+      filtroTiempo === 'quarter' ? '3 meses' :
+      filtroTiempo === 'year' ? '12 meses' : 'Histórico completo';
+
     return {
       chartDataEvolucion: evolutionArray,
       chartDataGastos: gastosArray,
@@ -262,6 +482,11 @@ export default function AnalisisAvanzado() {
           gastos: calcTrend(totalGastos, prevGastos), 
           beneficio: calcTrend(beneficio, prevBeneficio) 
       },
+      alertasRiesgo,
+      topClientes,
+      proyeccionCashflow,
+      simulacionPrecios,
+      etiquetaFiltro,
     };
   }, [allData, filtroTiempo]);
 
@@ -273,27 +498,92 @@ export default function AnalisisAvanzado() {
     }
 
     setIsAnalyzing(true);
-    setAiAnalysis(`⏳ **Conectando con el CFO Virtual...**\n\nEjecutando escenario: **${tipoSimulacion}**.\n\nAnalizando flujos de caja y aplicando modelos predictivos. Esto puede tardar unos segundos...`);
+    setAiAnalysis(`⏳ **Conectando con el CFO Virtual...**\n\nEjecutando escenario: **${tipoSimulacion}**.\n\nAnalizando flujos de caja y aplicando modelos predictivos. Esto puede tardar hasta un minuto...`);
+
+    const ahora = Date.now();
+    const diasFiltro = filtroTiempo === 'week' ? 7 : filtroTiempo === 'month' ? 30 : filtroTiempo === 'quarter' ? 90 : filtroTiempo === 'year' ? 365 : Infinity;
 
     const datosLimpios = allData
-      .filter(d => d.categoria !== 'Presupuestos' && !d.numero_factura?.startsWith('P-'))
-      .map(d => ({
-        fecha: d.name, categoria: d.categoria || 'General', importe: d.total, tipo: d.isRecurrent ? `Recurrente` : 'Puntual'
-      }));
+      .filter(d => {
+        if (d.categoria === 'Presupuestos' || d.numero_factura?.startsWith('P-')) return false;
+        if (!d.name?.includes('/')) return false;
+        const [dd, mm, yy] = d.name.split('/');
+        const fechaItem = new Date(Number(yy), Number(mm) - 1, Number(dd)).getTime();
+        const diffDias = (ahora - fechaItem) / (1000 * 60 * 60 * 24);
+        return diffDias <= diasFiltro;
+      })
+      .map(d => {
+        const base = Number(d.total);
+        const ivaPct = Number(d.iva) || 0;
+        const totalConIva = Math.abs(base) * (1 + ivaPct / 100) * (base >= 0 ? 1 : -1);
+        const matchProy = d.concepto_detalle?.match(/\[PROYECTO:\s*(.*?)\]/);
+        return {
+          fecha: d.name,
+          categoria: d.categoria || 'General',
+          baseImponible: Number(base.toFixed(2)),
+          ivaPct,
+          totalConIva: Number(totalConIva.toFixed(2)),
+          tipo: Number(base) >= 0 ? 'ingreso' : 'gasto',
+          recurrente: !!d.isRecurrent,
+          frecuencia: d.frecuencia || null,
+          cliente: d.cliente_nombre || null,
+          concepto: d.concepto_detalle || null,
+          factura: d.numero_factura || null,
+          estado: d.estado_pago || null,
+          proyecto: matchProy?.[1] || null,
+        };
+      })
+      .sort((a, b) => {
+        const pa = a.fecha.split('/');
+        const pb = b.fecha.split('/');
+        const ta = new Date(Number(pa[2]), Number(pa[1]) - 1, Number(pa[0])).getTime();
+        const tb = new Date(Number(pb[2]), Number(pb[1]) - 1, Number(pb[0])).getTime();
+        return tb - ta;
+      });
+
+    if (datosLimpios.length === 0) {
+      setIsAnalyzing(false);
+      setAiAnalysis("⚠️ **Sin datos en el periodo.**\n\nAmplía el filtro temporal o registra movimientos en este intervalo para auditar.");
+      return;
+    }
 
     let promptEspecial = "";
-    if (tipoSimulacion === "Fugas") promptEspecial = "Haz un análisis agresivo buscando gastos innecesarios, fugas de capital y da 3 consejos para recortar costes estructurales.";
-    else if (tipoSimulacion === "Precios") promptEspecial = "Simula qué pasaría con el margen de beneficio si subimos los precios de los ingresos un 10%, asumiendo que perdemos un 5% de volumen de clientes.";
-    else if (tipoSimulacion === "Proyeccion") promptEspecial = "En base al histórico de ingresos y gastos recurrentes, haz una proyección de tesorería (runway) para los próximos 30 y 90 días.";
-    else promptEspecial = "Haz una auditoría financiera general, destacando los puntos fuertes, las debilidades y el estado del margen operativo.";
+    if (tipoSimulacion === "Fugas") promptEspecial = "Haz un análisis agresivo buscando gastos innecesarios, fugas de capital y da 3 consejos para recortar costes estructurales (excepto Software/Suscripciones/TaxGuard).";
+    else if (tipoSimulacion === "Precios") promptEspecial = "Comenta la simulación de precios +10% con pérdida de volumen −5% usando los números precalculados.";
+    else if (tipoSimulacion === "Proyeccion") promptEspecial = "Explica la proyección de tesorería a 30/60/90 días usando los números precalculados y da acciones de caja.";
+    else promptEspecial = "Haz una auditoría financiera general, destacando fortalezas, riesgos y estado del margen operativo.";
 
     const contextoEmpresarial = `Sector: ${perfilEmpresa.sector || 'General'}. Objetivo: ${perfilEmpresa.objetivo || 'Estabilidad'}. INSTRUCCIÓN IA: ${promptEspecial}`;
+
+    const resumenEjecutivo = {
+      periodo: etiquetaFiltro,
+      ingresos: Number(kpis.ingresos.toFixed(2)),
+      gastos: Number(kpis.gastos.toFixed(2)),
+      beneficio: Number(kpis.beneficio.toFixed(2)),
+      margenPct: Number(kpis.margen.toFixed(2)),
+      beneficioLiquido: Number(kpis.beneficioLiquido.toFixed(2)),
+      provisionImpuestos: Number(kpis.provisionImpuestos.toFixed(2)),
+      runwayMeses: Number(kpis.runwayMeses.toFixed(2)),
+      topCategoriasGasto: chartDataGastos.slice(0, 5).map(g => ({ categoria: g.name, importe: Number(g.value.toFixed(2)) })),
+      topClientes: topClientes.map(c => ({ cliente: c.nombre, importe: Number(c.importe.toFixed(2)), pctIngresos: Number(c.pct.toFixed(1)) })),
+      alertas: alertasRiesgo.map(a => a.titulo),
+      movimientosEnPeriodo: datosLimpios.length,
+    };
 
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ data: datosLimpios, empresaId, contextoSector: contextoEmpresarial }), 
+        body: JSON.stringify({
+          data: datosLimpios,
+          empresaId,
+          contextoSector: contextoEmpresarial,
+          escenario: tipoSimulacion,
+          resumenEjecutivo,
+          proyeccion: tipoSimulacion === 'Proyeccion' || tipoSimulacion === 'General' ? proyeccionCashflow : undefined,
+          simulacionPrecios: tipoSimulacion === 'Precios' || tipoSimulacion === 'General' ? simulacionPrecios : undefined,
+          filtroPeriodo: etiquetaFiltro,
+        }), 
       });
       
       const textDecoded = await res.text();
@@ -303,10 +593,10 @@ export default function AnalisisAvanzado() {
          if (res.ok && json.analysis) {
             setAiAnalysis(json.analysis);
          } else {
-            setAiAnalysis(`❌ **Error devuelto por la IA:**\n\n${json.error || "Fallo desconocido."}`);
+            setAiAnalysis(`❌ **Error:**\n\n${json.error || json.analysis || "Fallo desconocido."}`);
          }
       } catch(parseError) {
-         setAiAnalysis(`❌ **Error de Vercel (Timeout):**\n\nEl servidor ha tardado más de 10 segundos. \n\nRespuesta técnica:\n\`\`\`\n${textDecoded.substring(0, 150)}...\n\`\`\``);
+         setAiAnalysis(`❌ **Timeout o respuesta no válida:**\n\nEl servidor ha tardado demasiado o ha devuelto un formato inesperado (límite ~60s).\n\nDetalle:\n\`\`\`\n${textDecoded.substring(0, 200)}...\n\`\`\``);
       }
       
     } catch (error: any) {
@@ -329,9 +619,10 @@ export default function AnalisisAvanzado() {
   };
   
   const faqs = [
-    { q: "🧠 ¿Para qué sirve el Centro de Inteligencia?", a: "Es tu Director Financiero Privado. Analiza tus datos y te ayuda a detectar fugas de capital o simular escenarios de precios." },
+    { q: "🧠 ¿Para qué sirve el Centro de Inteligencia?", a: "Es tu Director Financiero Privado. Analiza tus datos del periodo seleccionado, detecta riesgos de caja y simula escenarios de precios o proyección." },
     { q: "📈 ¿Cómo se calcula el Runway (Supervivencia)?", a: "Calcula cuántos meses podría sobrevivir tu empresa si hoy mismo dejaras de ingresar dinero, basándose en tus gastos medios y el dinero libre de impuestos." },
-    { q: "💰 ¿La Hucha de Hacienda es exacta?", a: "Es una provisión muy precisa basada en tus ingresos y gastos registrados. Reserva siempre ese dinero, no es tuyo." }
+    { q: "🔮 ¿La proyección a 30/90 días es exacta?", a: "Es una proyección determinista a partir de tu histórico y gastos/ingresos recurrentes etiquetados. Sirve para anticipar tensión de caja; no sustituye un presupuesto formal." },
+    { q: "💰 ¿La Hucha de Hacienda es exacta?", a: "Es una provisión orientativa basada en tus ingresos y gastos registrados (IVA + IRPF estimado). Reserva siempre ese dinero: no es tuyo." }
   ];
   const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
 
@@ -596,6 +887,132 @@ export default function AnalisisAvanzado() {
                        <span className="text-[9px] font-medium text-slate-500 mt-1">Vida del negocio con ingresos a cero</span>
                     </div>
                 </div>
+
+                {/* Centro de Riesgos + Simulación + Proyección */}
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-8">
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 bg-rose-500 rounded-full"></span>
+                        <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Centro de Riesgos</h3>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">{alertasRiesgo.length} alerta{alertasRiesgo.length === 1 ? '' : 's'}</span>
+                    </div>
+                    {isLoadingData ? (
+                      <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
+                    ) : alertasRiesgo.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-xs font-medium text-emerald-700">
+                        Sin alertas críticas en este momento. Liquidez y márgenes bajo control.
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                        {alertasRiesgo.map((a, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-xl border ${
+                              a.tipo === 'critico'
+                                ? 'bg-rose-50/70 border-rose-200'
+                                : a.tipo === 'advertencia'
+                                  ? 'bg-amber-50/70 border-amber-200'
+                                  : 'bg-blue-50/70 border-blue-200'
+                            }`}
+                          >
+                            <p className={`text-[11px] font-black uppercase tracking-wide mb-0.5 ${
+                              a.tipo === 'critico' ? 'text-rose-700' : a.tipo === 'advertencia' ? 'text-amber-700' : 'text-blue-700'
+                            }`}>{a.titulo}</p>
+                            <p className={`text-[11px] font-medium leading-relaxed ${
+                              a.tipo === 'critico' ? 'text-rose-600' : a.tipo === 'advertencia' ? 'text-amber-700' : 'text-blue-600'
+                            }`}>{a.texto}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span>
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Simulación +10% precio</h3>
+                    </div>
+                    {isLoadingData ? (
+                      <Skeleton className="h-32 w-full rounded-xl" />
+                    ) : (
+                      <>
+                        <p className="text-[10px] text-slate-500 font-medium mb-3">Hipótesis: precio +10% y volumen −5% en el periodo ({etiquetaFiltro}).</p>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                            <p className="text-[9px] font-black text-slate-400 uppercase">Beneficio actual</p>
+                            <p className={`text-sm font-black ${simulacionPrecios.beneficioActual >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                              {simulacionPrecios.beneficioActual.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">{simulacionPrecios.margenActual.toFixed(1)}% margen</p>
+                          </div>
+                          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+                            <p className="text-[9px] font-black text-emerald-600 uppercase">Tras simulación</p>
+                            <p className={`text-sm font-black ${simulacionPrecios.beneficioSimulado >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                              {simulacionPrecios.beneficioSimulado.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                            </p>
+                            <p className="text-[10px] font-bold text-emerald-600/80 mt-0.5">{simulacionPrecios.margenSimulado.toFixed(1)}% margen</p>
+                          </div>
+                        </div>
+                        <p className={`text-xs font-bold ${simulacionPrecios.deltaBeneficio >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {simulacionPrecios.deltaBeneficio >= 0 ? '▲' : '▼'}{' '}
+                          {Math.abs(simulacionPrecios.deltaBeneficio).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € vs actual
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-2.5 h-2.5 bg-blue-500 rounded-full"></span>
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Proyección de caja</h3>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium mb-3">Saldo estimado a 30 / 60 / 90 días (recurrentes + media histórica).</p>
+                    <div className="flex-1 min-h-[140px]">
+                      {isLoadingData ? (
+                        <Skeleton className="h-full w-full rounded-xl" />
+                      ) : proyeccionCashflow.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={proyeccionCashflow} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight={600} tickLine={false} />
+                            <YAxis stroke="#94a3b8" fontSize={10} fontWeight={600} tickLine={false} axisLine={false} width={50} />
+                            <RechartsTooltip
+                              formatter={(value: any) => [`${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`, undefined]}
+                              contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: 11 }}
+                            />
+                            <Bar dataKey="Saldo" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs font-bold text-slate-400">Sin base para proyectar</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top clientes del periodo */}
+                {!isLoadingData && topClientes.length > 0 && (
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mb-8">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="w-2.5 h-2.5 bg-indigo-500 rounded-full"></span>
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Concentración de ingresos · {etiquetaFiltro}</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                      {topClientes.map((c, idx) => (
+                        <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                          <p className="text-[10px] font-black text-slate-400 uppercase mb-1">#{idx + 1}</p>
+                          <p className="text-xs font-bold text-slate-800 truncate" title={c.nombre}>{c.nombre}</p>
+                          <p className="text-sm font-black text-indigo-600 mt-1">
+                            {c.importe.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €
+                          </p>
+                          <p className="text-[10px] font-semibold text-slate-400">{c.pct.toFixed(1)}% del periodo</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
                    <div className="xl:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[400px] xl:h-auto min-h-[450px]">

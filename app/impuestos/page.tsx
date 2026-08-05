@@ -11,6 +11,15 @@ import { obtenerDatosSupabase } from '../actions';
 import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
 import { Skeleton } from '@/components/ui/skeleton';
 
+function contarPerceptores(lista: { cliente_nombre?: string; concepto_detalle?: string }[]) {
+  const nombres = new Set(
+    lista
+      .map((d) => (d.cliente_nombre || d.concepto_detalle || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  return nombres.size || lista.length;
+}
+
 // 🚀 RENDIMIENTO: @react-pdf/renderer se carga en su propio chunk, solo en el navegador y solo
 // cuando el botón de descarga llega a pintarse, para no lastrar el JS inicial de esta página.
 const ModelosTributariosPDFButton = dynamic(() => import('../../components/pdf/ModelosTributariosPDFButton'), {
@@ -38,7 +47,7 @@ export default function ModelosTributarios() {
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
   const [aniosDisponibles, setAniosDisponibles] = useState<string[]>([new Date().getFullYear().toString()]);
   
-  const [modeloActivo, setModeloActivo] = useState<"303" | "130" | "390" | "115" | "347" | "349">("303");
+  const [modeloActivo, setModeloActivo] = useState<"303" | "130" | "390" | "115" | "111" | "347" | "349">("303");
 
   // 🚀 ESTADOS PARA EL MODAL DE SOPORTE
   const [showSupportModal, setShowSupportModal] = useState(false);
@@ -48,8 +57,24 @@ export default function ModelosTributarios() {
   useEffect(() => {
     setIsMounted(true);
     
-    const mesActual = new Date().getMonth() + 1;
-    if (mesActual <= 3) setTrimestre("1T");
+    // 🗓️ CALENDARIO AEAT: durante la ventana de presentación (días 1–20 de ene/abr/jul/oct)
+    // abrimos el trimestre que toca presentar, no el trimestre civil en curso. Así, en abril
+    // el usuario ve el 1T (el que vence el día 20) en vez del 2T vacío.
+    const ahora = new Date();
+    const mesActual = ahora.getMonth() + 1;
+    const diaActual = ahora.getDate();
+    const anioActual = ahora.getFullYear();
+
+    if (mesActual === 1 && diaActual <= 20) {
+      setTrimestre("4T");
+      setAnio((anioActual - 1).toString());
+    } else if (mesActual === 4 && diaActual <= 20) {
+      setTrimestre("1T");
+    } else if (mesActual === 7 && diaActual <= 20) {
+      setTrimestre("2T");
+    } else if (mesActual === 10 && diaActual <= 20) {
+      setTrimestre("3T");
+    } else if (mesActual <= 3) setTrimestre("1T");
     else if (mesActual <= 6) setTrimestre("2T");
     else if (mesActual <= 9) setTrimestre("3T");
     else setTrimestre("4T");
@@ -139,9 +164,9 @@ export default function ModelosTributarios() {
       toast.success("Copiado", { description: "Correo de soporte copiado al portapapeles." });
   };
 
-  // 🚀 RENDIMIENTO: los 6 modelos fiscales (303, 130, 390, 115, 347, 349) se recalculaban
-  // TODOS en cada render aunque el usuario solo viera uno (`modeloActivo`). Se memoizan
-  // para que solo se vuelvan a calcular cuando cambian los datos, el año o el trimestre.
+  // 🚀 RENDIMIENTO: los modelos fiscales se recalculaban TODOS en cada render aunque el usuario
+  // solo viera uno (`modeloActivo`). Se memoizan para que solo se vuelvan a calcular cuando
+  // cambian los datos, el año o el trimestre.
   const datosValidos = useMemo(() => data.filter(d => d.categoria !== "Presupuestos"), [data]);
 
   const mod303 = useMemo(() => {
@@ -238,11 +263,13 @@ export default function ModelosTributarios() {
     };
   }, [datosValidos, anio]);
 
-  const mod115 = useMemo(() => {
-    const datosTrimestre = datosValidos.filter(d => {
+  // Filtra gastos del trimestre activo (reutilizado por 115 y 111)
+  const gastosTrimestre = useMemo(() => {
+    return datosValidos.filter(d => {
       if (!d.name || !d.name.includes('/')) return false;
       const [, mesStr, anioStr] = d.name.split('/');
       if (anioStr !== anio) return false;
+      if (!(Number(d.total) < 0)) return false;
       const m = Number(mesStr);
       if (trimestre === '1T') return m >= 1 && m <= 3;
       if (trimestre === '2T') return m >= 4 && m <= 6;
@@ -250,16 +277,70 @@ export default function ModelosTributarios() {
       if (trimestre === '4T') return m >= 10 && m <= 12;
       return false;
     });
-
-    const gastosRetencion = datosTrimestre.filter(d => 
-       Number(d.total) < 0 && 
-       (d.categoria?.toLowerCase().includes('alquiler') || d.categoria?.toLowerCase().includes('profesional') || d.categoria?.toLowerCase().includes('asesor'))
-    );
-    const baseRetencion = gastosRetencion.reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
-    const totalRetencion = baseRetencion * 0.19; 
-    
-    return { baseRetencion, totalRetencion };
   }, [datosValidos, anio, trimestre]);
+
+  // Modelo 115: SOLO retenciones de alquiler / arrendamiento (19%)
+  const mod115 = useMemo(() => {
+    const gastosAlquiler = gastosTrimestre.filter((d) => {
+      const cat = (d.categoria || "").toLowerCase();
+      return cat.includes("alquiler") || cat.includes("arrendamiento");
+    });
+    const baseRetencion = gastosAlquiler.reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
+    const totalRetencion = baseRetencion * 0.19;
+    return {
+      baseRetencion,
+      totalRetencion,
+      numPerceptores: contarPerceptores(gastosAlquiler),
+    };
+  }, [gastosTrimestre]);
+
+  // Modelo 111: retenciones de profesionales / asesores (15%)
+  const mod111 = useMemo(() => {
+    const gastosProf = gastosTrimestre.filter((d) => {
+      const cat = (d.categoria || "").toLowerCase();
+      return (
+        cat.includes("profesional") ||
+        cat.includes("asesor") ||
+        cat.includes("abogad") ||
+        cat.includes("consultor") ||
+        cat.includes("autonomo") ||
+        cat.includes("autónomo")
+      );
+    });
+    const baseRetencion = gastosProf.reduce((acc, curr) => acc + Math.abs(Number(curr.total)), 0);
+    const totalRetencion = baseRetencion * 0.15;
+    return {
+      baseRetencion,
+      totalRetencion,
+      numPerceptores: contarPerceptores(gastosProf),
+    };
+  }, [gastosTrimestre]);
+
+  // Calendario fiscal: próximos vencimientos AEAT
+  const proximosVencimientos = useMemo(() => {
+    const hoy = new Date();
+    const base = [
+      { modelo: "303 / 130 / 111 / 115", etiqueta: "1T", mes: 4, dia: 20 },
+      { modelo: "303 / 130 / 111 / 115", etiqueta: "2T", mes: 7, dia: 20 },
+      { modelo: "303 / 130 / 111 / 115", etiqueta: "3T", mes: 10, dia: 20 },
+      { modelo: "303 / 130 / 111 / 115", etiqueta: "4T", mes: 1, dia: 20 },
+      { modelo: "390 / 190 / 180", etiqueta: "Resúmenes anuales", mes: 1, dia: 30 },
+      { modelo: "100", etiqueta: "Renta anual", mes: 6, dia: 30 },
+    ];
+    return base
+      .map((v) => {
+        let yearV = hoy.getFullYear();
+        let fecha = new Date(yearV, v.mes - 1, v.dia, 23, 59, 59);
+        if (fecha < hoy) {
+          yearV += 1;
+          fecha = new Date(yearV, v.mes - 1, v.dia, 23, 59, 59);
+        }
+        const diasRestantes = Math.ceil((fecha.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+        return { ...v, fecha, yearV, diasRestantes };
+      })
+      .sort((a, b) => a.fecha.getTime() - b.fecha.getTime())
+      .slice(0, 3);
+  }, []);
 
   const mod347 = useMemo(() => {
     const datosAnio = datosValidos.filter(d => {
@@ -303,8 +384,9 @@ export default function ModelosTributarios() {
   }, [datosValidos, anio, trimestre]);
 
   const faqs = [
-    { q: "🏛️ ¿Me sirven estos borradores para presentarlos en la AEAT?", a: "Sí. Las casillas que te mostramos [01], [03], etc. coinciden exactamente con el formulario web de la Agencia Tributaria. Solo tienes que copiarlos." },
+    { q: "🏛️ ¿Me sirven estos borradores para presentarlos en la AEAT?", a: "Son borradores orientativos con casillas alineadas al formulario de la AEAT ([01], [03], etc.). Revísalos con tu asesor antes de presentarlos: TaxGuard no sustituye la declaración oficial ni la firma electrónica." },
     { q: "🧾 ¿Qué gastos coge el modelo 130?", a: "El modelo 130 acumula TODOS tus gastos e ingresos (sin IVA) desde Enero hasta el trimestre seleccionado, para calcular tu rendimiento neto real." },
+    { q: "🏢 ¿Cuál es la diferencia entre el 115 y el 111?", a: "El Modelo 115 es solo para retenciones de alquileres (19%). El Modelo 111 es para retenciones a profesionales y asesores (15%). TaxGuard los separa según la categoría del gasto." },
     { q: "🚨 ¿Para qué sirve el modelo 347?", a: "Hacienda obliga a declarar qué clientes o proveedores te han facturado (o tú a ellos) más de 3.005,06€ en total durante todo el año. TaxGuard suma todas las facturas y te los agrupa automáticamente." }
   ];
   const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
@@ -472,6 +554,7 @@ export default function ModelosTributarios() {
                           modeloActivo === '130' ? mod130 :
                           modeloActivo === '390' ? mod390 :
                           modeloActivo === '115' ? mod115 :
+                          modeloActivo === '111' ? mod111 :
                           modeloActivo === '347' ? mod347 : mod349
                        }
                        empresaId={empresaId}
@@ -482,6 +565,7 @@ export default function ModelosTributarios() {
                           modeloActivo === '130' ? `Modelo130_Borrador_${empresaId.replace(/\s+/g, '')}_${trimestre}_${anio}.pdf` :
                           modeloActivo === '390' ? `Modelo390_Anual_${empresaId.replace(/\s+/g, '')}_${anio}.pdf` :
                           modeloActivo === '115' ? `Modelo115_Borrador_${empresaId.replace(/\s+/g, '')}_${trimestre}_${anio}.pdf` :
+                          modeloActivo === '111' ? `Modelo111_Borrador_${empresaId.replace(/\s+/g, '')}_${trimestre}_${anio}.pdf` :
                           modeloActivo === '347' ? `Modelo347_Anual_${empresaId.replace(/\s+/g, '')}_${anio}.pdf` :
                           `Modelo349_Borrador_${empresaId.replace(/\s+/g, '')}_${trimestre}_${anio}.pdf`
                        }
@@ -494,6 +578,43 @@ export default function ModelosTributarios() {
                  )}
               </div>
             </header>
+
+            {/* 🗓️ CALENDARIO FISCAL */}
+            {planActivo === 'pro' && (
+              <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {proximosVencimientos.map((v, i) => (
+                  <div
+                    key={`${v.modelo}-${v.etiqueta}-${v.yearV}`}
+                    className={`rounded-2xl border p-4 flex items-start gap-3 ${
+                      v.diasRestantes <= 14
+                        ? 'bg-amber-50 border-amber-200'
+                        : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${
+                      v.diasRestantes <= 14 ? 'bg-amber-100' : 'bg-slate-100'
+                    }`}>
+                      {i === 0 ? '⏰' : '📅'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        {v.etiqueta} · {v.fecha.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                      <p className="text-sm font-bold text-slate-900 truncate">{v.modelo}</p>
+                      <p className={`text-xs font-semibold mt-0.5 ${
+                        v.diasRestantes <= 14 ? 'text-amber-700' : 'text-slate-500'
+                      }`}>
+                        {v.diasRestantes === 0
+                          ? 'Vence hoy'
+                          : v.diasRestantes === 1
+                            ? 'Vence mañana'
+                            : `${v.diasRestantes} días restantes`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* 🚀 PESTAÑAS TRIBUTARIAS AMPLIADAS */}
             {planActivo === 'pro' && (
@@ -520,7 +641,13 @@ export default function ModelosTributarios() {
                      onClick={() => setModeloActivo("115")} 
                      className={`pb-3 text-sm font-black transition border-b-2 ${modeloActivo === '115' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                   >
-                     🏢 Mod. 115 (Retenciones)
+                     🏠 Mod. 115 (Alquiler)
+                  </button>
+                  <button 
+                     onClick={() => setModeloActivo("111")} 
+                     className={`pb-3 text-sm font-black transition border-b-2 ${modeloActivo === '111' ? 'border-rose-500 text-rose-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                  >
+                     💼 Mod. 111 (Profesionales)
                   </button>
                   <button 
                      onClick={() => setModeloActivo("347")} 
@@ -550,7 +677,7 @@ export default function ModelosTributarios() {
                       </div>
                       <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-4 tracking-tight">Cálculo Oficial Automático</h2>
                       <p className="text-base text-slate-500 max-w-lg mx-auto mb-10 leading-relaxed font-medium">
-                         La generación automática de todos los Modelos Tributarios (303, 130, 390, 115, 347, 349) está reservada para el Plan Empresa Pro. Olvídate de la calculadora y evita sanciones.
+                         La generación automática de todos los Modelos Tributarios (303, 130, 390, 115, 111, 347, 349) está reservada para el Plan Empresa Pro. Olvídate de la calculadora y evita sanciones.
                       </p>
                       <Link href="/precios" className="bg-orange-500 text-white font-black px-8 py-4 rounded-2xl shadow-lg shadow-orange-500/30 hover:bg-orange-600 transition hover:-translate-y-1 flex items-center gap-2">
                          ⭐ Mejorar a Plan Empresa Pro
@@ -823,19 +950,29 @@ export default function ModelosTributarios() {
                     </div>
                  )}
 
-                 {/* 🚀 NUEVA VISTA MODELO 115 */}
+                 {/* Modelo 115 — solo alquileres (19%) */}
                  {modeloActivo === '115' && (
                     <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-300">
                        <div className="bg-pink-500 p-6 md:p-8 text-white">
-                          <h2 className="text-2xl font-black tracking-tight">Modelo 115 (Retenciones)</h2>
-                          <p className="font-medium text-pink-100 mt-1">Borrador trimestral de alquileres y profesionales para <strong>{empresaId}</strong></p>
+                          <h2 className="text-2xl font-black tracking-tight">Modelo 115 (Alquileres)</h2>
+                          <p className="font-medium text-pink-100 mt-1">Retenciones e ingresos a cuenta por arrendamientos · <strong>{empresaId}</strong></p>
                        </div>
                        <div className="p-6 md:p-10 space-y-10">
+                          <div className="p-4 bg-pink-50 rounded-2xl border border-pink-100 text-xs text-pink-800 font-medium">
+                             Solo incluye gastos categorizados como alquiler o arrendamiento. Las retenciones a profesionales van al Modelo 111.
+                          </div>
                           <section>
                              <h3 className="text-sm font-black text-pink-600 uppercase tracking-widest mb-4">I. Retenciones e Ingresos a Cuenta</h3>
                              <div className="space-y-4">
                                 <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
-                                   <span className="text-sm font-bold text-slate-700 sm:w-1/2">Base Retenciones (Alquileres/Servicios)</span>
+                                   <span className="text-sm font-bold text-slate-700 sm:w-1/2">Nº de perceptores</span>
+                                   <div className="flex flex-col items-end">
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase">Casilla [01]</span>
+                                      <span className="text-lg font-black text-slate-900">{mod115.numPerceptores}</span>
+                                   </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                                   <span className="text-sm font-bold text-slate-700 sm:w-1/2">Base Retenciones (Alquileres)</span>
                                    <div className="flex flex-col items-end">
                                       <span className="text-[10px] font-bold text-slate-400 uppercase">Casilla [02]</span>
                                       <span className="text-lg font-black text-slate-900">{mod115.baseRetencion.toFixed(2)} €</span>
@@ -854,11 +991,65 @@ export default function ModelosTributarios() {
                              <div className="p-6 md:p-8 bg-pink-50 border border-pink-200 rounded-3xl flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                                 <div>
                                    <span className="text-sm font-black text-pink-900 uppercase tracking-widest block">Total a Ingresar [05]</span>
-                                   <span className="text-xs text-pink-700 font-medium mt-1 block">Importe retenido a terceros a ingresar en AEAT.</span>
+                                   <span className="text-xs text-pink-700 font-medium mt-1 block">Importe retenido por alquileres a ingresar en AEAT.</span>
                                 </div>
                                 <div className="text-left sm:text-right">
                                    <span className="text-4xl md:text-5xl font-black tracking-tight text-pink-600">
                                       A Pagar: {mod115.totalRetencion.toFixed(2)} €
+                                   </span>
+                                </div>
+                             </div>
+                          </section>
+                       </div>
+                    </div>
+                 )}
+
+                 {/* Modelo 111 — profesionales (15%) */}
+                 {modeloActivo === '111' && (
+                    <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-300">
+                       <div className="bg-rose-500 p-6 md:p-8 text-white">
+                          <h2 className="text-2xl font-black tracking-tight">Modelo 111 (Profesionales)</h2>
+                          <p className="font-medium text-rose-100 mt-1">Retenciones e ingresos a cuenta por rendimientos del trabajo y actividades profesionales · <strong>{empresaId}</strong></p>
+                       </div>
+                       <div className="p-6 md:p-10 space-y-10">
+                          <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 text-xs text-rose-800 font-medium">
+                             Incluye gastos categorizados como profesional, asesor, abogado, consultor o autónomo. Tipo orientativo del 15%.
+                          </div>
+                          <section>
+                             <h3 className="text-sm font-black text-rose-600 uppercase tracking-widest mb-4">I. Retenciones e Ingresos a Cuenta</h3>
+                             <div className="space-y-4">
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                                   <span className="text-sm font-bold text-slate-700 sm:w-1/2">Nº de perceptores</span>
+                                   <div className="flex flex-col items-end">
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase">Casilla [01]</span>
+                                      <span className="text-lg font-black text-slate-900">{mod111.numPerceptores}</span>
+                                   </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                                   <span className="text-sm font-bold text-slate-700 sm:w-1/2">Base Retenciones (Profesionales)</span>
+                                   <div className="flex flex-col items-end">
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase">Casilla [02]</span>
+                                      <span className="text-lg font-black text-slate-900">{mod111.baseRetencion.toFixed(2)} €</span>
+                                   </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
+                                   <span className="text-sm font-bold text-slate-700 sm:w-1/2">Retenciones (15%)</span>
+                                   <div className="flex flex-col items-end">
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase">Casilla [03]</span>
+                                      <span className="text-lg font-black text-rose-600">{mod111.totalRetencion.toFixed(2)} €</span>
+                                   </div>
+                                </div>
+                             </div>
+                          </section>
+                          <section className="pt-6 border-t border-slate-200">
+                             <div className="p-6 md:p-8 bg-rose-50 border border-rose-200 rounded-3xl flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                <div>
+                                   <span className="text-sm font-black text-rose-900 uppercase tracking-widest block">Total a Ingresar</span>
+                                   <span className="text-xs text-rose-700 font-medium mt-1 block">Importe retenido a profesionales a ingresar en AEAT.</span>
+                                </div>
+                                <div className="text-left sm:text-right">
+                                   <span className="text-4xl md:text-5xl font-black tracking-tight text-rose-600">
+                                      A Pagar: {mod111.totalRetencion.toFixed(2)} €
                                    </span>
                                 </div>
                              </div>

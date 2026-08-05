@@ -152,8 +152,15 @@ export const fechaOperativaSchema = z
 // 📇 CONTACTO / CLIENTE (CRM)
 // ============================================================
 
+/** Comprobación básica de formato IBAN (longitud y patrón por país; no calcula el dígito de control MOD-97). */
+export function ibanTieneFormatoValido(valorRaw: string): boolean {
+  const valor = valorRaw.trim().toUpperCase().replace(/\s/g, '');
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(valor);
+}
+
 export const contactoCrmSchema = z.object({
   nombre: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres.').max(150),
+  tipo: z.enum(['CLIENTE', 'PROVEEDOR']).optional().default('CLIENTE'),
   nif: nifCifOpcional,
   direccion: z.string().trim().max(250).optional().or(z.literal('')),
   email: z
@@ -166,6 +173,13 @@ export const contactoCrmSchema = z.object({
     .string()
     .trim()
     .refine((v) => v === '' || /^[+\d][\d\s-]{6,15}$/.test(v), 'El teléfono no es válido.')
+    .optional()
+    .or(z.literal('')),
+  iban_bancario: z
+    .string()
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => v === '' || ibanTieneFormatoValido(v), 'El IBAN no tiene un formato válido (ej: ES91 2100 0418 4502 0005 1332).')
     .optional()
     .or(z.literal('')),
 });

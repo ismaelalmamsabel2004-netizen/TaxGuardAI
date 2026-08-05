@@ -270,14 +270,14 @@ const Borrador390PDF = ({ mod390, empresaId, anio }: any) => (
   </Document>
 );
 
-// 🚀 PDF DEL MODELO 115 (RETENCIONES ALQUILERES/PROFESIONALES)
+// 🚀 PDF DEL MODELO 115 (RETENCIONES ALQUILERES — 19%)
 const Borrador115PDF = ({ mod115, empresaId, trimestre, anio }: any) => (
   <Document>
     <Page size="A4" style={styles.page}>
       <View style={{ ...styles.headerBox, borderBottomColor: '#ec4899' }}>
         <View style={styles.titleBox}>
           <Text style={styles.title}>Modelo 115</Text>
-          <Text style={{ ...styles.subtitle, color: '#ec4899' }}>Retenciones e Ingresos a Cuenta</Text>
+          <Text style={{ ...styles.subtitle, color: '#ec4899' }}>Retenciones por Arrendamientos</Text>
         </View>
         <View style={styles.aeatBox}><Text style={styles.aeatText}>Agencia Tributaria - Borrador</Text></View>
       </View>
@@ -289,9 +289,13 @@ const Borrador115PDF = ({ mod115, empresaId, trimestre, anio }: any) => (
         <View style={styles.infoCol}><Text style={styles.infoLabel}>Fecha</Text><Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text></View>
       </View>
 
-      <Text style={{ ...styles.sectionTitle, backgroundColor: '#831843' }}>LIQUIDACIÓN - RENTAS DINERARIAS</Text>
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#831843' }}>LIQUIDACIÓN - RENTAS DINERARIAS (ALQUILERES)</Text>
       <View style={styles.rowItem}>
-        <Text style={styles.rowLabel}>Base de las retenciones (Alquileres / Profesionales)</Text>
+        <Text style={styles.rowLabel}>Número de perceptores</Text>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[01]</Text><Text style={styles.casillaValue}>{String(mod115.numPerceptores ?? 0)}</Text></View></View>
+      </View>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Base de las retenciones (Alquileres)</Text>
         <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[02]</Text><Text style={styles.casillaValue}>{mod115.baseRetencion.toFixed(2)}</Text></View></View>
       </View>
       <View style={styles.rowItem}>
@@ -302,14 +306,62 @@ const Borrador115PDF = ({ mod115, empresaId, trimestre, anio }: any) => (
       <View style={{ ...styles.resultBox, backgroundColor: '#fdf2f8', borderLeftColor: '#ec4899' }}>
         <View>
           <Text style={{ ...styles.resultLabel, color: '#831843' }}>Total a Ingresar</Text>
-          <Text style={{fontSize: 8, color: '#64748b', marginTop: 4}}>Importe total retenido a terceros a ingresar en la AEAT.</Text>
+          <Text style={{fontSize: 8, color: '#64748b', marginTop: 4}}>Importe retenido por alquileres a ingresar en la AEAT.</Text>
         </View>
         <View style={{flexDirection: 'row', alignItems: 'center'}}>
           <Text style={styles.casillaNum}>[05]</Text>
           <Text style={{ ...styles.resultValue, color: '#be185d' }}>{mod115.totalRetencion.toFixed(2)} €</Text>
         </View>
       </View>
-      <View style={styles.footer}><Text style={styles.footerText}>Borrador generado por TaxGuard AI.</Text><Text style={styles.footerText}>Página 1 de 1</Text></View>
+      <View style={styles.footer}><Text style={styles.footerText}>Borrador generado por TaxGuard AI. Orientativo — revisar antes de presentar.</Text><Text style={styles.footerText}>Página 1 de 1</Text></View>
+    </Page>
+  </Document>
+);
+
+// 🚀 PDF DEL MODELO 111 (RETENCIONES PROFESIONALES — 15%)
+const Borrador111PDF = ({ mod111, empresaId, trimestre, anio }: any) => (
+  <Document>
+    <Page size="A4" style={styles.page}>
+      <View style={{ ...styles.headerBox, borderBottomColor: '#f43f5e' }}>
+        <View style={styles.titleBox}>
+          <Text style={styles.title}>Modelo 111</Text>
+          <Text style={{ ...styles.subtitle, color: '#f43f5e' }}>Retenciones Profesionales</Text>
+        </View>
+        <View style={styles.aeatBox}><Text style={styles.aeatText}>Agencia Tributaria - Borrador</Text></View>
+      </View>
+
+      <View style={styles.infoGrid}>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Retenedor</Text><Text style={styles.infoValue}>{empresaId}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Ejercicio</Text><Text style={styles.infoValue}>{anio}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Periodo</Text><Text style={styles.infoValue}>{trimestre}</Text></View>
+        <View style={styles.infoCol}><Text style={styles.infoLabel}>Fecha</Text><Text style={styles.infoValue}>{new Date().toLocaleDateString('es-ES')}</Text></View>
+      </View>
+
+      <Text style={{ ...styles.sectionTitle, backgroundColor: '#9f1239' }}>LIQUIDACIÓN - RENDIMIENTOS PROFESIONALES</Text>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Número de perceptores</Text>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[01]</Text><Text style={styles.casillaValue}>{String(mod111.numPerceptores ?? 0)}</Text></View></View>
+      </View>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Base de las retenciones (Profesionales)</Text>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[02]</Text><Text style={styles.casillaValue}>{mod111.baseRetencion.toFixed(2)}</Text></View></View>
+      </View>
+      <View style={styles.rowItem}>
+        <Text style={styles.rowLabel}>Retenciones e ingresos a cuenta (15%)</Text>
+        <View style={styles.boxGroup}><View style={styles.casillaBox}><Text style={styles.casillaNum}>[03]</Text><Text style={styles.casillaValue}>{mod111.totalRetencion.toFixed(2)}</Text></View></View>
+      </View>
+
+      <View style={{ ...styles.resultBox, backgroundColor: '#fff1f2', borderLeftColor: '#f43f5e' }}>
+        <View>
+          <Text style={{ ...styles.resultLabel, color: '#9f1239' }}>Total a Ingresar</Text>
+          <Text style={{fontSize: 8, color: '#64748b', marginTop: 4}}>Importe retenido a profesionales a ingresar en la AEAT.</Text>
+        </View>
+        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+          <Text style={styles.casillaNum}>[03]</Text>
+          <Text style={{ ...styles.resultValue, color: '#e11d48' }}>{mod111.totalRetencion.toFixed(2)} €</Text>
+        </View>
+      </View>
+      <View style={styles.footer}><Text style={styles.footerText}>Borrador generado por TaxGuard AI. Orientativo — revisar antes de presentar.</Text><Text style={styles.footerText}>Página 1 de 1</Text></View>
     </Page>
   </Document>
 );
@@ -393,12 +445,13 @@ const BOTON_CONFIG: Record<string, string> = {
   '130': 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20',
   '390': 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20',
   '115': 'bg-pink-500 hover:bg-pink-600 shadow-pink-500/20',
+  '111': 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20',
   '347': 'bg-cyan-600 hover:bg-cyan-700 shadow-cyan-600/20',
   '349': 'bg-indigo-500 hover:bg-indigo-600 shadow-indigo-500/20',
 };
 
 export default function ModelosTributariosPDFButton({ modeloActivo, datosModelo, empresaId, trimestre, anio, fileName }: {
-  modeloActivo: '303' | '130' | '390' | '115' | '347' | '349';
+  modeloActivo: '303' | '130' | '390' | '115' | '111' | '347' | '349';
   datosModelo: any;
   empresaId: string;
   trimestre: string;
@@ -410,6 +463,7 @@ export default function ModelosTributariosPDFButton({ modeloActivo, datosModelo,
     modeloActivo === '130' ? <Borrador130PDF mod130={datosModelo} empresaId={empresaId} trimestre={trimestre} anio={anio} /> :
     modeloActivo === '390' ? <Borrador390PDF mod390={datosModelo} empresaId={empresaId} anio={anio} /> :
     modeloActivo === '115' ? <Borrador115PDF mod115={datosModelo} empresaId={empresaId} trimestre={trimestre} anio={anio} /> :
+    modeloActivo === '111' ? <Borrador111PDF mod111={datosModelo} empresaId={empresaId} trimestre={trimestre} anio={anio} /> :
     modeloActivo === '347' ? <Borrador347PDF mod347={datosModelo} empresaId={empresaId} anio={anio} /> :
     <Borrador349PDF mod349={datosModelo} empresaId={empresaId} trimestre={trimestre} anio={anio} />;
 
