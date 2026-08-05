@@ -18,6 +18,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan datos obligatorios." }, { status: 400 });
     }
 
+    // 🛡️ BLINDAJE DE COSTES: sin este límite, pegar un extracto bancario gigante (o un archivo
+    // equivocado) disparaba una petición enorme y cara a la IA, o directamente hacía fallar la
+    // llamada por exceder el límite de tokens del modelo. ~600.000 caracteres cubren de sobra
+    // varios años de movimientos bancarios reales.
+    if (typeof csvText !== 'string' || csvText.length > 600_000) {
+      return NextResponse.json({ error: "El extracto es demasiado grande. Divídelo en partes más pequeñas (por ejemplo, por trimestre) e impórtalo por tramos." }, { status: 400 });
+    }
+
     // 🛡️ BLINDAJE: mismo control de permisos que el resto de la app. Sin esto, un asesor
     // en modo "solo lectura" podía volcar un extracto bancario entero en el espacio de un cliente.
     const ctx = await getContextoSeguro(empresaId);

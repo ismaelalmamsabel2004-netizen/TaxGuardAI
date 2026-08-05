@@ -18,12 +18,18 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { data, empresaId, contextoSector } = body; 
 
-    if (!data || data.length === 0) {
+    if (!data || !Array.isArray(data) || data.length === 0) {
       return NextResponse.json({ analysis: "Aún no hay suficientes movimientos registrados para generar un análisis financiero fiable." });
     }
 
+    // 🛡️ BLINDAJE DE COSTES: empresas con miles de movimientos disparaban un prompt gigante
+    // (todo el historial en JSON) en cada auditoría con IA. Con los 500 más recientes hay de sobra
+    // para un análisis de tendencias fiable, y evitamos peticiones lentas, caras o que exceden el
+    // límite de tokens del modelo.
+    const datosLimitados = data.slice(0, 500);
+
     // 🚀 ORDEN ESTRICTA: Autoconservación y lavado de cerebro para la IA (Ahora la regla 5 está dentro de las comillas)
-    const promptText = `Actúa como el CFO virtual del software. Analiza el historial de flujos de caja: ${JSON.stringify(data)}.
+    const promptText = `Actúa como el CFO virtual del software. Analiza el historial de flujos de caja: ${JSON.stringify(datosLimitados)}.
     Empresa a auditar: "${empresaId}".
     Contexto estratégico del negocio: ${contextoSector || "Estándar"}.
     

@@ -136,8 +136,7 @@ export async function guardarDatoSupabase(datos: any) {
           numeroFacturaFinal = await resolverNumeroDocumentoUnico(ctx.targetUserId, ctx.realEmpresaId, numeroFacturaFinal);
       }
 
-      await prisma.transaccion.create({
-        data: {
+      const datosBase = {
           userId: ctx.targetUserId,
           empresaId: ctx.realEmpresaId,
           fecha: fechaObj,
@@ -147,7 +146,6 @@ export async function guardarDatoSupabase(datos: any) {
           iva: ivaNum,
           isRecurrent: datos.isRecurrent || false,
           frecuencia: datos.frecuencia || null,
-          numero_factura: numeroFacturaFinal,
           cliente_nombre: datos.cliente_nombre || null,
           cliente_nif: datos.cif || datos.cliente_nif || null,
           concepto_detalle: datos.concepto_detalle || datos.concepto || null,
@@ -157,11 +155,26 @@ export async function guardarDatoSupabase(datos: any) {
           estado_pago: datos.estado_pago || "COBRADO",
           metodo_pago: datos.metodo_pago || null,
           notas_internas: datos.notas_internas || null
-        }
-      });
-      // Si tuvimos que corregir el número para evitar un duplicado, se lo decimos al cliente
-      // para que actualice su estado local (contador de siguiente factura, nombre del PDF, etc.).
-      return { success: true, numero_factura_final: numeroFacturaFinal };
+      };
+
+      // 🛡️ RED DE SEGURIDAD FINAL: la comprobación previa de "resolverNumeroDocumentoUnico" tiene
+      // una pequeña ventana de tiempo entre leer y escribir. Si dos guardados casi simultáneos
+      // (doble clic, dos pestañas) chocan contra la restricción única de la base de datos, en vez
+      // de mostrar un error de "servidor" reintentamos automáticamente con el siguiente número
+      // disponible, para que el usuario nunca note el pequeño choque de tráfico.
+      for (let intento = 0; intento < 3; intento++) {
+          try {
+              await prisma.transaccion.create({
+                  data: { ...datosBase, numero_factura: numeroFacturaFinal }
+              });
+              return { success: true, numero_factura_final: numeroFacturaFinal };
+          } catch (errorCreacion: any) {
+              const esDuplicado = errorCreacion?.code === 'P2002' && numeroFacturaFinal;
+              if (!esDuplicado || intento === 2) throw errorCreacion;
+              numeroFacturaFinal = await resolverNumeroDocumentoUnico(ctx.targetUserId, ctx.realEmpresaId, numeroFacturaFinal as string);
+          }
+      }
+      return { error: "Error de servidor al guardar la transacción." };
   } catch (error: any) {
       return { error: "Error de servidor al guardar la transacción." };
   }

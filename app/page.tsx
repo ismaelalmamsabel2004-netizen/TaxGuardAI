@@ -2054,9 +2054,10 @@ export default function Home() {
               <form onSubmit={enviarMensajeChat} className="p-3 bg-white border-t border-slate-100 flex gap-2">
                 <input 
                   type="text" 
-                  value={currentMessage} 
-                  onChange={(e) => setCurrentMessage(e.target.value)} 
-                  placeholder="Pregunta a tu CFO..." 
+                  value={currentMessage}
+                  onChange={(e) => setCurrentMessage(e.target.value)}
+                  maxLength={4000}
+                  placeholder="Pregunta a tu CFO..."
                   className="flex-1 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <button type="submit" disabled={isChatLoading || !currentMessage.trim()} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 transition">
