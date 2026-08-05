@@ -12,6 +12,7 @@ import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../
 import { Skeleton } from '@/components/ui/skeleton';
 import EspacioTrabajoSelect from '../../components/EspacioTrabajoSelect';
 import BannerModoAsesor from '../../components/BannerModoAsesor';
+import SoporteVIPModal, { SoporteVIPNavButton } from '../../components/SoporteVIP';
 import {
   esEspacioCliente,
   guardarEspacioSesion,
@@ -62,8 +63,6 @@ export default function ModelosTributarios() {
 
   // 🚀 ESTADOS PARA EL MODAL DE SOPORTE
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [faqSearch, setFaqSearch] = useState("");
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const esLectura = rolUsuario === 'LECTURA';
 
@@ -188,18 +187,6 @@ export default function ModelosTributarios() {
     } catch (error) {
       toast.error("Error", { description: "Error de conexión con la pasarela." });
     }
-  };
-
-  const abrirGmailWeb = (tipo: string) => {
-      const email = "soporte.taxguard@gmail.com";
-      const subject = tipo === "ayuda" ? `Asistencia Técnica TaxGuard AI - ${empresaId}` : `Sugerencia de Mejora - TaxGuard AI - ${empresaId}`;
-      const body = `Hola equipo de TaxGuard AI,%0A%0AEscribe aquí tu ${tipo === 'ayuda' ? 'consulta o problema' : 'idea para mejorar la plataforma'}:%0A%0A`;
-      window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${subject}&body=${body}`, '_blank');
-  };
-
-  const copiarCorreoSoporte = () => {
-      navigator.clipboard.writeText("soporte.taxguard@gmail.com");
-      toast.success("Copiado", { description: "Correo de soporte copiado al portapapeles." });
   };
 
   // 🚀 RENDIMIENTO: los modelos fiscales se recalculaban TODOS en cada render aunque el usuario
@@ -421,14 +408,6 @@ export default function ModelosTributarios() {
     return { entregas, adquisiciones };
   }, [datosValidos, anio, trimestre]);
 
-  const faqs = [
-    { q: "🏛️ ¿Me sirven estos borradores para presentarlos en la AEAT?", a: "Son borradores orientativos con casillas alineadas al formulario de la AEAT ([01], [03], etc.). Revísalos con tu asesor antes de presentarlos: TaxGuard no sustituye la declaración oficial ni la firma electrónica." },
-    { q: "🧾 ¿Qué gastos coge el modelo 130?", a: "El modelo 130 acumula TODOS tus gastos e ingresos (sin IVA) desde Enero hasta el trimestre seleccionado, para calcular tu rendimiento neto real." },
-    { q: "🏢 ¿Cuál es la diferencia entre el 115 y el 111?", a: "El Modelo 115 es solo para retenciones de alquileres (19%). El Modelo 111 es para retenciones a profesionales y asesores (15%). TaxGuard los separa según la categoría del gasto." },
-    { q: "🚨 ¿Para qué sirve el modelo 347?", a: "Hacienda obliga a declarar qué clientes o proveedores te han facturado (o tú a ellos) más de 3.005,06€ en total durante todo el año. TaxGuard suma todas las facturas y te los agrupa automáticamente." }
-  ];
-  const faqsFiltradas = faqs.filter(f => f.q.toLowerCase().includes(faqSearch.toLowerCase()) || f.a.toLowerCase().includes(faqSearch.toLowerCase()));
-
   if (!isMounted) return null;
 
   if (planActivo === 'loading' && isSignedIn) {
@@ -521,11 +500,7 @@ export default function ModelosTributarios() {
                   Gestor Documental
                 </Link>
 
-                <div className="pt-4 mt-4 border-t border-slate-800">
-                    <button onClick={() => {setShowSupportModal(true); setIsSidebarOpen(false);}} className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition group">
-                      <span className="text-lg group-hover:scale-110 transition-transform">🎧</span> Soporte VIP
-                    </button>
-                </div>
+                <SoporteVIPNavButton onClick={() => { setShowSupportModal(true); setIsSidebarOpen(false); }} />
               </nav>
             </div>
             
@@ -1186,63 +1161,7 @@ export default function ModelosTributarios() {
             <div className="h-10"></div>
           </main>
 
-          {/* 🚀 MODAL DE SOPORTE VIP UNIFICADO */}
-          {showSupportModal && (
-            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
-               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]" translate="no">
-                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">🎧 Centro de Soporte VIP</h3>
-                    <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-rose-500 transition">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
-                  
-                  <div className="p-6 space-y-8 overflow-y-auto bg-slate-50/30">
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <button onClick={() => abrirGmailWeb('ayuda')} className="p-5 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition group flex flex-col items-start text-left shadow-sm">
-                             <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">📨</span>
-                             <h4 className="text-sm font-black text-blue-900 mb-1">Contactar a Soporte</h4>
-                             <p className="text-xs text-blue-700 font-medium">Resolvemos tus dudas en menos de 24h laborables.</p>
-                         </button>
-                         <button onClick={() => abrirGmailWeb('sugerencia')} className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl hover:bg-emerald-100 transition group flex flex-col items-start text-left shadow-sm">
-                             <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">💡</span>
-                             <h4 className="text-sm font-black text-emerald-900 mb-1">Buzón de Sugerencias</h4>
-                             <p className="text-xs text-emerald-700 font-medium">¿Echas en falta alguna función? Escríbenos.</p>
-                         </button>
-                     </div>
-                     
-                     <div className="flex justify-center">
-                         <button onClick={copiarCorreoSoporte} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center gap-2">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                            Copiar correo (soporte.taxguard@gmail.com)
-                         </button>
-                     </div>
-  
-                     <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-                            <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">📚 Base de Conocimiento</h4>
-                            <input type="text" placeholder="Buscar..." value={faqSearch} onChange={(e) => setFaqSearch(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:w-64" />
-                        </div>
-                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                           {faqsFiltradas.length === 0 ? (
-                               <p className="text-center text-xs text-slate-400 py-4">Sin resultados.</p>
-                           ) : (
-                               faqsFiltradas.map((faq, idx) => (
-                                  <div key={idx} className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
-                                     <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="w-full text-left p-4 flex justify-between items-center hover:bg-slate-50 transition">
-                                        <span className="text-xs font-bold text-slate-700 pr-4">{faq.q}</span>
-                                        <span className={`text-slate-400 transition-transform ${openFaq === idx ? 'rotate-180' : ''}`}>▼</span>
-                                     </button>
-                                     {openFaq === idx && <div className="p-4 pt-0 text-[11px] text-slate-500 leading-relaxed bg-white border-t border-slate-100">{faq.a}</div>}
-                                  </div>
-                               ))
-                           )}
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
-          )}
+          <SoporteVIPModal open={showSupportModal} onClose={() => setShowSupportModal(false)} empresaId={nombreEspacioVisible(empresaId)} modulo="impuestos" />
 
         </div>
       </Show>
