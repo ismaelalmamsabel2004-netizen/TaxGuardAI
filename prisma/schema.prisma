@@ -50,6 +50,21 @@ model Transaccion {
   
   // Saber cuándo fue la última vez que el usuario modificó esta factura
   updatedAt        DateTime @default(now()) @updatedAt 
+
+  // 🛡️ ÍNDICES DE RENDIMIENTO: absolutamente TODAS las pantallas de la app filtran las
+  // transacciones por usuario y/o empresa. Sin estos índices, cada consulta obligaba a la
+  // base de datos a recorrer la tabla entera fila a fila (escaneo secuencial), algo que
+  // funciona bien con pocos datos pero se vuelve cada vez más lento a medida que un cliente
+  // acumula meses o años de movimientos. Con miles de filas, esto es la diferencia entre una
+  // consulta instantánea y una que tarda varios segundos.
+  @@index([userId, empresaId])
+  // 🛡️ BLINDAJE LEGAL ANTI-DUPLICADOS: la comprobación de número de factura libre se hacía en
+  // dos pasos separados (leer y luego escribir), así que dos guardados casi simultáneos (doble
+  // clic, dos pestañas) podían colar el mismo número en dos facturas distintas, algo ilegal ante
+  // Hacienda. Esta restricción única hace que la propia base de datos rechace cualquier duplicado,
+  // pase lo que pase en la capa de aplicación. Los NULL no cuentan como duplicados entre sí, así
+  // que los movimientos sin número de factura no se ven afectados.
+  @@unique([userId, empresaId, numero_factura])
 }
 
 // 🏢===============================================================🏢
@@ -72,6 +87,9 @@ model ContactoEmpresa {
   
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now()) @updatedAt
+
+  // Mismo motivo que en Transaccion: el CRM siempre se consulta filtrado por empresa.
+  @@index([userId, empresaId])
 }
 
 // 🤝===============================================================🤝
