@@ -634,6 +634,7 @@ export default function GeneradorFacturas() {
   };
 
   const marcarPendiente = async (fac: any) => {
+     if (bloquearEscritura()) return;
      try {
          const res = await actualizarEstadoPago(fac.id, 'PENDIENTE', empresaId);
          if (res.success) {
