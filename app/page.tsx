@@ -20,10 +20,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente, generarRecurrentesPendientes } from './actions';
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente, generarRecurrentesPendientes, obtenerPerfilEspacio } from './actions';
 import { transaccionSchema, mapearErroresZod, parsearImporte } from '../lib/validations';
 import { obtenerAjustes, obtenerAjustesSilencioso, guardarAjustes } from '../lib/settingsClient';
 import { celdaCSVSegura } from '../lib/csvExport';
+import { esEspacioCliente, guardarEspacioSesion, limpiarEspacioSesion, resolverEspacioInicial, nombreEspacioVisible } from '../lib/workspaceSession';
 
 // 🚀 RENDIMIENTO: @react-pdf/renderer se carga en su propio chunk, solo en el navegador y solo
 // cuando este botón llega a pintarse, para no lastrar el JS inicial de la Consola General.
@@ -173,11 +174,7 @@ export default function Home() {
   // 🛡️ Limpiador visual seguro
   let nombreEmpresaVisual = "Cargando...";
   if (empresaId) {
-      if (empresaId.startsWith("CLIENTE|")) {
-          nombreEmpresaVisual = empresaId.split('|')[2] || "Cliente";
-      } else {
-          nombreEmpresaVisual = empresaId === "undefined" || empresaId === "CLIENTE_undefined" ? "Mi Empresa Principal" : empresaId;
-      }
+      nombreEmpresaVisual = nombreEspacioVisible(empresaId);
   }
 
   const gestionarSuscripcion = async () => {
@@ -221,10 +218,10 @@ export default function Home() {
          const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa Principal"];
          setEmpresas(listaEmpresas);
          
-         let activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "Mi Empresa Principal";
-         if (activa === "undefined" || activa === "CLIENTE_undefined") activa = "Mi Empresa Principal";
-         
+         const activa = resolverEspacioInicial(ajustesGuardados.empresaActiva, listaEmpresas);
          setEmpresaId(activa);
+         if (esEspacioCliente(activa)) guardarEspacioSesion(activa);
+         else limpiarEspacioSesion();
 
          if (ajustesGuardados.papelera) setPapelera(ajustesGuardados.papelera);
       });
@@ -251,14 +248,18 @@ export default function Home() {
     const valorSeleccionado = e.target.value;
     setEmpresaId(valorSeleccionado);
     
-    if (!valorSeleccionado.startsWith("CLIENTE|")) {
+    if (esEspacioCliente(valorSeleccionado)) {
+        guardarEspacioSesion(valorSeleccionado);
+    } else {
+        limpiarEspacioSesion();
         const actuales = await obtenerAjustes();
-        if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
+        if (!actuales) return;
         await syncSettingsToCloud({ ...actuales, empresaActiva: valorSeleccionado });
     }
   };
 
   const salirModoAsesor = async () => {
+    limpiarEspacioSesion();
     const miEmpresaPrincipal = empresas[0] || "Mi Empresa Principal";
     setEmpresaId(miEmpresaPrincipal);
     const actuales = await obtenerAjustes();
@@ -352,9 +353,38 @@ export default function Home() {
     });
 
     obtenerAjustesSilencioso()
-      .then((ajustesGuardados: any) => {
-         if (empresaSolicitadaRef.current !== empresaId) return; // Respuesta obsoleta: ignorada
-         const idAjuste = empresaId.startsWith("CLIENTE|") ? empresaId.split('|')[2] : empresaId;
+      .then(async (ajustesGuardados: any) => {
+         if (empresaSolicitadaRef.current !== empresaId) return;
+
+         // En Modo Asesor leemos el perfil del PROPIETARIO del espacio, no el del asesor
+         if (esEspacioCliente(empresaId)) {
+           const perfilRemoto = await obtenerPerfilEspacio(empresaId);
+           if (empresaSolicitadaRef.current !== empresaId) return;
+           if (perfilRemoto.success) {
+             const p = perfilRemoto.perfil || { sector: '', objetivo: '' };
+             setPerfilEmpresa(p);
+             setSectorInput(p.sector || '');
+             setObjetivoInput(p.objetivo || '');
+             if (perfilRemoto.datosFiscales) setDatosFiscales(perfilRemoto.datosFiscales);
+             else setDatosFiscales({ razonSocial: '', nif: '', direccion: '' });
+             if (perfilRemoto.categorias) {
+               setCategoriasIngreso(perfilRemoto.categorias.ingreso || defaultIngresos);
+               setCategoriasGasto(perfilRemoto.categorias.gasto || defaultGastos);
+               setCatsIngresoInput((perfilRemoto.categorias.ingreso || defaultIngresos).join(', '));
+               setCatsGastoInput((perfilRemoto.categorias.gasto || defaultGastos).join(', '));
+             } else {
+               setCategoriasIngreso(defaultIngresos);
+               setCategoriasGasto(defaultGastos);
+               setCatsIngresoInput(defaultIngresos.join(', '));
+               setCatsGastoInput(defaultGastos.join(', '));
+             }
+           }
+           setMetaMensual(5000);
+           setInputMeta('5000');
+           return;
+         }
+
+         const idAjuste = empresaId;
 
          if (ajustesGuardados.metas && ajustesGuardados.metas[idAjuste]) {
            setMetaMensual(ajustesGuardados.metas[idAjuste]);
@@ -398,6 +428,12 @@ export default function Home() {
   }, [empresaId, planActivo]);
 
   const guardarPerfil = async () => {
+    if (esEspacioCliente(empresaId) || rolUsuario === 'LECTURA') {
+      toast.error("Solo lectura", { description: "No puedes editar la configuración del cliente." });
+      return;
+    }
+
+    const idAjuste = empresaId;
     const nuevoPerfil = { sector: sectorInput, objetivo: objetivoInput };
 
     const nuevasIngreso = catsIngresoInput.split(',').map(c => c.trim()).filter(c => c);
@@ -409,19 +445,19 @@ export default function Home() {
     };
 
     const actuales = await obtenerAjustes();
-    if (!actuales) return; // 🛡️ Sin conexión: no aplicamos los cambios para no perder ajustes reales.
+    if (!actuales) return;
 
     setPerfilEmpresa(nuevoPerfil);
     setCategoriasIngreso(catA_Guardar.ingreso);
     setCategoriasGasto(catA_Guardar.gasto);
 
     const perfilesObj = actuales.perfiles || {};
-    perfilesObj[empresaId] = nuevoPerfil;
+    perfilesObj[idAjuste] = nuevoPerfil;
     const categoriasObj = actuales.categorias || {};
-    categoriasObj[empresaId] = catA_Guardar;
+    categoriasObj[idAjuste] = catA_Guardar;
     
     const fiscalesObj = actuales.datosFiscales || {};
-    fiscalesObj[empresaId] = datosFiscales;
+    fiscalesObj[idAjuste] = datosFiscales;
 
     const guardadoOk = await syncSettingsToCloud({ ...actuales, perfiles: perfilesObj, categorias: categoriasObj, datosFiscales: fiscalesObj });
     if (guardadoOk) {
