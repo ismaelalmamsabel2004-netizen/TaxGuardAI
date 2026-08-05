@@ -23,6 +23,7 @@ import {
   obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase,
   obtenerContactosCRM, guardarContactoCRM, editarContactoCRM, borrarContactoCRM, migrarContactosCRMDesdeJSON,
   obtenerEmpresasCliente, verificarRolUsuario, obtenerPerfilEspacio,
+  actualizarEstadoPago,
 } from '../actions';
 import { contactoCrmSchema, mapearErroresZod, nifCifOpcional } from '../../lib/validations';
 import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
@@ -60,7 +61,8 @@ export default function GeneradorFacturas() {
   const [rolUsuario, setRolUsuario] = useState('LOADING');
   
   const [modoActivo, setModoActivo] = useState<"factura" | "presupuesto">("factura");
-  const [filtroHistorial, setFiltroHistorial] = useState<"todas" | "facturas" | "presupuestos" | "rectificativas">("todas");
+  const [filtroHistorial, setFiltroHistorial] = useState<"todas" | "facturas" | "presupuestos" | "rectificativas" | "pendientes" | "cobradas">("todas");
+  const [estadoCobroInicial, setEstadoCobroInicial] = useState<"PENDIENTE" | "COBRADO">("PENDIENTE");
   
   const [numeroFactura, setNumeroFactura] = useState(`F-${new Date().getFullYear()}-001`);
   const [numeroPresupuesto, setNumeroPresupuesto] = useState(`P-${new Date().getFullYear()}-001`);
@@ -98,13 +100,18 @@ export default function GeneradorFacturas() {
 
   const [planActivo, setPlanActivo] = useState('loading');
 
-  const [clientesCRM, setClientesCRM] = useState<{id: number, nombre: string, nif: string, direccion: string, email?: string, telefono?: string}[]>([]);
+  const [clientesCRM, setClientesCRM] = useState<{id: number, nombre: string, nif: string, direccion: string, email?: string, telefono?: string, tipo?: string, iban_bancario?: string}[]>([]);
   const [showCRM, setShowCRM] = useState(false);
   const [showCRMModal, setShowCRMModal] = useState(false);
   const [editandoClienteId, setEditandoClienteId] = useState<number | null>(null);
-  const [editCRMData, setEditCRMData] = useState({ nombre: "", nif: "", direccion: "", email: "", telefono: "" });
+  const [editCRMData, setEditCRMData] = useState({ nombre: "", tipo: "CLIENTE", nif: "", direccion: "", email: "", telefono: "", iban_bancario: "" });
 
   const [showNuevoCliente, setShowNuevoCliente] = useState(false);
+
+  // 🚀 FICHA 360°: búsqueda, filtro por tipo y contacto con el detalle de facturación desplegado
+  const [crmSearchTerm, setCrmSearchTerm] = useState("");
+  const [crmFiltroTipo, setCrmFiltroTipo] = useState<"todos" | "CLIENTE" | "PROVEEDOR">("todos");
+  const [fichaAbiertaId, setFichaAbiertaId] = useState<number | null>(null);
 
   // 🛡️ BLINDAJE DE DATOS: errores de validación del CRM + confirmaciones destructivas premium
   const [crmErrors, setCrmErrors] = useState<Record<string, string>>({});
@@ -115,7 +122,7 @@ export default function GeneradorFacturas() {
   const [crmIdToDelete, setCrmIdToDelete] = useState<number | null>(null);
   const [docIdToDelete, setDocIdToDelete] = useState<any | null>(null);
   const [facturaRectificativaPendiente, setFacturaRectificativaPendiente] = useState<any | null>(null);
-  const [nuevoClienteData, setNuevoClienteData] = useState({ nombre: "", nif: "", direccion: "", email: "", telefono: "" });
+  const [nuevoClienteData, setNuevoClienteData] = useState({ nombre: "", tipo: "CLIENTE", nif: "", direccion: "", email: "", telefono: "", iban_bancario: "" });
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: string, content: string}[]>([]);
@@ -468,7 +475,18 @@ export default function GeneradorFacturas() {
       const res = await guardarDatoSupabase({
         month: fechaFormateada, total: baseNum, empresaId: empresaId, categoria: categoriaDoc, 
         isRecurrent: false, iva: ivaSeleccionado, numero_factura: numDocumento,
-        cliente_nombre: clienteNombre, cliente_nif: clienteNif, concepto_detalle: conceptoUnificado
+        cliente_nombre: clienteNombre, cliente_nif: clienteNif, concepto_detalle: conceptoUnificado,
+        // Facturas emitidas nacen pendientes de cobro (alineado con Consola/Documentos).
+        // Presupuestos no afectan cobros: se marcan COBRADO para no contaminar el radar.
+        estado_pago: isPresupuesto ? "COBRADO" : estadoCobroInicial,
+        metodo_pago: metodoPago || null,
+        fecha_vencimiento: (() => {
+          if (isPresupuesto) return null;
+          const emision = new Date(fecha);
+          if (isNaN(emision.getTime())) return null;
+          emision.setDate(emision.getDate() + 30);
+          return emision.toISOString();
+        })(),
       });
 
       if (res.success) {
@@ -595,25 +613,34 @@ export default function GeneradorFacturas() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 🚀 FUNCIÓN: MARCAR COMO COBRADA
+  // Fuente de verdad: estado_pago (con fallback al tag legacy [ESTADO: COBRADA])
+  const esFacturaCobrada = (f: any) => {
+    if (f.estado_pago === 'COBRADO' || f.estado_pago === 'PAGADO') return true;
+    if (f.concepto_detalle?.includes('[ESTADO: COBRADA]')) return true;
+    return false;
+  };
+
   const marcarCobrada = async (fac: any) => {
      if (bloquearEscritura()) return;
      try {
-         const res = await editarDatoSupabase({
-             id: fac.id, 
-             month: fac.name, 
-             total: fac.total, 
-             categoria: fac.categoria, 
-             iva: fac.iva,
-             cliente_nombre: fac.cliente_nombre, 
-             cliente_nif: fac.cliente_nif,
-             concepto_detalle: (fac.concepto_detalle || "") + " [ESTADO: COBRADA]"
-         });
+         const res = await actualizarEstadoPago(fac.id, 'COBRADO', empresaId);
          if (res.success) {
              setRefreshTrigger(prev => prev + 1);
              toast.success("Estado Actualizado", { description: "Documento marcado como COBRADO." });
          } else {
-             toast.error("Error", { description: "No se pudo actualizar el estado." });
+             toast.error("Error", { description: res.error || "No se pudo actualizar el estado." });
+         }
+     } catch (e) { toast.error("Error", { description: "Error de conexión." }); }
+  };
+
+  const marcarPendiente = async (fac: any) => {
+     try {
+         const res = await actualizarEstadoPago(fac.id, 'PENDIENTE', empresaId);
+         if (res.success) {
+             setRefreshTrigger(prev => prev + 1);
+             toast.success("Estado Actualizado", { description: "Documento vuelto a PENDIENTE de cobro." });
+         } else {
+             toast.error("Error", { description: res.error || "No se pudo actualizar el estado." });
          }
      } catch (e) { toast.error("Error", { description: "Error de conexión." }); }
   };
@@ -672,14 +699,19 @@ export default function GeneradorFacturas() {
       if (!validacion.success) {
           const errores = mapearErroresZod(validacion.error);
           setCrmErrors(errores);
-          toast.error("Revisa los datos del cliente", { description: Object.values(errores)[0] });
+          toast.error("Revisa los datos del contacto", { description: Object.values(errores)[0] });
           return;
       }
 
-      const datosLimpios = { ...nuevoClienteData, nombre: nuevoClienteData.nombre.trim(), nif: nuevoClienteData.nif.trim().toUpperCase() };
+      const datosLimpios = {
+          ...nuevoClienteData,
+          nombre: nuevoClienteData.nombre.trim(),
+          nif: nuevoClienteData.nif.trim().toUpperCase(),
+          iban_bancario: nuevoClienteData.iban_bancario.trim().toUpperCase().replace(/\s+/g, ' '),
+      };
 
-      // 🚀 CRM REAL: se guarda directamente en la tabla ContactoEmpresa
-      const res = await guardarContactoCRM({ empresaId, tipo: 'CLIENTE', ...datosLimpios });
+      // 🚀 CRM REAL: se guarda directamente en la tabla ContactoEmpresa (CLIENTE o PROVEEDOR)
+      const res = await guardarContactoCRM({ empresaId, ...datosLimpios });
       if (!res.success) {
           toast.error("Error al guardar", { description: res.error || "No se pudo guardar el contacto." });
           return;
@@ -687,8 +719,8 @@ export default function GeneradorFacturas() {
       setClientesCRM([...clientesCRM, res.contacto as any]);
 
       setShowNuevoCliente(false);
-      setNuevoClienteData({ nombre: "", nif: "", direccion: "", email: "", telefono: "" });
-      toast.success("Contacto Añadido", { description: "Cliente guardado en la agenda CRM." });
+      setNuevoClienteData({ nombre: "", tipo: "CLIENTE", nif: "", direccion: "", email: "", telefono: "", iban_bancario: "" });
+      toast.success("Contacto Añadido", { description: `${datosLimpios.tipo === 'PROVEEDOR' ? 'Proveedor' : 'Cliente'} guardado en la agenda CRM.` });
   };
 
   const guardarCRMEditado = async (id: number) => {
@@ -698,11 +730,16 @@ export default function GeneradorFacturas() {
       if (!validacion.success) {
           const errores = mapearErroresZod(validacion.error);
           setCrmEditErrors(errores);
-          toast.error("Revisa los datos del cliente", { description: Object.values(errores)[0] });
+          toast.error("Revisa los datos del contacto", { description: Object.values(errores)[0] });
           return;
       }
 
-      const datosLimpios = { ...editCRMData, nombre: editCRMData.nombre.trim(), nif: editCRMData.nif.trim().toUpperCase() };
+      const datosLimpios = {
+          ...editCRMData,
+          nombre: editCRMData.nombre.trim(),
+          nif: editCRMData.nif.trim().toUpperCase(),
+          iban_bancario: editCRMData.iban_bancario.trim().toUpperCase().replace(/\s+/g, ' '),
+      };
 
       // 🚀 CRM REAL: actualiza directamente el registro en ContactoEmpresa por su id
       const res = await editarContactoCRM({ id, empresaId, ...datosLimpios });
@@ -742,12 +779,15 @@ export default function GeneradorFacturas() {
       try {
           const res = await editarDatoSupabase({
               id: fac.id, month: fac.name, total: fac.total, categoria: fac.categoria, iva: fac.iva,
+              empresaId,
               cliente_nombre: editClientData.nombre, cliente_nif: editClientData.nif, concepto_detalle: fac.concepto_detalle
           });
           if (res.success) {
               setEditandoHistorialId(null);
               setRefreshTrigger(prev => prev + 1);
               toast.success("Documento Actualizado", { description: "Los datos del cliente han sido modificados." });
+          } else {
+              toast.error("Error", { description: res.error || "No se pudo actualizar." });
           }
       } catch(e) { toast.error("Error", { description: "Error al actualizar." }); }
   };
@@ -782,6 +822,14 @@ export default function GeneradorFacturas() {
        if (filtroHistorial === 'facturas' && !numFac.startsWith('f-')) return false;
        if (filtroHistorial === 'presupuestos' && !numFac.startsWith('p-')) return false;
        if (filtroHistorial === 'rectificativas' && !numFac.startsWith('r-')) return false;
+       if (filtroHistorial === 'pendientes') {
+         if (numFac.startsWith('p-') || numFac.startsWith('r-')) return false;
+         if (esFacturaCobrada(fac)) return false;
+       }
+       if (filtroHistorial === 'cobradas') {
+         if (numFac.startsWith('p-') || numFac.startsWith('r-')) return false;
+         if (!esFacturaCobrada(fac)) return false;
+       }
 
        return true;
     });
@@ -793,6 +841,84 @@ export default function GeneradorFacturas() {
   const clientesFiltrados = useMemo(() => {
     return clientesCRM.filter(c => c.nombre.toLowerCase().includes(clienteNombre.toLowerCase()));
   }, [clientesCRM, clienteNombre]);
+
+  // 📇 Agenda CRM filtrada: búsqueda por nombre/NIF/email + filtro CLIENTE/PROVEEDOR
+  const agendaCRMFiltrada = useMemo(() => {
+    const q = crmSearchTerm.trim().toLowerCase();
+    return clientesCRM.filter(c => {
+      if (crmFiltroTipo !== 'todos' && (c.tipo || 'CLIENTE') !== crmFiltroTipo) return false;
+      if (!q) return true;
+      return (
+        c.nombre.toLowerCase().includes(q) ||
+        (c.nif || '').toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        (c.telefono || '').toLowerCase().includes(q)
+      );
+    });
+  }, [clientesCRM, crmSearchTerm, crmFiltroTipo]);
+
+  // 🚀 FICHA 360°: totales facturados / pendientes / vencidos por contacto.
+  // Se empareja por nombre (mismo criterio que ya usa el resto de la app) porque en este
+  // entorno no podemos aplicar una migración de clave foránea contra la BD de producción.
+  const fichasCRM = useMemo(() => {
+    const ahora = Date.now();
+    const MS_30_DIAS = 30 * 24 * 60 * 60 * 1000;
+    const mapa: Record<string, {
+      totalFacturado: number;
+      pendiente: number;
+      vencido: number;
+      numFacturas: number;
+      ultimaFecha: string | null;
+      ultimaFechaMs: number;
+    }> = {};
+
+    historialFacturas.forEach((fac: any) => {
+      const nombre = (fac.cliente_nombre || '').trim().toLowerCase();
+      if (!nombre) return;
+      if (fac.numero_factura?.startsWith('P-') || fac.numero_factura?.startsWith('R-')) return;
+
+      const base = Math.abs(Number(fac.total) || 0);
+      const totalConIva = base * (1 + (Number(fac.iva) || 0) / 100);
+      const isCobrada = fac.concepto_detalle?.includes('[ESTADO: COBRADA]') || fac.estado_pago === 'COBRADO';
+
+      if (!mapa[nombre]) {
+        mapa[nombre] = { totalFacturado: 0, pendiente: 0, vencido: 0, numFacturas: 0, ultimaFecha: null, ultimaFechaMs: 0 };
+      }
+      const entry = mapa[nombre];
+      entry.totalFacturado += totalConIva;
+      entry.numFacturas += 1;
+
+      const [d, m, y] = (fac.name || '').split('/');
+      const fechaMs = (d && m && y) ? new Date(Number(y), Number(m) - 1, Number(d)).getTime() : 0;
+      if (fechaMs > entry.ultimaFechaMs) {
+        entry.ultimaFechaMs = fechaMs;
+        entry.ultimaFecha = fac.name;
+      }
+
+      if (!isCobrada) {
+        entry.pendiente += totalConIva;
+        if (fechaMs > 0 && (ahora - fechaMs) > MS_30_DIAS) {
+          entry.vencido += totalConIva;
+        }
+      }
+    });
+
+    return mapa;
+  }, [historialFacturas]);
+
+  const inicialesContacto = (nombre: string) => {
+    const partes = nombre.trim().split(/\s+/).filter(Boolean);
+    if (partes.length === 0) return '?';
+    if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+    return (partes[0][0] + partes[1][0]).toUpperCase();
+  };
+
+  const colorAvatar = (nombre: string) => {
+    const paleta = ['bg-blue-600', 'bg-indigo-600', 'bg-emerald-600', 'bg-amber-600', 'bg-rose-600', 'bg-cyan-600', 'bg-violet-600'];
+    let hash = 0;
+    for (let i = 0; i < nombre.length; i++) hash = (hash + nombre.charCodeAt(i) * (i + 1)) % paleta.length;
+    return paleta[hash];
+  };
   
   // 🚀 LÓGICA RADAR DE MOROSIDAD (RENDIMIENTO: solo depende del historial, no de la búsqueda)
   const { facturasPendientesArr, totalPendienteMonto, totalVencidoMonto } = useMemo(() => {
@@ -800,8 +926,7 @@ export default function GeneradorFacturas() {
     const pendientesArr = historialFacturas.filter((f: any) => {
         const isPresu = f.numero_factura?.startsWith('P-');
         const isRect = f.numero_factura?.startsWith('R-');
-        const isCobrada = f.concepto_detalle?.includes('[ESTADO: COBRADA]');
-        return !isPresu && !isRect && !isCobrada;
+        return !isPresu && !isRect && !esFacturaCobrada(f);
     });
 
     let pendienteMonto = 0;
@@ -814,11 +939,20 @@ export default function GeneradorFacturas() {
         
         pendienteMonto += totalFac;
 
-        const [d, m, y] = f.name.split('/');
-        const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
-        const diasDesdeEmision = (ahora - fechaEmision) / (1000 * 3600 * 24);
-        
-        if (diasDesdeEmision > 30) {
+        // Preferir fecha_vencimiento real; si no, +30 días desde emisión
+        let fechaLimite = NaN;
+        if (f.raw_fecha_vencimiento) {
+          fechaLimite = new Date(f.raw_fecha_vencimiento).getTime();
+        } else if (f.fecha_vencimiento && String(f.fecha_vencimiento).includes('/')) {
+          const [dv, mv, yv] = String(f.fecha_vencimiento).split('/');
+          fechaLimite = new Date(Number(yv), Number(mv) - 1, Number(dv)).getTime();
+        } else if (f.name?.includes('/')) {
+          const [d, m, y] = f.name.split('/');
+          const emision = new Date(Number(y), Number(m) - 1, Number(d)).getTime();
+          fechaLimite = emision + 30 * 24 * 3600 * 1000;
+        }
+
+        if (Number.isFinite(fechaLimite) && ahora > fechaLimite) {
             vencidoMonto += totalFac;
         }
     });
@@ -828,6 +962,7 @@ export default function GeneradorFacturas() {
 
   const faqs = [
       { q: "📝 ¿Cómo creo y envío una factura oficial a mi cliente?", a: "Rellena tus datos fiscales (pulsa 'Guardar como predeterminado' para no tener que repetirlos). Pon los datos del cliente, el concepto y el precio. Dale a 'Registrar en Libro Mayor' y luego descarga el PDF oficial para enviarlo." },
+      { q: "💰 ¿Cómo marco una factura como cobrada?", a: "En el historial, pulsa 'Cobrar'. El estado se guarda en el mismo campo que usa la Consola y Documentos (ya no depende de una etiqueta en el concepto). Puedes revertirlo con 'Pendiente'." },
       { q: "🪄 ¿Qué diferencia hay entre Presupuesto y Factura?", a: "Un Presupuesto es una propuesta. No suman en tus ingresos y son 'invisibles' para los impuestos. Cuando tu cliente lo acepte, busca el presupuesto en el historial y pulsa el botón '🪄 Convertir'." },
       { q: "❌ Me he equivocado en una factura ya emitida. ¿La borro?", a: "¡Cuidado! La ley prohíbe borrar o saltarse la numeración de facturas ya emitidas. En el Historial, busca la factura con el error y pulsa 'Rectificar'. Se creará un Abono en negativo para anularla legalmente." }
   ];
@@ -1140,7 +1275,7 @@ export default function GeneradorFacturas() {
                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> 2. Facturar a (Cliente)
                       </h3>
                       <button onClick={() => setShowCRMModal(true)} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md transition border border-slate-200 flex items-center gap-1">
-                         👥 Gestor de Clientes ({clientesCRM.length})
+                         📇 Agenda CRM ({clientesCRM.length})
                       </button>
                    </div>
                    
@@ -1288,6 +1423,28 @@ export default function GeneradorFacturas() {
                        <span className="text-4xl font-black text-white">{totalFinal.toFixed(2)} €</span>
                     </div>
 
+                    {modoActivo === 'factura' && (
+                      <div className="mt-5">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Estado al emitir</span>
+                        <div className="flex rounded-lg overflow-hidden border border-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => setEstadoCobroInicial('PENDIENTE')}
+                            className={`flex-1 px-3 py-2 text-[10px] font-black uppercase tracking-wider transition ${estadoCobroInicial === 'PENDIENTE' ? 'bg-amber-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                          >
+                            Pendiente
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEstadoCobroInicial('COBRADO')}
+                            className={`flex-1 px-3 py-2 text-[10px] font-black uppercase tracking-wider transition ${estadoCobroInicial === 'COBRADO' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                          >
+                            Ya cobrada
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mt-8 space-y-3">
                        {/* BOTÓN DESCARGAR PDF DINÁMICO */}
                        {isMounted && (
@@ -1386,6 +1543,8 @@ export default function GeneradorFacturas() {
                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                        <button onClick={() => {setFiltroHistorial('todas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'todas' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todas</button>
                        <button onClick={() => {setFiltroHistorial('facturas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'facturas' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Solo Facturas</button>
+                       <button onClick={() => {setFiltroHistorial('pendientes'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'pendientes' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-700'}`}>Pendientes</button>
+                       <button onClick={() => {setFiltroHistorial('cobradas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'cobradas' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700'}`}>Cobradas</button>
                        <button onClick={() => {setFiltroHistorial('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'presupuestos' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-600'}`}>Presupuestos</button>
                        <button onClick={() => {setFiltroHistorial('rectificativas'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroHistorial === 'rectificativas' ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-600'}`}>Abonos</button>
                     </div>
@@ -1419,7 +1578,7 @@ export default function GeneradorFacturas() {
                           {!isLoadingHistorial && currentItems.map((fac: any) => {
                              const isRectificativa = fac.numero_factura?.startsWith('R-');
                              const isPresupuesto = fac.numero_factura?.startsWith('P-');
-                             const isCobrada = fac.concepto_detalle?.includes('[ESTADO: COBRADA]');
+                             const isCobrada = esFacturaCobrada(fac);
                              
                              // 🚀 CÁLCULO VISUAL REAL (3 COLUMNAS)
                              const baseReal = Math.abs(Number(fac.total));
@@ -1436,10 +1595,20 @@ export default function GeneradorFacturas() {
                              const signoOpe = isPresupuesto ? '+' : (isRectificativa ? '-' : '+');
                              const colorSig = isPresupuesto ? 'text-amber-600' : (isRectificativa ? 'text-rose-600' : 'text-emerald-600');
 
-                            const [d, m, y] = fac.name.split('/');
-                            const fechaEmision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
-                            const diasDesdeEmision = (Date.now() - fechaEmision) / (1000 * 3600 * 24);
-                            const isVencida = !isCobrada && !isPresupuesto && !isRectificativa && (diasDesdeEmision > 30);
+                            let isVencida = false;
+                            if (!isCobrada && !isPresupuesto && !isRectificativa) {
+                              const ahoraMs = Date.now();
+                              if (fac.raw_fecha_vencimiento) {
+                                isVencida = new Date(fac.raw_fecha_vencimiento).getTime() < ahoraMs;
+                              } else if (fac.fecha_vencimiento && String(fac.fecha_vencimiento).includes('/')) {
+                                const [dv, mv, yv] = String(fac.fecha_vencimiento).split('/');
+                                isVencida = new Date(Number(yv), Number(mv) - 1, Number(dv)).getTime() < ahoraMs;
+                              } else if (fac.name?.includes('/')) {
+                                const [d, m, y] = fac.name.split('/');
+                                const emision = new Date(Number(y), Number(m)-1, Number(d)).getTime();
+                                isVencida = (ahoraMs - emision) / (1000 * 3600 * 24) > 30;
+                              }
+                            }
 
                              if (editandoHistorialId === fac.id) {
                                  return (
@@ -1508,11 +1677,21 @@ export default function GeneradorFacturas() {
                                      </td>
                                      <td className="px-4 py-3 text-right">
                                          <div className="flex items-center justify-end gap-2">
-                                             {/* 🚀 BOTÓN COBRAR */}
+                                             {/* Cobrar / Revertir — solo si el usuario puede escribir (no Modo Asesor) */}
                                              {puedeEscribir && !isPresupuesto && !isRectificativa && !isCobrada && (
                                                  <button onClick={() => marcarCobrada(fac)} className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] uppercase tracking-wider bg-emerald-50 px-2 py-1.5 rounded-md transition border border-emerald-200" title="Marcar como cobrada">
                                                      💰 Cobrar
                                                  </button>
+                                             )}
+                                             {puedeEscribir && !isPresupuesto && !isRectificativa && isCobrada && (
+                                                 <button onClick={() => marcarPendiente(fac)} className="text-amber-600 hover:text-amber-700 font-bold text-[10px] uppercase tracking-wider bg-amber-50 px-2 py-1.5 rounded-md transition border border-amber-200" title="Volver a pendiente">
+                                                     ↩ Pendiente
+                                                 </button>
+                                             )}
+                                             {fac.url_archivo && (
+                                                 <a href={fac.url_archivo} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 p-1.5 rounded-md transition border border-indigo-100" title="Ver adjunto">
+                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                                 </a>
                                              )}
 
                                              {/* BOTÓN DESCARGAR PDF HISTÓRICO */}
@@ -1594,14 +1773,14 @@ export default function GeneradorFacturas() {
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
                    <div>
                        <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                           👥 Gestor de Clientes (CRM)
+                           Agenda CRM
                        </h3>
-                       <p className="text-xs text-slate-500 mt-1">Directorio de {nombreEspacioVisible(empresaId)}. Los clientes se añaden automáticamente al facturar.</p>
+                       <p className="text-xs text-slate-500 mt-1">Directorio de {nombreEspacioVisible(empresaId)}. Clientes y proveedores con ficha financiera.</p>
                    </div>
                    <div className="flex items-center gap-3">
                        {puedeEscribir && (
                        <button onClick={() => { setShowNuevoCliente(!showNuevoCliente); setCrmErrors({}); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm">
-                           {showNuevoCliente ? "Cancelar" : "+ Nuevo Cliente"}
+                           {showNuevoCliente ? "Cancelar" : "+ Nuevo Contacto"}
                        </button>
                        )}
                        <button onClick={() => setShowCRMModal(false)} className="text-slate-400 hover:text-rose-500 transition p-2 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -1613,9 +1792,16 @@ export default function GeneradorFacturas() {
                 <div className="p-6 overflow-y-auto space-y-4 bg-slate-50/50">
                    
                    {showNuevoCliente && (
-                       <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-200 mb-6 shadow-inner">
+                       <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-200 mb-2 shadow-inner">
                            <h4 className="text-xs font-black text-blue-800 uppercase tracking-widest mb-4">Añadir Contacto Manual</h4>
                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                               <div>
+                                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Tipo</label>
+                                  <select value={nuevoClienteData.tipo} onChange={e => setNuevoClienteData({...nuevoClienteData, tipo: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 bg-white">
+                                     <option value="CLIENTE">Cliente</option>
+                                     <option value="PROVEEDOR">Proveedor</option>
+                                  </select>
+                               </div>
                                <div>
                                   <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Nombre</label>
                                   <input type="text" value={nuevoClienteData.nombre} onChange={e => { setNuevoClienteData({...nuevoClienteData, nombre: e.target.value}); if (crmErrors.nombre) setCrmErrors({...crmErrors, nombre: ''}); }} placeholder="Ej: Mercadona SA" className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmErrors.nombre ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
@@ -1640,6 +1826,11 @@ export default function GeneradorFacturas() {
                                   <input type="tel" value={nuevoClienteData.telefono} onChange={e => { setNuevoClienteData({...nuevoClienteData, telefono: e.target.value}); if (crmErrors.telefono) setCrmErrors({...crmErrors, telefono: ''}); }} placeholder="+34 600 000 000" className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmErrors.telefono ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
                                   {crmErrors.telefono && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmErrors.telefono}</p>}
                                </div>
+                               <div className="md:col-span-3">
+                                  <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">IBAN Bancario</label>
+                                  <input type="text" value={nuevoClienteData.iban_bancario} onChange={e => { setNuevoClienteData({...nuevoClienteData, iban_bancario: e.target.value.toUpperCase()}); if (crmErrors.iban_bancario) setCrmErrors({...crmErrors, iban_bancario: ''}); }} placeholder="ES91 2100 0418 4502 0005 1332" className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmErrors.iban_bancario ? 'border-rose-400 bg-rose-50' : 'border-slate-300'}`} />
+                                  {crmErrors.iban_bancario && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmErrors.iban_bancario}</p>}
+                               </div>
                            </div>
                            <button onClick={guardarNuevoClienteCRM} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm hover:bg-blue-700 w-full sm:w-auto">
                                Guardar en Agenda
@@ -1647,17 +1838,60 @@ export default function GeneradorFacturas() {
                        </div>
                    )}
 
+                   {clientesCRM.length > 0 && (
+                      <div className="flex flex-col sm:flex-row gap-3 mb-2">
+                         <input
+                           type="text"
+                           value={crmSearchTerm}
+                           onChange={(e) => setCrmSearchTerm(e.target.value)}
+                           placeholder="Buscar por nombre, NIF, email o teléfono..."
+                           className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20"
+                         />
+                         <div className="flex bg-white rounded-xl border border-slate-200 overflow-hidden">
+                            {([
+                              { id: 'todos' as const, label: 'Todos' },
+                              { id: 'CLIENTE' as const, label: 'Clientes' },
+                              { id: 'PROVEEDOR' as const, label: 'Proveedores' },
+                            ]).map(f => (
+                              <button key={f.id} type="button" onClick={() => setCrmFiltroTipo(f.id)} className={`px-3 py-2 text-[10px] font-bold transition ${crmFiltroTipo === f.id ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                {f.label}
+                              </button>
+                            ))}
+                         </div>
+                      </div>
+                   )}
+
                    {clientesCRM.length === 0 && !showNuevoCliente ? (
                       <div className="text-center py-12">
                          <span className="text-4xl block mb-4">📇</span>
                          <p className="text-sm font-bold text-slate-600 mb-1">Tu agenda está vacía</p>
-                         <p className="text-xs text-slate-400">Rellena los datos de un cliente y pulsa "Registrar en Libro Mayor" para guardarlo automáticamente, o pulsa "+ Nuevo Cliente".</p>
+                         <p className="text-xs text-slate-400">Rellena los datos de un cliente y pulsa &quot;Registrar en Libro Mayor&quot; para guardarlo automáticamente, o pulsa &quot;+ Nuevo Contacto&quot;.</p>
+                      </div>
+                   ) : agendaCRMFiltrada.length === 0 ? (
+                      <div className="text-center py-10">
+                         <p className="text-sm font-bold text-slate-600 mb-1">Sin resultados</p>
+                         <p className="text-xs text-slate-400">Ningún contacto coincide con la búsqueda o el filtro seleccionados.</p>
                       </div>
                    ) : (
-                      clientesCRM.map((c) => (
-                         <div key={c.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between md:items-center gap-4 transition hover:border-blue-200 hover:shadow-md">
+                      agendaCRMFiltrada.map((c) => {
+                         const ficha = fichasCRM[c.nombre.trim().toLowerCase()];
+                         const isFichaAbierta = fichaAbiertaId === c.id;
+                         const esProveedor = (c.tipo || 'CLIENTE') === 'PROVEEDOR';
+                         let estadoCobro: 'al_dia' | 'pendiente' | 'moroso' = 'al_dia';
+                         if (ficha && ficha.vencido > 0) estadoCobro = 'moroso';
+                         else if (ficha && ficha.pendiente > 0) estadoCobro = 'pendiente';
+
+                         return (
+                         <div key={c.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4 transition hover:border-blue-200 hover:shadow-md">
                             {editandoClienteId === c.id ? (
                                <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div>
+                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Tipo</label>
+                                     <select value={editCRMData.tipo} onChange={e => setEditCRMData({...editCRMData, tipo: e.target.value})} className="w-full p-2.5 border border-blue-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 bg-white">
+                                        <option value="CLIENTE">Cliente</option>
+                                        <option value="PROVEEDOR">Proveedor</option>
+                                     </select>
+                                  </div>
                                   <div>
                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Nombre</label>
                                      <input type="text" value={editCRMData.nombre} onChange={e => setEditCRMData({...editCRMData, nombre: e.target.value})} className="w-full p-2.5 border border-blue-300 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20" />
@@ -1681,24 +1915,49 @@ export default function GeneradorFacturas() {
                                      <input type="tel" value={editCRMData.telefono} onChange={e => { setEditCRMData({...editCRMData, telefono: e.target.value}); if (crmEditErrors.telefono) setCrmEditErrors({...crmEditErrors, telefono: ''}); }} className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmEditErrors.telefono ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
                                      {crmEditErrors.telefono && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmEditErrors.telefono}</p>}
                                   </div>
+                                  <div className="md:col-span-3">
+                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">IBAN Bancario</label>
+                                     <input type="text" value={editCRMData.iban_bancario} onChange={e => { setEditCRMData({...editCRMData, iban_bancario: e.target.value.toUpperCase()}); if (crmEditErrors.iban_bancario) setCrmEditErrors({...crmEditErrors, iban_bancario: ''}); }} className={`w-full p-2.5 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 ${crmEditErrors.iban_bancario ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                     {crmEditErrors.iban_bancario && <p className="text-[10px] font-bold text-rose-500 mt-1">{crmEditErrors.iban_bancario}</p>}
+                                  </div>
                                </div>
                             ) : (
-                               <div className="flex-1">
-                                  <h4 className="text-sm font-black text-slate-900">{c.nombre}</h4>
-                                  <p className="text-[11px] font-medium text-slate-500 mt-1">
-                                     <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold mr-2">NIF: {c.nif}</span>
-                                     📍 {c.direccion}
-                                  </p>
-                                  {(c.email || c.telefono) && (
-                                     <p className="text-[11px] font-medium text-slate-500 mt-1.5 flex flex-wrap items-center gap-3">
-                                        {c.email && <span className="inline-flex items-center gap-1">✉️ {c.email}</span>}
-                                        {c.telefono && <span className="inline-flex items-center gap-1">📞 {c.telefono}</span>}
+                               <div className="flex items-start gap-4 flex-1">
+                                  <div className={`w-11 h-11 rounded-xl ${colorAvatar(c.nombre)} text-white flex items-center justify-center text-sm font-black flex-shrink-0 shadow-sm`}>
+                                     {inicialesContacto(c.nombre)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                     <div className="flex flex-wrap items-center gap-2 mb-1">
+                                        <h4 className="text-sm font-black text-slate-900 truncate">{c.nombre}</h4>
+                                        <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${esProveedor ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                                           {esProveedor ? 'Proveedor' : 'Cliente'}
+                                        </span>
+                                        {!esProveedor && (
+                                          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                            estadoCobro === 'moroso' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                                            estadoCobro === 'pendiente' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                                            'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                          }`}>
+                                            {estadoCobro === 'moroso' ? 'Moroso' : estadoCobro === 'pendiente' ? 'Con retraso' : 'Al día'}
+                                          </span>
+                                        )}
+                                     </div>
+                                     <p className="text-[11px] font-medium text-slate-500 mt-1">
+                                        {c.nif && <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold mr-2">NIF: {c.nif}</span>}
+                                        {c.direccion && <span>📍 {c.direccion}</span>}
                                      </p>
-                                  )}
+                                     {(c.email || c.telefono || c.iban_bancario) && (
+                                        <p className="text-[11px] font-medium text-slate-500 mt-1.5 flex flex-wrap items-center gap-3">
+                                           {c.email && <span className="inline-flex items-center gap-1">✉️ {c.email}</span>}
+                                           {c.telefono && <span className="inline-flex items-center gap-1">📞 {c.telefono}</span>}
+                                           {c.iban_bancario && <span className="inline-flex items-center gap-1">🏦 {c.iban_bancario}</span>}
+                                        </p>
+                                     )}
+                                  </div>
                                </div>
                             )}
                             
-                            <div className="flex items-center gap-2 border-t border-slate-100 pt-3 md:border-0 md:pt-0">
+                            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                                {editandoClienteId === c.id ? (
                                   <>
                                      <button onClick={() => guardarCRMEditado(c.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Guardar</button>
@@ -1706,25 +1965,54 @@ export default function GeneradorFacturas() {
                                   </>
                                 ) : (
                                   <>
-                                     {puedeEscribir && (
-                                     <button onClick={() => {
-                                         setClienteNombre(c.nombre);
-                                         setClienteNif(c.nif);
-                                         setClienteDireccion(c.direccion);
-                                         setShowCRMModal(false);
-                                     }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Usar en Factura</button>
+                                     {puedeEscribir && !esProveedor && (
+                                       <button onClick={() => {
+                                           setClienteNombre(c.nombre);
+                                           setClienteNif(c.nif);
+                                           setClienteDireccion(c.direccion);
+                                           setShowCRMModal(false);
+                                       }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">Usar en Factura</button>
                                      )}
+                                     <button onClick={() => setFichaAbiertaId(isFichaAbierta ? null : c.id)} className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">
+                                        {isFichaAbierta ? 'Cerrar Ficha' : 'Ficha 360°'}
+                                     </button>
                                      {puedeEscribir && (
                                      <>
-                                     <button onClick={() => { setEditandoClienteId(c.id); setEditCRMData({ nombre: c.nombre, nif: c.nif, direccion: c.direccion, email: c.email || '', telefono: c.telefono || '' }); setCrmEditErrors({}); }} className="bg-slate-50 hover:bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200 hover:border-blue-200">Editar</button>
+                                     <button onClick={() => { setEditandoClienteId(c.id); setEditCRMData({ nombre: c.nombre, tipo: c.tipo || 'CLIENTE', nif: c.nif, direccion: c.direccion, email: c.email || '', telefono: c.telefono || '', iban_bancario: c.iban_bancario || '' }); setCrmEditErrors({}); }} className="bg-slate-50 hover:bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200 hover:border-blue-200">Editar</button>
                                      <button onClick={() => setCrmIdToDelete(c.id)} className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-rose-100">Borrar</button>
                                      </>
                                      )}
                                   </>
                                )}
                             </div>
+
+                            {isFichaAbierta && editandoClienteId !== c.id && (
+                               <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                  <div>
+                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Facturado</p>
+                                     <p className="text-sm font-black text-slate-900">{(ficha?.totalFacturado || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</p>
+                                  </div>
+                                  <div>
+                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Pendiente</p>
+                                     <p className={`text-sm font-black ${(ficha?.pendiente || 0) > 0 ? 'text-amber-600' : 'text-slate-900'}`}>{(ficha?.pendiente || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</p>
+                                  </div>
+                                  <div>
+                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Vencido +30d</p>
+                                     <p className={`text-sm font-black ${(ficha?.vencido || 0) > 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(ficha?.vencido || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</p>
+                                  </div>
+                                  <div>
+                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Documentos</p>
+                                     <p className="text-sm font-black text-slate-900">{ficha?.numFacturas || 0}</p>
+                                     {ficha?.ultimaFecha && <p className="text-[10px] text-slate-400 font-medium mt-0.5">Última: {ficha.ultimaFecha}</p>}
+                                  </div>
+                                  {!ficha && (
+                                     <p className="col-span-2 md:col-span-4 text-[11px] text-slate-400 font-medium">Aún no hay facturas vinculadas a este contacto en el historial.</p>
+                                  )}
+                               </div>
+                            )}
                          </div>
-                      ))
+                         );
+                      })
                    )}
                 </div>
              </div>

@@ -152,8 +152,15 @@ export const fechaOperativaSchema = z
 // 📇 CONTACTO / CLIENTE (CRM)
 // ============================================================
 
+/** Comprobación básica de formato IBAN (longitud y patrón por país; no calcula el dígito de control MOD-97). */
+export function ibanTieneFormatoValido(valorRaw: string): boolean {
+  const valor = valorRaw.trim().toUpperCase().replace(/\s/g, '');
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(valor);
+}
+
 export const contactoCrmSchema = z.object({
   nombre: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres.').max(150),
+  tipo: z.enum(['CLIENTE', 'PROVEEDOR']).optional().default('CLIENTE'),
   nif: nifCifOpcional,
   direccion: z.string().trim().max(250).optional().or(z.literal('')),
   email: z
@@ -168,6 +175,13 @@ export const contactoCrmSchema = z.object({
     .refine((v) => v === '' || /^[+\d][\d\s-]{6,15}$/.test(v), 'El teléfono no es válido.')
     .optional()
     .or(z.literal('')),
+  iban_bancario: z
+    .string()
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => v === '' || ibanTieneFormatoValido(v), 'El IBAN no tiene un formato válido (ej: ES91 2100 0418 4502 0005 1332).')
+    .optional()
+    .or(z.literal('')),
 });
 
 // ============================================================
@@ -179,6 +193,23 @@ export const transaccionSchema = z.object({
   ingreso: importeSchema,
   categoria: z.string().trim().min(1, 'Selecciona una categoría.'),
   cifEmisor: nifCifOpcional,
+});
+
+// ============================================================
+// 📸 RESULTADO OCR (Gemini)
+// ============================================================
+
+export const ocrFacturaSchema = z.object({
+  categoria: z.string().trim().optional().nullable(),
+  base_imponible: z.coerce.number().finite().min(0).max(10_000_000).optional().nullable(),
+  iva: z.coerce.number().finite().min(0).max(100).optional().nullable(),
+  fecha: z.string().trim().optional().nullable(),
+  numero_factura: z.string().trim().max(80).optional().nullable(),
+  concepto: z.string().trim().max(200).optional().nullable(),
+  cliente_nombre: z.string().trim().max(150).optional().nullable(),
+  nif: z.string().trim().max(20).optional().nullable(),
+  confianza: z.coerce.number().finite().min(0).max(100).optional().nullable(),
+  evidencia: z.string().trim().max(500).optional().nullable(),
 });
 
 // ============================================================

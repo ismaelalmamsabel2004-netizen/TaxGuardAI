@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     if (!userId) return NextResponse.json({ error: "Acceso denegado" }, { status: 401 });
 
     const body = await request.json();
-    const { csvText, empresaId } = body;
+    const { csvText, empresaId, preview } = body;
 
     if (!csvText || !empresaId) {
       return NextResponse.json({ error: "Faltan datos obligatorios." }, { status: 400 });
@@ -84,21 +84,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "No se detectó ninguna transacción válida en el archivo." }, { status: 400 });
     }
 
-    // 🚀 OPTIMIZACIÓN B2B: Preparar array para inserción masiva
+    // Normaliza y prepara filas
     const transaccionesParaInsertar = movimientosACargar.map((mov: any) => {
-       // Blindaje de fechas bancarias extremas
        let fechaObj = new Date();
        if (mov.fecha) {
-          const fechaLimpia = mov.fecha.replace(/-/g, '/'); // Cambiar guiones a barras por seguridad
+          const fechaLimpia = String(mov.fecha).replace(/-/g, '/');
           if (fechaLimpia.includes('/')) {
              const [d, m, y] = fechaLimpia.split('/');
              fechaObj = new Date(Number(y), Number(m) - 1, Number(d));
           }
        }
-       // Si es "Invalid Date", usar la fecha de hoy para no colgar la BD
        if (isNaN(fechaObj.getTime())) fechaObj = new Date();
 
        const totalNum = Number(mov.total) || 0;
+       const concepto = String(mov.concepto || "Importado vía CSV").trim().slice(0, 200);
 
        return {
          userId: ctx.targetUserId,
@@ -109,18 +108,85 @@ export async function POST(request: Request) {
          categoria: mov.categoria || 'Otros',
          iva: Number(mov.iva) || 0,
          isRecurrent: false,
-         concepto_detalle: mov.concepto || "Importado vía CSV",
-         estado_pago: "COBRADO", // 🚀 B2B: Si viene del banco, el pago ya está efectuado
+         concepto_detalle: concepto,
+         estado_pago: "COBRADO",
        };
+    }).filter((t: any) => Number.isFinite(t.baseImponible) && t.baseImponible > 0);
+
+    if (transaccionesParaInsertar.length === 0) {
+        return NextResponse.json({ error: "No se detectó ninguna transacción válida en el archivo." }, { status: 400 });
+    }
+
+    // Preview: devolver clasificados sin escribir (el cliente confirma)
+    if (preview === true) {
+      return NextResponse.json({
+        success: true,
+        preview: true,
+        count: transaccionesParaInsertar.length,
+        movimientos: transaccionesParaInsertar.map((t: any) => ({
+          fecha: t.fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+          concepto: t.concepto_detalle,
+          total: t.tipo === 'GASTO' ? -t.baseImponible : t.baseImponible,
+          categoria: t.categoria,
+          iva: t.iva,
+        })),
+      });
+    }
+
+    // Huella anti-duplicados: misma fecha + importe + concepto (90 días atrás)
+    const desde = new Date();
+    desde.setDate(desde.getDate() - 90);
+    const existentes = await prisma.transaccion.findMany({
+      where: {
+        userId: ctx.targetUserId,
+        empresaId: ctx.realEmpresaId,
+        fecha: { gte: desde },
+      },
+      select: { fecha: true, baseImponible: true, tipo: true, concepto_detalle: true },
+      take: 5000,
     });
 
-    // 🚀 INSERCIÓN MASIVA (BULK INSERT) PARA ALTO RENDIMIENTO
+    const huella = (fecha: Date, base: number, tipo: string, concepto: string) => {
+      const d = fecha.toISOString().slice(0, 10);
+      const c = (concepto || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 80);
+      return `${d}|${tipo}|${Number(base).toFixed(2)}|${c}`;
+    };
+
+    const existentesSet = new Set(
+      existentes.map((e) => huella(e.fecha, e.baseImponible, e.tipo, e.concepto_detalle || ''))
+    );
+
+    const nuevas: typeof transaccionesParaInsertar = [];
+    let skippedDuplicates = 0;
+    for (const t of transaccionesParaInsertar) {
+      const key = huella(t.fecha, t.baseImponible, t.tipo, t.concepto_detalle || '');
+      if (existentesSet.has(key)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      existentesSet.add(key); // evita duplicados dentro del propio CSV
+      nuevas.push(t);
+    }
+
+    if (nuevas.length === 0) {
+      return NextResponse.json({
+        success: true,
+        count: 0,
+        skippedDuplicates,
+        message: "Todos los movimientos del extracto ya estaban registrados.",
+      });
+    }
+
     const dbResult = await prisma.transaccion.createMany({
-        data: transaccionesParaInsertar,
-        skipDuplicates: true // Previene bloqueos si hay algún conflicto menor
+        data: nuevas,
+        skipDuplicates: true
     });
 
-    return NextResponse.json({ success: true, count: dbResult.count });
+    return NextResponse.json({
+      success: true,
+      count: dbResult.count,
+      skippedDuplicates,
+    });
 
   } catch (error: any) {
     console.error("🔴 Error en importación bancaria masiva:", error);

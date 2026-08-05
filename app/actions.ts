@@ -5,7 +5,8 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { getContextoSeguro } from '../lib/authContext';
-import { contactoCrmSchema } from '../lib/validations';
+import { contactoCrmSchema, ocrFacturaSchema, esNifCifValido } from '../lib/validations';
+import { z } from 'zod';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -154,7 +155,13 @@ export async function guardarDatoSupabase(datos: any) {
           tipo_archivo: datos.tipo_archivo || null,
           estado_pago: datos.estado_pago || "COBRADO",
           metodo_pago: datos.metodo_pago || null,
-          notas_internas: datos.notas_internas || null
+          notas_internas: datos.notas_internas || null,
+          ...(datos.fecha_vencimiento
+            ? { fecha_vencimiento: (() => {
+                const fv = new Date(datos.fecha_vencimiento);
+                return isNaN(fv.getTime()) ? null : fv;
+              })() }
+            : {}),
       };
 
       // 🛡️ RED DE SEGURIDAD FINAL: la comprobación previa de "resolverNumeroDocumentoUnico" tiene
@@ -335,9 +342,25 @@ export async function actualizarEstadoPago(id: number, nuevoEstado: string, empr
       const ctx = await getContextoSeguro(empresaIdRaw);
       if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") return { error: "Modo solo lectura." };
 
+      const estadosValidos = ["PENDIENTE", "COBRADO", "PAGADO"];
+      if (!estadosValidos.includes(nuevoEstado)) {
+        return { error: "Estado de pago no válido." };
+      }
+
+      // Limpia el tag legacy [ESTADO: COBRADA] del concepto al unificar con estado_pago
+      const existente = await prisma.transaccion.findFirst({
+        where: { id: id, userId: ctx.targetUserId },
+        select: { concepto_detalle: true },
+      });
+      const conceptoActual = existente?.concepto_detalle || "";
+      const conceptoLimpio = conceptoActual.replace(/\s*\[ESTADO:\s*COBRADA\]/gi, "").trim();
+
       await prisma.transaccion.update({
         where: { id: id, userId: ctx.targetUserId },
-        data: { estado_pago: nuevoEstado }
+        data: {
+          estado_pago: nuevoEstado,
+          ...(conceptoLimpio !== conceptoActual ? { concepto_detalle: conceptoLimpio || null } : {}),
+        }
       });
       return { success: true };
   } catch (error: any) {
@@ -359,6 +382,21 @@ export async function escanearFacturaIA(formData: FormData) {
 
   const file = formData.get('factura') as File;
   const categorias = formData.get('categorias') as string;
+  const empresaIdRaw = String(formData.get('empresaId') || '');
+
+  if (!empresaIdRaw) {
+    return { error: "Selecciona un espacio de trabajo antes de escanear." };
+  }
+
+  // 🛡️ Mismo control de permisos que el resto de mutaciones (asesor LECTURA no puede gastar OCR)
+  try {
+    const ctx = await getContextoSeguro(empresaIdRaw);
+    if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") {
+      return { error: "Acceso denegado: el Modo Asesor es de solo lectura." };
+    }
+  } catch {
+    return { error: "No se pudo verificar el acceso al espacio de trabajo." };
+  }
 
   if (!file || file.size === 0) {
     return { error: "No se ha podido leer el archivo. Inténtalo de nuevo." };
@@ -375,8 +413,9 @@ export async function escanearFacturaIA(formData: FormData) {
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString('base64');
     
-    let urlArchivoSubido = null;
-    let nombreArchivoUnico = `${userId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    let urlArchivoSubido: string | null = null;
+    let avisoStorage: string | null = null;
+    const nombreArchivoUnico = `${userId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
 
     try {
         const { data: uploadData, error: uploadError } = await supabase.storage
@@ -386,9 +425,13 @@ export async function escanearFacturaIA(formData: FormData) {
         if (!uploadError && uploadData) {
             const { data: publicUrlData } = supabase.storage.from('facturas').getPublicUrl(nombreArchivoUnico);
             urlArchivoSubido = publicUrlData.publicUrl;
+        } else {
+            avisoStorage = "La IA leyó el documento, pero no se pudo guardar el archivo adjunto en el almacenamiento.";
+            console.error("Error storage OCR:", uploadError);
         }
     } catch (e) {
-        // Ignoramos error storage
+        avisoStorage = "La IA leyó el documento, pero no se pudo guardar el archivo adjunto en el almacenamiento.";
+        console.error("Error storage OCR:", e);
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -413,11 +456,30 @@ export async function escanearFacturaIA(formData: FormData) {
 
     const result = await model.generateContent([ prompt, { inlineData: { data: base64Image, mimeType: file.type } } ]);
     const texto = result.response.text();
-    const datosParseados = JSON.parse(texto);
+    let rawJson: unknown;
+    try {
+      const clean = texto.replace(/```json/g, '').replace(/```/g, '').trim();
+      rawJson = JSON.parse(clean);
+    } catch {
+      return { error: "La IA no devolvió un JSON legible. Prueba con una foto más nítida o un PDF." };
+    }
+
+    const validacion = ocrFacturaSchema.safeParse(rawJson);
+    if (!validacion.success) {
+      return { error: "Los datos extraídos no son válidos. Revisa el documento o introduce los campos a mano." };
+    }
+
+    const datosParseados = validacion.data;
     
     return { 
         success: true, 
-        data: { ...datosParseados, url_archivo: urlArchivoSubido, nombre_archivo: file.name, tipo_archivo: file.type }
+        data: {
+          ...datosParseados,
+          url_archivo: urlArchivoSubido,
+          nombre_archivo: file.name,
+          tipo_archivo: file.type,
+          aviso_storage: avisoStorage,
+        }
     };
   } catch (error: any) {
     return { error: error.message || "Fallo de conexión OCR" };
@@ -593,8 +655,8 @@ export async function guardarContactoCRM(datos: any) {
         // formulario. Sin esta validación, un nombre vacío o un email/NIF con formato inválido se
         // guardaba igual en el CRM y podía acabar impreso en una factura real enviada a un cliente.
         const validacion = contactoCrmSchema.safeParse({
-            nombre: datos.nombre, nif: datos.nif || '', direccion: datos.direccion || '',
-            email: datos.email || '', telefono: datos.telefono || ''
+            nombre: datos.nombre, tipo: datos.tipo, nif: datos.nif || '', direccion: datos.direccion || '',
+            email: datos.email || '', telefono: datos.telefono || '', iban_bancario: datos.iban_bancario || ''
         });
         if (!validacion.success) {
             return { error: validacion.error.issues[0]?.message || "Datos del contacto no válidos." };
@@ -605,12 +667,13 @@ export async function guardarContactoCRM(datos: any) {
             data: {
                 userId: ctx.targetUserId,
                 empresaId: ctx.realEmpresaId,
-                tipo: datos.tipo || "CLIENTE",
+                tipo: d.tipo,
                 nombre: d.nombre,
                 nif: d.nif || null,
                 email: d.email || null,
                 telefono: d.telefono || null,
                 direccion: d.direccion || null,
+                iban_bancario: d.iban_bancario || null,
             }
         });
         return { success: true, contacto };
@@ -626,24 +689,30 @@ export async function editarContactoCRM(datos: any) {
 
         // 🛡️ BLINDAJE DE DATOS: mismo guardián que en el alta (ver guardarContactoCRM).
         const validacion = contactoCrmSchema.safeParse({
-            nombre: datos.nombre, nif: datos.nif || '', direccion: datos.direccion || '',
-            email: datos.email || '', telefono: datos.telefono || ''
+            nombre: datos.nombre, tipo: datos.tipo, nif: datos.nif || '', direccion: datos.direccion || '',
+            email: datos.email || '', telefono: datos.telefono || '', iban_bancario: datos.iban_bancario || ''
         });
         if (!validacion.success) {
             return { error: validacion.error.issues[0]?.message || "Datos del contacto no válidos." };
         }
         const d = validacion.data;
 
-        await prisma.contactoEmpresa.update({
-            where: { id: Number(datos.id), userId: ctx.targetUserId },
+        // 🛡️ BLINDAJE MULTI-EMPRESA: usamos updateMany (no update) porque Prisma solo permite
+        // campos únicos en el where de update; así filtramos por id + userId + empresaId a la vez
+        // y evitamos tocar un contacto de otro espacio de trabajo del mismo usuario.
+        const resultado = await prisma.contactoEmpresa.updateMany({
+            where: { id: Number(datos.id), userId: ctx.targetUserId, empresaId: ctx.realEmpresaId },
             data: {
+                tipo: d.tipo,
                 nombre: d.nombre,
                 nif: d.nif || null,
                 email: d.email || null,
                 telefono: d.telefono || null,
                 direccion: d.direccion || null,
+                iban_bancario: d.iban_bancario || null,
             }
         });
+        if (resultado.count === 0) return { error: "No se encontró el contacto en este espacio de trabajo." };
         return { success: true };
     } catch (error: any) {
         return { error: "Error de servidor al actualizar el contacto." };
@@ -655,9 +724,11 @@ export async function borrarContactoCRM(id: number, empresaIdRaw: string) {
         const ctx = await getContextoSeguro(empresaIdRaw);
         if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") return { error: "Modo solo lectura." };
 
-        await prisma.contactoEmpresa.delete({
-            where: { id: Number(id), userId: ctx.targetUserId }
+        // 🛡️ Mismo blindaje multi-empresa que en la edición (ver editarContactoCRM).
+        const resultado = await prisma.contactoEmpresa.deleteMany({
+            where: { id: Number(id), userId: ctx.targetUserId, empresaId: ctx.realEmpresaId }
         });
+        if (resultado.count === 0) return { error: "No se encontró el contacto en este espacio de trabajo." };
         return { success: true };
     } catch (error: any) {
         return { error: "Error de servidor al borrar el contacto." };
@@ -678,19 +749,32 @@ export async function migrarContactosCRMDesdeJSON(empresaIdRaw: string, contacto
         });
         if (existentes > 0) return { migrated: 0 };
 
-        const validos = contactosJSON.filter((c: any) => c && c.nombre && c.nombre.trim() !== "");
+        // 🛡️ BLINDAJE DE DATOS: los contactos legacy vienen de un JSON libre tecleado a mano, sin
+        // ninguna validación previa. En vez de rechazar la migración entera por un dato sucio,
+        // saneamos campo a campo: solo conservamos NIF/email/teléfono si tienen un formato válido,
+        // así la agenda nueva nace limpia en vez de arrastrar la basura de la versión antigua.
+        const validos = contactosJSON
+            .filter((c: any) => c && typeof c.nombre === 'string' && c.nombre.trim().length >= 2)
+            .map((c: any) => {
+                const nifLimpio = typeof c.nif === 'string' ? c.nif.trim().toUpperCase() : '';
+                const emailLimpio = typeof c.email === 'string' ? c.email.trim() : '';
+                const telefonoLimpio = typeof c.telefono === 'string' ? c.telefono.trim() : '';
+                return {
+                    nombre: c.nombre.trim().slice(0, 150),
+                    nif: esNifCifValido(nifLimpio) ? nifLimpio : null,
+                    email: z.string().email().safeParse(emailLimpio).success ? emailLimpio : null,
+                    telefono: /^[+\d][\d\s-]{6,15}$/.test(telefonoLimpio) ? telefonoLimpio : null,
+                    direccion: typeof c.direccion === 'string' ? c.direccion.trim().slice(0, 250) || null : null,
+                };
+            });
         if (validos.length === 0) return { migrated: 0 };
 
         await prisma.contactoEmpresa.createMany({
-            data: validos.map((c: any) => ({
+            data: validos.map((c) => ({
                 userId: ctx.targetUserId,
                 empresaId: ctx.realEmpresaId,
                 tipo: "CLIENTE",
-                nombre: c.nombre,
-                nif: c.nif || null,
-                email: c.email || null,
-                telefono: c.telefono || null,
-                direccion: c.direccion || null,
+                ...c,
             }))
         });
         return { migrated: validos.length };
