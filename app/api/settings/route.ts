@@ -68,12 +68,28 @@ export async function GET(request: Request) {
   }
 }
 
+// 🛡️ CAMPOS DE FACTURACIÓN BLINDADOS: estos datos solo los puede escribir el webhook de
+// Stripe (tras un pago real y verificado) o la ruta de checkout. Antes, este endpoint
+// aceptaba y guardaba CUALQUIER campo que mandara el cliente, incluido "planSuscripcion".
+// Eso significaba que cualquier usuario, con las herramientas de desarrollador del
+// navegador, podía llamar a POST /api/settings con { planSuscripcion: "pro" } y
+// autoconcederse el plan de pago gratis, sin pasar nunca por Stripe.
+const CAMPOS_PROTEGIDOS_FACTURACION = ['planSuscripcion', 'pagoVerificado', 'stripeCustomerId', 'stripeSubscriptionId'] as const;
+
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Acceso denegado" }, { status: 401 });
 
     const newSettings = await request.json();
+    if (!newSettings || typeof newSettings !== 'object' || Array.isArray(newSettings)) {
+      return NextResponse.json({ error: "Formato de ajustes no válido" }, { status: 400 });
+    }
+
+    // Nunca confiamos en lo que el cliente diga sobre su propia facturación.
+    for (const campo of CAMPOS_PROTEGIDOS_FACTURACION) {
+      delete newSettings[campo];
+    }
 
     // Aseguramos la existencia de la tabla
     await prisma.$executeRawUnsafe(`
@@ -84,6 +100,20 @@ export async function POST(request: Request) {
       );
     `);
 
+    // Recuperamos el estado de facturación real (el único válido) para reinyectarlo
+    // después de fusionar, así el resto de ajustes del usuario se guardan con normalidad
+    // sin dejar nunca que sobrescriban su plan o su verificación de pago.
+    const filasActuales = await prisma.$queryRawUnsafe<any[]>(`SELECT data FROM user_settings WHERE user_id = $1`, userId);
+    let datosFacturacion: any = {};
+    if (filasActuales && filasActuales.length > 0) {
+      const actuales = typeof filasActuales[0].data === 'string' ? JSON.parse(filasActuales[0].data) : (filasActuales[0].data || {});
+      for (const campo of CAMPOS_PROTEGIDOS_FACTURACION) {
+        if (actuales[campo] !== undefined) datosFacturacion[campo] = actuales[campo];
+      }
+    }
+
+    const settingsFinales = { ...newSettings, ...datosFacturacion };
+
     // 3. Guardamos o actualizamos (Upsert) actualizando el sello de tiempo
     await prisma.$executeRawUnsafe(
       `INSERT INTO user_settings (user_id, data, updated_at)
@@ -91,7 +121,7 @@ export async function POST(request: Request) {
        ON CONFLICT (user_id) 
        DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;`,
       userId,
-      JSON.stringify(newSettings)
+      JSON.stringify(settingsFinales)
     );
 
     return NextResponse.json({ success: true, timestamp: new Date().toISOString() });
