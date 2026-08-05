@@ -182,6 +182,23 @@ export const transaccionSchema = z.object({
 });
 
 // ============================================================
+// 📸 RESULTADO OCR (Gemini)
+// ============================================================
+
+export const ocrFacturaSchema = z.object({
+  categoria: z.string().trim().optional().nullable(),
+  base_imponible: z.coerce.number().finite().min(0).max(10_000_000).optional().nullable(),
+  iva: z.coerce.number().finite().min(0).max(100).optional().nullable(),
+  fecha: z.string().trim().optional().nullable(),
+  numero_factura: z.string().trim().max(80).optional().nullable(),
+  concepto: z.string().trim().max(200).optional().nullable(),
+  cliente_nombre: z.string().trim().max(150).optional().nullable(),
+  nif: z.string().trim().max(20).optional().nullable(),
+  confianza: z.coerce.number().finite().min(0).max(100).optional().nullable(),
+  evidencia: z.string().trim().max(500).optional().nullable(),
+});
+
+// ============================================================
 // 🔧 UTILIDAD: convierte errores de Zod en un mapa {campo: mensaje}
 // ============================================================
 

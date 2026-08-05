@@ -5,7 +5,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { getContextoSeguro } from '../lib/authContext';
-import { contactoCrmSchema } from '../lib/validations';
+import { contactoCrmSchema, ocrFacturaSchema } from '../lib/validations';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -154,7 +154,13 @@ export async function guardarDatoSupabase(datos: any) {
           tipo_archivo: datos.tipo_archivo || null,
           estado_pago: datos.estado_pago || "COBRADO",
           metodo_pago: datos.metodo_pago || null,
-          notas_internas: datos.notas_internas || null
+          notas_internas: datos.notas_internas || null,
+          ...(datos.fecha_vencimiento
+            ? { fecha_vencimiento: (() => {
+                const fv = new Date(datos.fecha_vencimiento);
+                return isNaN(fv.getTime()) ? null : fv;
+              })() }
+            : {}),
       };
 
       // 🛡️ RED DE SEGURIDAD FINAL: la comprobación previa de "resolverNumeroDocumentoUnico" tiene
@@ -335,9 +341,25 @@ export async function actualizarEstadoPago(id: number, nuevoEstado: string, empr
       const ctx = await getContextoSeguro(empresaIdRaw);
       if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") return { error: "Modo solo lectura." };
 
+      const estadosValidos = ["PENDIENTE", "COBRADO", "PAGADO"];
+      if (!estadosValidos.includes(nuevoEstado)) {
+        return { error: "Estado de pago no válido." };
+      }
+
+      // Limpia el tag legacy [ESTADO: COBRADA] del concepto al unificar con estado_pago
+      const existente = await prisma.transaccion.findFirst({
+        where: { id: id, userId: ctx.targetUserId },
+        select: { concepto_detalle: true },
+      });
+      const conceptoActual = existente?.concepto_detalle || "";
+      const conceptoLimpio = conceptoActual.replace(/\s*\[ESTADO:\s*COBRADA\]/gi, "").trim();
+
       await prisma.transaccion.update({
         where: { id: id, userId: ctx.targetUserId },
-        data: { estado_pago: nuevoEstado }
+        data: {
+          estado_pago: nuevoEstado,
+          ...(conceptoLimpio !== conceptoActual ? { concepto_detalle: conceptoLimpio || null } : {}),
+        }
       });
       return { success: true };
   } catch (error: any) {
@@ -359,6 +381,21 @@ export async function escanearFacturaIA(formData: FormData) {
 
   const file = formData.get('factura') as File;
   const categorias = formData.get('categorias') as string;
+  const empresaIdRaw = String(formData.get('empresaId') || '');
+
+  if (!empresaIdRaw) {
+    return { error: "Selecciona un espacio de trabajo antes de escanear." };
+  }
+
+  // 🛡️ Mismo control de permisos que el resto de mutaciones (asesor LECTURA no puede gastar OCR)
+  try {
+    const ctx = await getContextoSeguro(empresaIdRaw);
+    if (ctx.rol === "LECTURA" || ctx.rol === "NINGUNO") {
+      return { error: "Acceso denegado: el Modo Asesor es de solo lectura." };
+    }
+  } catch {
+    return { error: "No se pudo verificar el acceso al espacio de trabajo." };
+  }
 
   if (!file || file.size === 0) {
     return { error: "No se ha podido leer el archivo. Inténtalo de nuevo." };
@@ -375,8 +412,9 @@ export async function escanearFacturaIA(formData: FormData) {
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString('base64');
     
-    let urlArchivoSubido = null;
-    let nombreArchivoUnico = `${userId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    let urlArchivoSubido: string | null = null;
+    let avisoStorage: string | null = null;
+    const nombreArchivoUnico = `${userId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
 
     try {
         const { data: uploadData, error: uploadError } = await supabase.storage
@@ -386,9 +424,13 @@ export async function escanearFacturaIA(formData: FormData) {
         if (!uploadError && uploadData) {
             const { data: publicUrlData } = supabase.storage.from('facturas').getPublicUrl(nombreArchivoUnico);
             urlArchivoSubido = publicUrlData.publicUrl;
+        } else {
+            avisoStorage = "La IA leyó el documento, pero no se pudo guardar el archivo adjunto en el almacenamiento.";
+            console.error("Error storage OCR:", uploadError);
         }
     } catch (e) {
-        // Ignoramos error storage
+        avisoStorage = "La IA leyó el documento, pero no se pudo guardar el archivo adjunto en el almacenamiento.";
+        console.error("Error storage OCR:", e);
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -413,11 +455,30 @@ export async function escanearFacturaIA(formData: FormData) {
 
     const result = await model.generateContent([ prompt, { inlineData: { data: base64Image, mimeType: file.type } } ]);
     const texto = result.response.text();
-    const datosParseados = JSON.parse(texto);
+    let rawJson: unknown;
+    try {
+      const clean = texto.replace(/```json/g, '').replace(/```/g, '').trim();
+      rawJson = JSON.parse(clean);
+    } catch {
+      return { error: "La IA no devolvió un JSON legible. Prueba con una foto más nítida o un PDF." };
+    }
+
+    const validacion = ocrFacturaSchema.safeParse(rawJson);
+    if (!validacion.success) {
+      return { error: "Los datos extraídos no son válidos. Revisa el documento o introduce los campos a mano." };
+    }
+
+    const datosParseados = validacion.data;
     
     return { 
         success: true, 
-        data: { ...datosParseados, url_archivo: urlArchivoSubido, nombre_archivo: file.name, tipo_archivo: file.type }
+        data: {
+          ...datosParseados,
+          url_archivo: urlArchivoSubido,
+          nombre_archivo: file.name,
+          tipo_archivo: file.type,
+          aviso_storage: avisoStorage,
+        }
     };
   } catch (error: any) {
     return { error: error.message || "Fallo de conexión OCR" };
