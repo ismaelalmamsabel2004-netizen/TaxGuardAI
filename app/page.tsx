@@ -109,6 +109,8 @@ export default function Home() {
 
   const [confianzaIA, setConfianzaIA] = useState<number | null>(null);
   const [evidenciaIA, setEvidenciaIA] = useState<string | null>(null);
+  const [conceptoOCR, setConceptoOCR] = useState("");
+  const [proveedorOCR, setProveedorOCR] = useState("");
   
   const [urlArchivoTemporal, setUrlArchivoTemporal] = useState<string | null>(null);
   const [nombreArchivoTemporal, setNombreArchivoTemporal] = useState<string | null>(null);
@@ -816,6 +818,12 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!empresaId) {
+      toast.warning("Espacio Requerido", { description: "Selecciona un espacio de trabajo antes de escanear." });
+      e.target.value = "";
+      return;
+    }
+
     // 🛡️ BLINDAJE: feedback inmediato antes de subir nada (el servidor vuelve a comprobarlo por seguridad)
     const TIPOS_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
     if (file.size > 10 * 1024 * 1024) {
@@ -832,32 +840,47 @@ export default function Home() {
     setIsScanning(true);
     setConfianzaIA(null); 
     setEvidenciaIA(null);
+    setConceptoOCR("");
+    setProveedorOCR("");
     
     const formData = new FormData();
     formData.append('factura', file);
     formData.append('categorias', categoriasGasto.join(', '));
+    formData.append('empresaId', empresaId);
     
     try {
       const res = await escanearFacturaIA(formData);
 
       if (res.success && res.data) {
         setTipoTransaccion('gasto'); 
+        setEstadoPago('PAGADO');
         if (res.data.fecha) setMes(res.data.fecha);
-        if (res.data.base_imponible) setIngreso(res.data.base_imponible.toString());
-        if (res.data.iva !== undefined) setIvaSeleccionado(res.data.iva.toString());
+        if (res.data.base_imponible != null) setIngreso(String(res.data.base_imponible));
+        if (res.data.iva !== undefined && res.data.iva !== null) setIvaSeleccionado(String(res.data.iva));
         if (res.data.categoria && categoriasGasto.includes(res.data.categoria)) setCategoria(res.data.categoria);
         
-        if (res.data.nif) setCifEmisor(res.data.nif);
-        if (res.data.numero_factura) setNumFactura(res.data.numero_factura);
+        if (res.data.nif) setCifEmisor(String(res.data.nif).toUpperCase());
+        if (res.data.numero_factura) setNumFactura(String(res.data.numero_factura));
+        if (res.data.concepto) setConceptoOCR(String(res.data.concepto));
+        if (res.data.cliente_nombre) setProveedorOCR(String(res.data.cliente_nombre));
         
-        if (res.data.confianza) setConfianzaIA(res.data.confianza);
-        if (res.data.evidencia) setEvidenciaIA(res.data.evidencia);
+        if (res.data.confianza != null) setConfianzaIA(Number(res.data.confianza));
+        if (res.data.evidencia) setEvidenciaIA(String(res.data.evidencia));
 
         if (res.data.url_archivo) setUrlArchivoTemporal(res.data.url_archivo);
         if (res.data.nombre_archivo) setNombreArchivoTemporal(res.data.nombre_archivo);
         if (res.data.tipo_archivo) setTipoArchivoTemporal(res.data.tipo_archivo);
-        
-        toast.success("Documento Escaneado", { description: "La IA ha procesado tu ticket con éxito." });
+
+        if (res.data.aviso_storage) {
+          toast.warning("Adjunto no guardado", { description: String(res.data.aviso_storage) });
+        }
+
+        const conf = Number(res.data.confianza);
+        if (Number.isFinite(conf) && conf < 55) {
+          toast.warning("Confianza baja", { description: `La IA solo tiene un ${conf}% de seguridad. Revisa los campos antes de guardar.` });
+        } else {
+          toast.success("Documento Escaneado", { description: "La IA ha procesado tu ticket con éxito." });
+        }
 
       } else {
         toast.error("Error de Auditoría IA", { description: res.error || "Fallo desconocido" });
@@ -889,7 +912,11 @@ export default function Home() {
         const dataRes = await res.json();
 
         if (res.ok && dataRes.success) {
-          toast.success("Importación Exitosa", { description: `Se han importado y clasificado ${dataRes.count} movimientos bancarios.` });
+          const skipped = dataRes.skippedDuplicates || 0;
+          const msg = skipped > 0
+            ? `Se han importado ${dataRes.count} movimientos (${skipped} duplicados omitidos).`
+            : `Se han importado y clasificado ${dataRes.count} movimientos bancarios.`;
+          toast.success("Importación Exitosa", { description: msg });
           const actualizadosBD = await obtenerDatosSupabase(empresaId);
           setData(actualizadosBD);
         } else {
@@ -1006,6 +1033,7 @@ export default function Home() {
 
       const detalleAdicional = (tipoTransaccion === 'gasto' && isVehiculo) ? " (Gasto Vehículo: IVA 50% deducible)" : "";
       const tagProyecto = proyecto.trim() ? ` [PROYECTO: ${proyecto.toUpperCase()}]` : "";
+      const conceptoBase = [conceptoOCR.trim(), detalleAdicional.trim()].filter(Boolean).join(' ');
       
       const res = await guardarDatoSupabase({ 
         month: fecha, 
@@ -1018,7 +1046,8 @@ export default function Home() {
         empresaId: empresaId, 
         isRecurrent: isRecurrent,
         frecuencia: isRecurrent ? frecuencia : null,
-        concepto_detalle: detalleAdicional + tagProyecto,
+        cliente_nombre: proveedorOCR || null,
+        concepto_detalle: conceptoBase + tagProyecto,
         url_archivo: urlArchivoTemporal,
         nombre_archivo: nombreArchivoTemporal,
         tipo_archivo: tipoArchivoTemporal
@@ -1030,6 +1059,7 @@ export default function Home() {
         setIngreso(''); setProyecto(''); setCifEmisor(''); setNumFactura('');
         setIsRecurrent(false); setIsVehiculo(false);
         setFrecuencia('Mensual'); setIvaSeleccionado("21"); 
+        setConceptoOCR(''); setProveedorOCR('');
         
         setConfianzaIA(null); setEvidenciaIA(null); setUrlArchivoTemporal(null);
         setNombreArchivoTemporal(null); setTipoArchivoTemporal(null);
@@ -1688,19 +1718,24 @@ export default function Home() {
                             </div>
                             
                             {confianzaIA !== null && evidenciaIA && (
-                              <div className="mt-1 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl animate-fade-in-up">
+                              <div className={`mt-1 p-3 border rounded-xl animate-fade-in-up ${confianzaIA < 55 ? 'bg-amber-50/50 border-amber-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className="relative flex h-2.5 w-2.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${confianzaIA < 55 ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${confianzaIA < 55 ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
                                   </span>
-                                  <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest">
+                                  <span className={`text-[10px] font-black uppercase tracking-widest ${confianzaIA < 55 ? 'text-amber-800' : 'text-emerald-800'}`}>
                                     Auditoría IA: Confianza {confianzaIA}%
                                   </span>
                                 </div>
-                                <p className="text-[10px] text-emerald-600 font-medium italic">
+                                <p className={`text-[10px] font-medium italic ${confianzaIA < 55 ? 'text-amber-700' : 'text-emerald-600'}`}>
                                   "{evidenciaIA}"
                                 </p>
+                                {(proveedorOCR || conceptoOCR) && (
+                                  <p className="text-[10px] font-semibold text-slate-600 mt-1.5">
+                                    {proveedorOCR ? `Emisor: ${proveedorOCR}` : ''}{proveedorOCR && conceptoOCR ? ' · ' : ''}{conceptoOCR ? `Concepto: ${conceptoOCR}` : ''}
+                                  </p>
+                                )}
                               </div>
                             )}
 
