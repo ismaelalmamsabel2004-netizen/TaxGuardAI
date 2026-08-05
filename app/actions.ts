@@ -437,12 +437,51 @@ export async function verificarRolUsuario(empresaIdRaw: string) {
     }
 }
 
+/** Lee perfiles / datos fiscales / facturación del propietario del espacio (útil en Modo Asesor). */
+export async function obtenerPerfilEspacio(empresaIdRaw: string) {
+  try {
+    const ctx = await getContextoSeguro(empresaIdRaw);
+    if (ctx.rol === 'NINGUNO') return { error: 'Sin acceso a este espacio.' };
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id VARCHAR(255) PRIMARY KEY,
+        data JSONB,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const rows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT data FROM user_settings WHERE user_id = $1`,
+      ctx.targetUserId
+    );
+
+    let data: any = {};
+    if (rows?.length) {
+      data = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : (rows[0].data || {});
+    }
+
+    const emp = ctx.realEmpresaId;
+    return {
+      success: true,
+      rol: ctx.rol,
+      empresaId: emp,
+      perfil: data.perfiles?.[emp] || { sector: '', objetivo: '' },
+      datosFiscales: data.datosFiscales?.[emp] || null,
+      datosFacturacion: data.datosFacturacion?.[emp] || null,
+      categorias: data.categorias?.[emp] || null,
+    };
+  } catch (e) {
+    return { error: 'No se pudo cargar el perfil del espacio.' };
+  }
+}
+
 export async function obtenerEmpresasCliente() {
     const { userId } = await auth();
     const user = await currentUser();
     if (!userId || !user) return [];
 
-    const miEmail = user.primaryEmailAddress?.emailAddress;
+    const miEmail = user.primaryEmailAddress?.emailAddress?.toLowerCase();
     if (!miEmail) return [];
 
     const invitaciones = await prisma.permisoEmpresa.findMany({
@@ -453,14 +492,20 @@ export async function obtenerEmpresasCliente() {
         .filter(inv => inv.empresaId && inv.empresaId.trim() !== "") 
         .map(inv => ({
             idCompleto: `CLIENTE|${inv.propietarioId}|${inv.empresaId}`,
-            nombreVisible: inv.empresaId,
-            propietarioId: inv.propietarioId
+            // Desambiguar clientes con el mismo nombre de empresa
+            nombreVisible: `${inv.empresaId} · …${String(inv.propietarioId).slice(-4)}`,
+            propietarioId: inv.propietarioId,
+            empresaId: inv.empresaId,
         }));
 }
 
 export async function invitarAsesor(empresaId: string, asesorEmail: string) {
     const { userId } = await auth();
     if (!userId) return { error: "No autorizado" };
+
+    if (empresaId?.startsWith('CLIENTE|')) {
+        return { error: "No puedes invitar asesores desde el espacio de un cliente." };
+    }
 
     // 🛡️ BLINDAJE DE DATOS: sin esta validación, un email mal escrito quedaba guardado igualmente
     // en PermisoEmpresa y el "asesor invitado" nunca podría entrar, sin ningún aviso del error.
