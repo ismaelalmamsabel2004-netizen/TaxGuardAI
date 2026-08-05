@@ -61,9 +61,11 @@ model Transaccion {
   // 🛡️ BLINDAJE LEGAL ANTI-DUPLICADOS: la comprobación de número de factura libre se hacía en
   // dos pasos separados (leer y luego escribir), así que dos guardados casi simultáneos (doble
   // clic, dos pestañas) podían colar el mismo número en dos facturas distintas, algo ilegal ante
-  // Hacienda. Esta restricción única hace que la propia base de datos rechace cualquier duplicado,
-  // pase lo que pase en la capa de aplicación. Los NULL no cuentan como duplicados entre sí, así
-  // que los movimientos sin número de factura no se ven afectados.
+  // Hacienda. De hecho, así se colaron 3 duplicados reales en producción antes de este blindaje
+  // (ya corregidos a mano con un sufijo -B). Esta restricción única hace que la propia base de
+  // datos rechace cualquier duplicado futuro, pase lo que pase en la capa de aplicación. Los NULL
+  // no cuentan como duplicados entre sí, así que los movimientos sin número de factura no se ven
+  // afectados.
   @@unique([userId, empresaId, numero_factura])
 }
 
