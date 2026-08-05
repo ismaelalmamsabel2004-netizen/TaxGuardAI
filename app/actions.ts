@@ -5,12 +5,8 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { getContextoSeguro } from '../lib/authContext';
- cursor/facturas-killer-features-58d1
-import { contactoCrmSchema, ocrFacturaSchema } from '../lib/validations';
-
-import { contactoCrmSchema, esNifCifValido } from '../lib/validations';
+import { contactoCrmSchema, ocrFacturaSchema, esNifCifValido } from '../lib/validations';
 import { z } from 'zod';
- main
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
