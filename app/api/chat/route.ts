@@ -42,16 +42,28 @@ export async function POST(request: Request) {
         systemInstruction: systemInstruction 
     });
 
-    if (!messages || messages.length === 0) {
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
         return NextResponse.json({ reply: "No he recibido ningún mensaje. ¿En qué te ayudo hoy?" });
     }
 
-    const history = messages.slice(0, -1).map((msg: any) => ({
+    // 🛡️ BLINDAJE DE COSTES: sin estos límites, una conversación muy larga (el historial completo
+    // se reenvía en cada mensaje) o un mensaje gigante pegado por error disparaban el gasto de
+    // tokens de la IA sin control. Nos quedamos con los últimos 20 mensajes y cortamos cada uno.
+    const LONGITUD_MAXIMA_MENSAJE = 4000;
+    const mensajesRecientes = messages.slice(-20).map((msg: any) => ({
+        ...msg,
+        content: String(msg?.content ?? '').slice(0, LONGITUD_MAXIMA_MENSAJE)
+    }));
+
+    const history = mensajesRecientes.slice(0, -1).map((msg: any) => ({
         role: msg.role === 'ai' ? 'model' : 'user',
         parts: [{ text: msg.content }]
     }));
 
-    const lastMessage = messages[messages.length - 1].content;
+    const lastMessage = mensajesRecientes[mensajesRecientes.length - 1].content;
+    if (!lastMessage.trim()) {
+        return NextResponse.json({ reply: "No he recibido ningún mensaje. ¿En qué te ayudo hoy?" });
+    }
     const chat = model.startChat({ history: history });
     const result = await chat.sendMessage(lastMessage);
     

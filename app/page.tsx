@@ -2056,6 +2056,7 @@ export default function Home() {
                   type="text" 
                   value={currentMessage} 
                   onChange={(e) => setCurrentMessage(e.target.value)} 
+                  maxLength={4000}
                   placeholder="Pregunta a tu CFO..." 
                   className="flex-1 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
