@@ -11,7 +11,7 @@ export async function getContextoSeguro(empresaIdRaw?: string) {
     const user = await currentUser();
     if (!userId || !user) throw new Error("No autenticado");
 
-    const miEmail = user.primaryEmailAddress?.emailAddress;
+    const miEmail = user.primaryEmailAddress?.emailAddress?.toLowerCase();
     let realEmpresaId = empresaIdRaw || "Mi Empresa Principal";
     let targetUserId = userId;
     let rol = "PROPIETARIO";
@@ -25,11 +25,13 @@ export async function getContextoSeguro(empresaIdRaw?: string) {
             rol = "NINGUNO";
 
             if (miEmail) {
+                // Las invitaciones se guardan siempre en minúsculas; normalizamos el email de Clerk
+                // para que mayúsculas/minúsculas no denieguen el acceso por error.
                 const permiso = await prisma.permisoEmpresa.findFirst({
                     where: { empresaId: realEmpresaId, propietarioId: targetUserId, asesorEmail: miEmail }
                 });
                 if (permiso) {
-                    rol = permiso.rol; // "LECTURA"
+                    rol = permiso.rol; // "LECTURA" (u otros roles futuros)
                 }
             }
         }

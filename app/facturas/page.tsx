@@ -22,10 +22,20 @@ import {
 import {
   obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase,
   obtenerContactosCRM, guardarContactoCRM, editarContactoCRM, borrarContactoCRM, migrarContactosCRMDesdeJSON,
+  obtenerEmpresasCliente, verificarRolUsuario, obtenerPerfilEspacio,
   actualizarEstadoPago,
 } from '../actions';
 import { contactoCrmSchema, mapearErroresZod, nifCifOpcional } from '../../lib/validations';
-import { obtenerAjustesSilencioso, guardarAjustes } from '../../lib/settingsClient';
+import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
+import EspacioTrabajoSelect from '../../components/EspacioTrabajoSelect';
+import BannerModoAsesor from '../../components/BannerModoAsesor';
+import {
+  esEspacioCliente,
+  guardarEspacioSesion,
+  limpiarEspacioSesion,
+  resolverEspacioInicial,
+  nombreEspacioVisible,
+} from '../../lib/workspaceSession';
 
 // 🚀 RENDIMIENTO: @react-pdf/renderer se carga en su propio chunk, solo en el navegador y solo
 // cuando cada botón llega a pintarse, para no lastrar el JS inicial de la página de Facturación.
@@ -47,6 +57,8 @@ export default function GeneradorFacturas() {
   const [allSettings, setAllSettings] = useState<any>({});
   const [empresaId, setEmpresaId] = useState("");
   const [empresas, setEmpresas] = useState<string[]>([]);
+  const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]);
+  const [rolUsuario, setRolUsuario] = useState('LOADING');
   
   const [modoActivo, setModoActivo] = useState<"factura" | "presupuesto">("factura");
   const [filtroHistorial, setFiltroHistorial] = useState<"todas" | "facturas" | "presupuestos" | "rectificativas" | "pendientes" | "cobradas">("todas");
@@ -126,14 +138,42 @@ export default function GeneradorFacturas() {
   // 🛡️ BLINDAJE DE ESTADO: ignora respuestas tardías si el usuario cambia de empresa muy rápido
   const empresaSolicitadaRef = useRef<string>("");
 
+  const esLectura = rolUsuario === 'LECTURA';
+  const puedeEscribir = !esLectura && !esEspacioCliente(empresaId);
+
+  const aplicarDatosFacturacion = (config: any) => {
+      if (config) {
+          setMiNif(config.nif || "");
+          setMiDireccion(config.direccion || "");
+          setLogo(config.logo || null);
+          setMetodoPago(config.metodoPago || "Transferencia");
+          setIban(config.iban || "");
+      } else {
+          setMiNif(""); setMiDireccion(""); setLogo(null); setMetodoPago("Transferencia"); setIban("");
+      }
+  };
+
+  const cargarDatosEmisorEspacio = async (id: string, settings?: any) => {
+      if (esEspacioCliente(id)) {
+          const perfilRemoto = await obtenerPerfilEspacio(id);
+          if (empresaSolicitadaRef.current !== id) return;
+          aplicarDatosFacturacion(perfilRemoto.success ? perfilRemoto.datosFacturacion : null);
+          return;
+      }
+      const fuente = settings || allSettings;
+      aplicarDatosFacturacion(fuente?.datosFacturacion?.[id] || null);
+  };
+
   useEffect(() => {
     setIsMounted(true);
     
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
+    obtenerEmpresasCliente().then(setEspaciosCliente);
+
     obtenerAjustesSilencioso()
-      .then((data: any) => {
+      .then(async (data: any) => {
          const planDetectado = data.planSuscripcion || 'free';
          if (planDetectado === 'free') { router.push('/precios'); return; }
 
@@ -141,10 +181,13 @@ export default function GeneradorFacturas() {
          setAllSettings(data);
          const listaEmpresas = data.empresas || ["Alperez"];
          setEmpresas(listaEmpresas);
-         const activa = data.empresaActiva || listaEmpresas[0] || "";
+         const activa = resolverEspacioInicial(data.empresaActiva, listaEmpresas);
          empresaSolicitadaRef.current = activa;
          setEmpresaId(activa);
+         if (esEspacioCliente(activa)) guardarEspacioSesion(activa);
+         else limpiarEspacioSesion();
 
+         await cargarDatosEmisorEspacio(activa, data);
          cargarContactosCRM(activa, data.crm?.[activa]);
       });
   }, [isLoaded, isSignedIn, router]);
@@ -164,17 +207,19 @@ export default function GeneradorFacturas() {
   };
 
   useEffect(() => {
-      if (empresaId && allSettings.datosFacturacion && allSettings.datosFacturacion[empresaId]) {
-          const config = allSettings.datosFacturacion[empresaId];
-          setMiNif(config.nif || "");
-          setMiDireccion(config.direccion || "");
-          setLogo(config.logo || null);
-          setMetodoPago(config.metodoPago || "Transferencia");
-          setIban(config.iban || "");
-      } else {
-          setMiNif(""); setMiDireccion(""); setLogo(null); setMetodoPago("Transferencia"); setIban("");
-      }
+    if (!empresaId) return;
+    // Para espacios propios seguimos leyendo de allSettings; CLIENTE| se carga vía obtenerPerfilEspacio
+    if (esEspacioCliente(empresaId)) return;
+    aplicarDatosFacturacion(allSettings?.datosFacturacion?.[empresaId] || null);
   }, [empresaId, allSettings]);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    setRolUsuario('LOADING');
+    verificarRolUsuario(empresaId).then((res) => {
+      if (empresaSolicitadaRef.current === empresaId) setRolUsuario(res.rol);
+    });
+  }, [empresaId]);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -211,12 +256,40 @@ export default function GeneradorFacturas() {
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
     empresaSolicitadaRef.current = nuevaEmpresa;
     setEmpresaId(nuevaEmpresa);
+    setRolUsuario('LOADING');
+
+    if (esEspacioCliente(nuevaEmpresa)) {
+      guardarEspacioSesion(nuevaEmpresa);
+      await cargarDatosEmisorEspacio(nuevaEmpresa);
+      cargarContactosCRM(nuevaEmpresa);
+      return;
+    }
+
+    limpiarEspacioSesion();
     const newSettings = { ...allSettings, empresaActiva: nuevaEmpresa };
     setAllSettings(newSettings);
-
+    await cargarDatosEmisorEspacio(nuevaEmpresa, newSettings);
     cargarContactosCRM(nuevaEmpresa, newSettings.crm?.[nuevaEmpresa]);
-
     await guardarAjustes(newSettings);
+  };
+
+  const salirModoAsesor = async () => {
+    limpiarEspacioSesion();
+    const propia = empresas[0] || 'Alperez';
+    await cambiarEmpresa(propia);
+    toast.success('Modo Propietario', { description: 'Has vuelto a tu espacio personal.' });
+  };
+
+  const toastSoloLectura = () => {
+    toast.error("Solo lectura", { description: "En Modo Asesor no puedes modificar los datos del cliente." });
+  };
+
+  const bloquearEscritura = () => {
+    if (esLectura || esEspacioCliente(empresaId)) {
+      toastSoloLectura();
+      return true;
+    }
+    return false;
   };
 
   const gestionarSuscripcion = async () => {
@@ -277,6 +350,7 @@ export default function GeneradorFacturas() {
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (bloquearEscritura()) { e.target.value = ""; return; }
       const file = e.target.files?.[0];
       if (!file) return;
 
@@ -311,6 +385,7 @@ export default function GeneradorFacturas() {
   };
 
   const quitarLogo = async () => {
+      if (bloquearEscritura()) return;
       setLogo(null);
       const newSettings = { ...allSettings };
       if (newSettings.datosFacturacion && newSettings.datosFacturacion[empresaId]) {
@@ -321,6 +396,7 @@ export default function GeneradorFacturas() {
   };
 
   const guardarDatosEmisor = async () => {
+      if (bloquearEscritura()) return;
       // 🛡️ BLINDAJE DE DATOS: un NIF inválido guardado como predeterminado acabaría en TODAS tus facturas futuras
       if (!nifCifOpcional.safeParse(miNif).success) {
           setFacturaErrors({...facturaErrors, miNif: "Tu NIF/CIF no es válido. Revísalo antes de guardarlo como predeterminado."});
@@ -357,7 +433,7 @@ export default function GeneradorFacturas() {
 
   const datosPDF = {
     modo: modoActivo,
-    miEmpresa: empresaId || "Mi Empresa", 
+    miEmpresa: nombreEspacioVisible(empresaId) || "Mi Empresa", 
     numeroDocumento: modoActivo === 'factura' ? numeroFactura : numeroPresupuesto, 
     fecha: fecha.split('-').reverse().join('/'),
     miNif, miDireccion, logo, metodoPago, iban,
@@ -369,6 +445,7 @@ export default function GeneradorFacturas() {
   };
 
   const guardarDocumento = async () => {
+    if (bloquearEscritura()) return;
     if (!empresaId) return toast.warning("Falta Espacio", { description: "Por favor, selecciona un Espacio de Trabajo." });
     if (lineasFactura.some(l => !l.concepto)) return toast.warning("Campos Incompletos", { description: "Rellena la descripción de todos los conceptos." });
     if (baseNum <= 0) return toast.warning("Importe Inválido", { description: "Introduce un importe válido mayor a 0." });
@@ -454,6 +531,7 @@ export default function GeneradorFacturas() {
   };
 
   const generarFacturaRectificativa = async (facOriginal: any) => {
+      if (bloquearEscritura()) return;
       if (facOriginal.numero_factura?.startsWith('R-')) {
           return toast.error("Operación no permitida", { description: "No puedes emitir un abono de una factura rectificativa." });
       }
@@ -495,6 +573,7 @@ export default function GeneradorFacturas() {
   };
 
   const duplicarFactura = (fac: any, aFactura: boolean = false) => {
+      if (bloquearEscritura()) return;
       setClienteNombre(fac.cliente_nombre || "");
       setClienteNif(fac.cliente_nif || "");
       setIvaSeleccionado(fac.iva?.toString() || "21");
@@ -542,6 +621,7 @@ export default function GeneradorFacturas() {
   };
 
   const marcarCobrada = async (fac: any) => {
+     if (bloquearEscritura()) return;
      try {
          const res = await actualizarEstadoPago(fac.id, 'COBRADO', empresaId);
          if (res.success) {
@@ -554,6 +634,7 @@ export default function GeneradorFacturas() {
   };
 
   const marcarPendiente = async (fac: any) => {
+     if (bloquearEscritura()) return;
      try {
          const res = await actualizarEstadoPago(fac.id, 'PENDIENTE', empresaId);
          if (res.success) {
@@ -587,7 +668,7 @@ export default function GeneradorFacturas() {
 
       return {
           modo: isPresupuesto ? 'presupuesto' : 'factura', 
-          miEmpresa: empresaId || "Mi Empresa",
+          miEmpresa: nombreEspacioVisible(empresaId) || "Mi Empresa",
           numeroDocumento: fac.numero_factura || 'S/N',
           fecha: fac.name,
           miNif, miDireccion, logo, metodoPago, iban,
@@ -612,6 +693,7 @@ export default function GeneradorFacturas() {
   };
 
   const guardarNuevoClienteCRM = async () => {
+      if (bloquearEscritura()) return;
       setCrmErrors({});
       // 🛡️ BLINDAJE DE DATOS: nombre obligatorio + NIF/CIF con dígito de control real (si se rellena)
       const validacion = contactoCrmSchema.safeParse(nuevoClienteData);
@@ -643,6 +725,7 @@ export default function GeneradorFacturas() {
   };
 
   const guardarCRMEditado = async (id: number) => {
+      if (bloquearEscritura()) return;
       setCrmEditErrors({});
       const validacion = contactoCrmSchema.safeParse(editCRMData);
       if (!validacion.success) {
@@ -672,6 +755,7 @@ export default function GeneradorFacturas() {
 
   // 🛡️ La confirmación real ocurre en el AlertDialog premium (ver JSX); esta función ya llega "confirmada".
   const confirmarEliminarClienteCRM = async () => {
+      if (bloquearEscritura()) { setCrmIdToDelete(null); return; }
       if (crmIdToDelete === null) return;
       const id = crmIdToDelete;
       setCrmIdToDelete(null);
@@ -686,11 +770,13 @@ export default function GeneradorFacturas() {
   };
 
   const iniciarEdicionCliente = (fac: any) => {
+     if (bloquearEscritura()) return;
      setEditandoHistorialId(fac.id);
      setEditClientData({ nombre: fac.cliente_nombre || "", nif: fac.cliente_nif || "" });
   };
 
   const guardarEdicionHistorial = async (fac: any) => {
+      if (bloquearEscritura()) return;
       try {
           const res = await editarDatoSupabase({
               id: fac.id, month: fac.name, total: fac.total, categoria: fac.categoria, iva: fac.iva,
@@ -709,6 +795,7 @@ export default function GeneradorFacturas() {
 
   // 🛡️ La confirmación real ocurre en el AlertDialog premium (ver JSX); esta función ya llega "confirmada".
   const confirmarEliminarDato = async () => {
+    if (bloquearEscritura()) { setDocIdToDelete(null); return; }
     if (docIdToDelete === null) return;
     const id = docIdToDelete;
     setDocIdToDelete(null);
@@ -1002,14 +1089,15 @@ export default function GeneradorFacturas() {
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1">
-                    <select 
-                      value={empresaId} 
-                      onChange={(e) => cambiarEmpresa(e.target.value)} 
-                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none focus:ring-2 focus:ring-blue-500/50 transition truncate"
-                    >
-                        {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                    <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    <EspacioTrabajoSelect
+                      empresaId={empresaId}
+                      empresas={empresas}
+                      espaciosCliente={espaciosCliente}
+                      onChange={cambiarEmpresa}
+                    />
+                    {puedeEscribir && (
+                      <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    )}
                 </div>
               </div>
               
@@ -1066,7 +1154,9 @@ export default function GeneradorFacturas() {
 
           {/* 🚀 MAIN CONTENT */}
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
-            
+            {esLectura && (
+              <BannerModoAsesor nombreCliente={nombreEspacioVisible(empresaId)} onSalir={salirModoAsesor} />
+            )}
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6 gap-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">
@@ -1074,14 +1164,17 @@ export default function GeneradorFacturas() {
                 </h1>
                 <p className="text-sm font-medium text-slate-500 mt-1">
                     {modoActivo === 'factura' ? 'Genera PDFs profesionales y súbelos a tu Libro Mayor en 1 clic.' : 'Envía propuestas comerciales elegantes sin generar carga fiscal.'}
+                    {' · '}<span className="font-bold text-blue-600">{nombreEspacioVisible(empresaId)}</span>
                 </p>
               </div>
               
               <div className="flex flex-wrap items-center gap-3">
+                 {puedeEscribir && (
                  <button onClick={prepararNuevaFactura} className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-sm flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                     {modoActivo === 'factura' ? 'Nueva Factura' : 'Nuevo Presupuesto'}
                  </button>
+                 )}
                  {facturaBloqueada && (
                     <span className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm">
                         ✅ Documento Guardado
@@ -1117,9 +1210,11 @@ export default function GeneradorFacturas() {
                       <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
                          <span className={`w-2 h-2 rounded-full ${modoActivo === 'presupuesto' ? 'bg-amber-500' : 'bg-blue-500'}`}></span> 1. Tus Datos Fiscales
                       </h3>
+                      {puedeEscribir && (
                       <button onClick={guardarDatosEmisor} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md transition border border-slate-200">
                          💾 Guardar como predeterminado
                       </button>
+                      )}
                    </div>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1157,12 +1252,16 @@ export default function GeneradorFacturas() {
                                {logo ? (
                                    <div className="flex items-center gap-2 mt-1">
                                       <img src={logo} alt="Logo Empresa" className="h-8 object-contain rounded border border-slate-200 p-0.5 bg-white" />
+                                      {puedeEscribir && (
                                       <button onClick={quitarLogo} className="text-[9px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded border border-rose-100 hover:bg-rose-100 transition">
                                           Quitar Logo
                                       </button>
+                                      )}
                                    </div>
-                               ) : (
+                               ) : puedeEscribir ? (
                                    <input type="file" accept="image/*" onChange={handleLogoUpload} className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                               ) : (
+                                   <p className="text-[10px] text-slate-400 mt-1 italic">Sin logo</p>
                                )}
                             </div>
                          </div>
@@ -1364,6 +1463,7 @@ export default function GeneradorFacturas() {
                        )}
                        
                        {/* BOTÓN GUARDAR (Dinámico para Factura o Presupuesto) */}
+                       {puedeEscribir ? (
                        <button 
                           onClick={guardarDocumento} 
                           disabled={isSaving || facturaBloqueada}
@@ -1371,6 +1471,11 @@ export default function GeneradorFacturas() {
                        >
                           {isSaving ? "Guardando..." : facturaGuardada ? "¡Guardado con éxito!" : modoActivo === 'factura' ? "Registrar en Libro Mayor" : "Guardar Presupuesto"}
                        </button>
+                       ) : (
+                       <div className="w-full bg-slate-100 text-slate-500 font-bold py-3.5 rounded-xl border border-slate-200 text-center text-sm">
+                          Solo lectura · Modo Asesor
+                       </div>
+                       )}
                     </div>
                  </div>
 
@@ -1573,13 +1678,13 @@ export default function GeneradorFacturas() {
                                      </td>
                                      <td className="px-4 py-3 text-right">
                                          <div className="flex items-center justify-end gap-2">
-                                             {/* Cobrar / Revertir */}
-                                             {!isPresupuesto && !isRectificativa && !isCobrada && (
+                                             {/* Cobrar / Revertir — solo si el usuario puede escribir (no Modo Asesor) */}
+                                             {puedeEscribir && !isPresupuesto && !isRectificativa && !isCobrada && (
                                                  <button onClick={() => marcarCobrada(fac)} className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] uppercase tracking-wider bg-emerald-50 px-2 py-1.5 rounded-md transition border border-emerald-200" title="Marcar como cobrada">
                                                      💰 Cobrar
                                                  </button>
                                              )}
-                                             {!isPresupuesto && !isRectificativa && isCobrada && (
+                                             {puedeEscribir && !isPresupuesto && !isRectificativa && isCobrada && (
                                                  <button onClick={() => marcarPendiente(fac)} className="text-amber-600 hover:text-amber-700 font-bold text-[10px] uppercase tracking-wider bg-amber-50 px-2 py-1.5 rounded-md transition border border-amber-200" title="Volver a pendiente">
                                                      ↩ Pendiente
                                                  </button>
@@ -1604,6 +1709,8 @@ export default function GeneradorFacturas() {
                                                  </FacturaPDFButtonHistorico>
                                              )}
 
+                                             {puedeEscribir && (
+                                             <>
                                              {/* BOTÓN CONVERTIR O DUPLICAR */}
                                              {isPresupuesto ? (
                                                 <button onClick={() => duplicarFactura(fac, true)} className="text-amber-600 hover:text-amber-700 font-bold text-[10px] uppercase tracking-wider bg-amber-50 px-2 py-1.5 rounded-md transition border border-amber-200 flex items-center gap-1" title="Convertir a Factura Oficial">
@@ -1633,6 +1740,8 @@ export default function GeneradorFacturas() {
                                              <button onClick={() => setDocIdToDelete(fac.id)} className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md transition border border-transparent hover:border-rose-100 hover:bg-rose-50" title="Eliminar documento">
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                              </button>
+                                             </>
+                                             )}
                                          </div>
                                      </td>
                                  </tr>
@@ -1667,12 +1776,14 @@ export default function GeneradorFacturas() {
                        <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
                            Agenda CRM
                        </h3>
-                       <p className="text-xs text-slate-500 mt-1">Directorio de {empresaId}. Clientes y proveedores con ficha financiera.</p>
+                       <p className="text-xs text-slate-500 mt-1">Directorio de {nombreEspacioVisible(empresaId)}. Clientes y proveedores con ficha financiera.</p>
                    </div>
                    <div className="flex items-center gap-3">
+                       {puedeEscribir && (
                        <button onClick={() => { setShowNuevoCliente(!showNuevoCliente); setCrmErrors({}); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm">
                            {showNuevoCliente ? "Cancelar" : "+ Nuevo Contacto"}
                        </button>
+                       )}
                        <button onClick={() => setShowCRMModal(false)} className="text-slate-400 hover:text-rose-500 transition p-2 bg-white rounded-xl shadow-sm border border-slate-200">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                        </button>
@@ -1855,7 +1966,7 @@ export default function GeneradorFacturas() {
                                   </>
                                 ) : (
                                   <>
-                                     {!esProveedor && (
+                                     {puedeEscribir && !esProveedor && (
                                        <button onClick={() => {
                                            setClienteNombre(c.nombre);
                                            setClienteNif(c.nif);
@@ -1866,8 +1977,12 @@ export default function GeneradorFacturas() {
                                      <button onClick={() => setFichaAbiertaId(isFichaAbierta ? null : c.id)} className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-[11px] font-bold transition shadow-sm">
                                         {isFichaAbierta ? 'Cerrar Ficha' : 'Ficha 360°'}
                                      </button>
+                                     {puedeEscribir && (
+                                     <>
                                      <button onClick={() => { setEditandoClienteId(c.id); setEditCRMData({ nombre: c.nombre, tipo: c.tipo || 'CLIENTE', nif: c.nif, direccion: c.direccion, email: c.email || '', telefono: c.telefono || '', iban_bancario: c.iban_bancario || '' }); setCrmEditErrors({}); }} className="bg-slate-50 hover:bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-slate-200 hover:border-blue-200">Editar</button>
                                      <button onClick={() => setCrmIdToDelete(c.id)} className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-[11px] font-bold transition border border-rose-100">Borrar</button>
+                                     </>
+                                     )}
                                   </>
                                )}
                             </div>

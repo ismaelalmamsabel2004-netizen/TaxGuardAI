@@ -7,9 +7,18 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Toaster, toast } from 'sonner';
 
-import { obtenerDatosSupabase } from '../actions';
+import { obtenerDatosSupabase, obtenerEmpresasCliente, verificarRolUsuario } from '../actions';
 import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
 import { Skeleton } from '@/components/ui/skeleton';
+import EspacioTrabajoSelect from '../../components/EspacioTrabajoSelect';
+import BannerModoAsesor from '../../components/BannerModoAsesor';
+import {
+  esEspacioCliente,
+  guardarEspacioSesion,
+  limpiarEspacioSesion,
+  resolverEspacioInicial,
+  nombreEspacioVisible,
+} from '../../lib/workspaceSession';
 
 function contarPerceptores(lista: { cliente_nombre?: string; concepto_detalle?: string }[]) {
   const nombres = new Set(
@@ -35,6 +44,8 @@ export default function ModelosTributarios() {
   
   const [empresaId, setEmpresaId] = useState("");
   const [empresas, setEmpresas] = useState<string[]>([]);
+  const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]);
+  const [rolUsuario, setRolUsuario] = useState('LOADING');
   const [data, setData] = useState<any[]>([]);
   // 🚀 UX PREMIUM: evita pantallas en blanco/parpadeos en los modelos fiscales mientras llegan los datos
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -53,6 +64,8 @@ export default function ModelosTributarios() {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [faqSearch, setFaqSearch] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  const esLectura = rolUsuario === 'LECTURA';
 
   useEffect(() => {
     setIsMounted(true);
@@ -82,6 +95,8 @@ export default function ModelosTributarios() {
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
+    obtenerEmpresasCliente().then(setEspaciosCliente);
+
     obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
@@ -91,14 +106,16 @@ export default function ModelosTributarios() {
 
          const listaEmpresas = ajustesGuardados.empresas || ["Alperez"];
          setEmpresas(listaEmpresas);
-         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         const activa = resolverEspacioInicial(ajustesGuardados.empresaActiva, listaEmpresas);
          empresaSolicitadaRef.current = activa;
          setEmpresaId(activa);
+         if (esEspacioCliente(activa)) guardarEspacioSesion(activa);
+         else limpiarEspacioSesion();
 
          if (activa) {
            setIsLoadingData(true);
            obtenerDatosSupabase(activa).then(d => {
-                if (empresaSolicitadaRef.current !== activa) return; // Respuesta obsoleta: ya se cambió de empresa
+                if (empresaSolicitadaRef.current !== activa) return;
                 setData(d);
                 if (d.length > 0) {
                     const aniosUnicos = new Set<string>();
@@ -117,16 +134,30 @@ export default function ModelosTributarios() {
       });
   }, [isLoaded, isSignedIn, router]);
 
+  useEffect(() => {
+    if (!empresaId) return;
+    verificarRolUsuario(empresaId).then((res) => {
+      if (empresaSolicitadaRef.current === empresaId) setRolUsuario(res.rol);
+    });
+  }, [empresaId]);
+
   const cambiarEmpresa = async (nuevaEmpresa: string) => {
-    const actuales = await obtenerAjustes();
-    if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
     empresaSolicitadaRef.current = nuevaEmpresa;
     setEmpresaId(nuevaEmpresa);
-    await guardarAjustes({ ...actuales, empresaActiva: nuevaEmpresa });
+    setRolUsuario('LOADING');
+
+    if (esEspacioCliente(nuevaEmpresa)) {
+      guardarEspacioSesion(nuevaEmpresa);
+    } else {
+      limpiarEspacioSesion();
+      const actuales = await obtenerAjustes();
+      if (!actuales) return;
+      await guardarAjustes({ ...actuales, empresaActiva: nuevaEmpresa });
+    }
 
     setIsLoadingData(true);
     obtenerDatosSupabase(nuevaEmpresa).then(d => {
-          if (empresaSolicitadaRef.current !== nuevaEmpresa) return; // Respuesta obsoleta: ya se cambió de empresa
+          if (empresaSolicitadaRef.current !== nuevaEmpresa) return;
           setData(d);
           if (d.length > 0) {
               const aniosUnicos = new Set<string>();
@@ -139,6 +170,13 @@ export default function ModelosTributarios() {
           }
           setIsLoadingData(false);
     }).catch(() => { if (empresaSolicitadaRef.current === nuevaEmpresa) setIsLoadingData(false); });
+  };
+
+  const salirModoAsesor = async () => {
+    limpiarEspacioSesion();
+    const propia = empresas[0] || 'Alperez';
+    await cambiarEmpresa(propia);
+    toast.success('Modo Propietario', { description: 'Has vuelto a tu espacio personal.' });
   };
 
   const gestionarSuscripcion = async () => {
@@ -449,14 +487,15 @@ export default function ModelosTributarios() {
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1">
-                    <select 
-                      value={empresaId} 
-                      onChange={(e) => cambiarEmpresa(e.target.value)} 
-                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none truncate"
-                    >
-                        {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                    <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    <EspacioTrabajoSelect
+                      empresaId={empresaId}
+                      empresas={empresas}
+                      espaciosCliente={espaciosCliente}
+                      onChange={cambiarEmpresa}
+                    />
+                    {!esLectura && (
+                      <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    )}
                 </div>
               </div>
               
@@ -513,10 +552,13 @@ export default function ModelosTributarios() {
           {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
+            {esLectura && (
+              <BannerModoAsesor nombreCliente={nombreEspacioVisible(empresaId)} onSalir={salirModoAsesor} />
+            )}
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-8 gap-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Modelos Oficiales</h1>
-                <p className="text-sm font-medium text-slate-500 mt-1">Gestión fiscal inteligente lista para presentar en Hacienda.</p>
+                <p className="text-sm font-medium text-slate-500 mt-1">Gestión fiscal inteligente lista para presentar en Hacienda · <span className="font-bold text-blue-600">{nombreEspacioVisible(empresaId)}</span></p>
               </div>
               
               <div className="flex flex-wrap items-center gap-3">

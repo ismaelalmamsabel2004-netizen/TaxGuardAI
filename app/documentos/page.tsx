@@ -5,10 +5,19 @@ import { useUser, UserButton, Show } from "@clerk/nextjs";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Toaster, toast } from 'sonner';
-import { obtenerDatosSupabase, actualizarEstadoPago } from '../actions';
+import { obtenerDatosSupabase, actualizarEstadoPago, obtenerEmpresasCliente, verificarRolUsuario } from '../actions';
 import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
 import { celdaCSVSegura } from '../../lib/csvExport';
 import { Skeleton } from '@/components/ui/skeleton';
+import EspacioTrabajoSelect from '../../components/EspacioTrabajoSelect';
+import BannerModoAsesor from '../../components/BannerModoAsesor';
+import {
+  esEspacioCliente,
+  guardarEspacioSesion,
+  limpiarEspacioSesion,
+  resolverEspacioInicial,
+  nombreEspacioVisible,
+} from '../../lib/workspaceSession';
 
 export default function DocumentosPage() {
   const router = useRouter();
@@ -17,8 +26,10 @@ export default function DocumentosPage() {
   // 🚀 ESTADOS GLOBALES DE LA APP
   const [data, setData] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<string[]>([]);
+  const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]);
   const [empresaId, setEmpresaId] = useState(""); 
   const [planActivo, setPlanActivo] = useState('loading');
+  const [rolUsuario, setRolUsuario] = useState('LOADING');
   // 🚀 UX PREMIUM: evita pantallas en blanco/parpadeos mientras llegan los datos de Supabase
   const [isLoadingData, setIsLoadingData] = useState(true);
   // 🛡️ BLINDAJE DE ESTADO: ignora respuestas tardías si el usuario cambia de empresa muy rápido
@@ -34,9 +45,13 @@ export default function DocumentosPage() {
   const [faqSearch, setFaqSearch] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  // 1️⃣ CARGAR AJUSTES Y EMPRESA ACTIVA
+  const esLectura = rolUsuario === 'LECTURA';
+
+  // 1️⃣ CARGAR AJUSTES Y EMPRESA ACTIVA (+ espacios asesor)
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
+
+    obtenerEmpresasCliente().then(setEspaciosCliente);
 
     obtenerAjustesSilencioso()
       .then((ajustesGuardados: any) => {
@@ -47,31 +62,55 @@ export default function DocumentosPage() {
 
          const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa"];
          setEmpresas(listaEmpresas);
-         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         const activa = resolverEspacioInicial(ajustesGuardados.empresaActiva, listaEmpresas);
          setEmpresaId(activa);
+         if (esEspacioCliente(activa)) guardarEspacioSesion(activa);
+         else limpiarEspacioSesion();
       });
   }, [isLoaded, isSignedIn, router]);
 
-  // 2️⃣ CARGAR DATOS CUANDO SABEMOS LA EMPRESA (FILTRADO CORRECTO)
+  // 2️⃣ CARGAR DATOS + ROL CUANDO SABEMOS LA EMPRESA
   useEffect(() => {
     if (!empresaId) return;
 
     empresaSolicitadaRef.current = empresaId;
     setIsLoadingData(true);
+    setRolUsuario('LOADING');
+
+    verificarRolUsuario(empresaId).then((res) => {
+      if (empresaSolicitadaRef.current !== empresaId) return;
+      setRolUsuario(res.rol);
+    });
+
     obtenerDatosSupabase(empresaId).then(d => {
-      if (empresaSolicitadaRef.current !== empresaId) return; // Respuesta obsoleta: ya se cambió de empresa
+      if (empresaSolicitadaRef.current !== empresaId) return;
       if (d && d.length > 0) setData(d);
-      else setData([]); // Si la empresa no tiene datos, vaciamos la tabla
+      else setData([]);
       setIsLoadingData(false);
     });
   }, [empresaId]);
 
   // 🚀 FUNCIONES DEL SIDEBAR Y SOPORTE
   const cambiarEmpresa = async (newId: string) => {
-    const actuales = await obtenerAjustes();
-    if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
     setEmpresaId(newId);
+    if (esEspacioCliente(newId)) {
+      guardarEspacioSesion(newId);
+      return;
+    }
+    limpiarEspacioSesion();
+    const actuales = await obtenerAjustes();
+    if (!actuales) return;
     await guardarAjustes({ ...actuales, empresaActiva: newId });
+  };
+
+  const salirModoAsesor = async () => {
+    limpiarEspacioSesion();
+    const propia = empresas[0] || 'Mi Empresa';
+    setEmpresaId(propia);
+    const actuales = await obtenerAjustes();
+    if (!actuales) return;
+    await guardarAjustes({ ...actuales, empresaActiva: propia });
+    toast.success('Modo Propietario', { description: 'Has vuelto a tu espacio personal.' });
   };
 
   const gestionarSuscripcion = async () => {
@@ -206,15 +245,15 @@ export default function DocumentosPage() {
             <div className="mb-6 px-2">
               <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
               <div className="flex gap-2 mt-1">
-                  <select 
-                    value={empresaId} 
-                    onChange={(e) => cambiarEmpresa(e.target.value)} 
-                    className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none truncate"
-                  >
-                      {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-                  </select>
-                  {/* Botones redirigen a Consola General para evitar duplicar código de modales */}
-                  <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                  <EspacioTrabajoSelect
+                    empresaId={empresaId}
+                    empresas={empresas}
+                    espaciosCliente={espaciosCliente}
+                    onChange={cambiarEmpresa}
+                  />
+                  {!esLectura && (
+                    <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                  )}
               </div>
             </div>
             
@@ -269,10 +308,13 @@ export default function DocumentosPage() {
 
         {/* 🚀 MAIN CONTENT */}
         <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
+          {esLectura && (
+            <BannerModoAsesor nombreCliente={nombreEspacioVisible(empresaId)} onSalir={salirModoAsesor} />
+          )}
           <header className="flex flex-col lg:flex-row lg:justify-between lg:items-end mb-8 gap-4">
             <div>
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">Archivo y <span className="text-rose-600">Morosidad</span></h1>
-              <p className="text-sm font-medium text-slate-500 mt-1">Busca facturas pasadas y controla quién te debe dinero en <span className="font-bold text-blue-600">{empresaId}</span>.</p>
+              <p className="text-sm font-medium text-slate-500 mt-1">Busca facturas pasadas y controla quién te debe dinero en <span className="font-bold text-blue-600">{nombreEspacioVisible(empresaId)}</span>.</p>
             </div>
             {/* WIDGET RADAR MOROSIDAD */}
             <div className="flex flex-col sm:flex-row gap-4">
@@ -400,18 +442,22 @@ export default function DocumentosPage() {
                                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${isGasto ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-rose-600 bg-rose-50 border border-rose-200 animate-pulse'}`}>
                                       {isGasto ? 'Por Pagar' : 'Pendiente Cobro'}
                                   </span>
-                                  <button onClick={() => cambiarEstado(item.id, "COBRADO")} className={`text-xs font-bold hover:underline ${isGasto ? 'text-blue-600' : 'text-emerald-600'}`}>
-                                      {isGasto ? 'Marcar Pagado ✓' : 'Marcar Cobrado ✓'}
-                                  </button>
+                                  {!esLectura && (
+                                    <button onClick={() => cambiarEstado(item.id, "COBRADO")} className={`text-xs font-bold hover:underline ${isGasto ? 'text-blue-600' : 'text-emerald-600'}`}>
+                                        {isGasto ? 'Marcar Pagado ✓' : 'Marcar Cobrado ✓'}
+                                    </button>
+                                  )}
                               </div>
                           ) : (
                               <div className="flex items-center justify-end gap-3">
                                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${isGasto ? 'text-blue-700 bg-blue-50 border border-blue-200' : 'text-emerald-600 bg-emerald-50 border border-emerald-200'}`}>
                                       {isGasto ? 'Pagado' : 'Cobrado'}
                                   </span>
-                                  <button onClick={() => cambiarEstado(item.id, "PENDIENTE")} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 hover:underline">
-                                      Revertir
-                                  </button>
+                                  {!esLectura && (
+                                    <button onClick={() => cambiarEstado(item.id, "PENDIENTE")} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 hover:underline">
+                                        Revertir
+                                    </button>
+                                  )}
                               </div>
                           )}
                         </td>

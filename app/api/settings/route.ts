@@ -37,20 +37,26 @@ export async function GET(request: Request) {
       };
     }
 
-    // 🚀 MODO DIOS (ADMIN BYPASS) EN EL BACKEND 🚀
+    // VIP vía env ADMIN_EMAILS (coma-separado). Fallback a lista histórica si no hay env.
     const clerk = await clerkClient();
     const user = await clerk.users.getUser(userId);
-    const userEmail = user.emailAddresses[0]?.emailAddress;
+    const userEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase() || '';
 
-    // Directiva VIP: Acceso sin restricciones
-    if (
-      userEmail === 'ialmansabeltran@gmail.com' || 
-      userEmail === 'ismaelalmamsabel2004@gmail.com' || 
-      userEmail === 'sandra66773535@gmail.com'
-    ) {
+    const vipFromEnv = (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const vipFallback = [
+      'ialmansabeltran@gmail.com',
+      'ismaelalmamsabel2004@gmail.com',
+      'sandra66773535@gmail.com',
+    ];
+    const vipEmails = new Set(vipFromEnv.length > 0 ? vipFromEnv : vipFallback);
+
+    if (userEmail && vipEmails.has(userEmail)) {
       configuracion = {
         ...configuracion,
-        planSuscripcion: 'pro', // Rompemos el candado automáticamente
+        planSuscripcion: 'pro',
         is_admin: true
       };
     }
@@ -90,6 +96,10 @@ export async function POST(request: Request) {
     for (const campo of CAMPOS_PROTEGIDOS_FACTURACION) {
       delete newSettings[campo];
     }
+    // Nunca persistir un id compuesto de asesor como empresaActiva del propietario
+    if (typeof newSettings.empresaActiva === 'string' && newSettings.empresaActiva.startsWith('CLIENTE|')) {
+      delete newSettings.empresaActiva;
+    }
 
     // Aseguramos la existencia de la tabla
     await prisma.$executeRawUnsafe(`
@@ -100,19 +110,19 @@ export async function POST(request: Request) {
       );
     `);
 
-    // Recuperamos el estado de facturación real (el único válido) para reinyectarlo
-    // después de fusionar, así el resto de ajustes del usuario se guardan con normalidad
-    // sin dejar nunca que sobrescriban su plan o su verificación de pago.
+    // Recuperamos el estado actual y fusionamos (evita que un POST parcial de otra pestaña
+    // borre perfiles/categorías). La facturación del servidor siempre gana.
     const filasActuales = await prisma.$queryRawUnsafe<any[]>(`SELECT data FROM user_settings WHERE user_id = $1`, userId);
+    let actuales: any = {};
     let datosFacturacion: any = {};
     if (filasActuales && filasActuales.length > 0) {
-      const actuales = typeof filasActuales[0].data === 'string' ? JSON.parse(filasActuales[0].data) : (filasActuales[0].data || {});
+      actuales = typeof filasActuales[0].data === 'string' ? JSON.parse(filasActuales[0].data) : (filasActuales[0].data || {});
       for (const campo of CAMPOS_PROTEGIDOS_FACTURACION) {
         if (actuales[campo] !== undefined) datosFacturacion[campo] = actuales[campo];
       }
     }
 
-    const settingsFinales = { ...newSettings, ...datosFacturacion };
+    const settingsFinales = { ...actuales, ...newSettings, ...datosFacturacion };
 
     // 3. Guardamos o actualizamos (Upsert) actualizando el sello de tiempo
     await prisma.$executeRawUnsafe(

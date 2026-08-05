@@ -8,9 +8,18 @@ import ReactMarkdown from 'react-markdown';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Toaster, toast } from 'sonner';
 
-import { obtenerDatosSupabase } from '../actions';
+import { obtenerDatosSupabase, obtenerEmpresasCliente, verificarRolUsuario, obtenerPerfilEspacio } from '../actions';
 import { obtenerAjustesSilencioso, obtenerAjustes, guardarAjustes } from '../../lib/settingsClient';
 import { Skeleton } from '@/components/ui/skeleton';
+import EspacioTrabajoSelect from '../../components/EspacioTrabajoSelect';
+import BannerModoAsesor from '../../components/BannerModoAsesor';
+import {
+  esEspacioCliente,
+  guardarEspacioSesion,
+  limpiarEspacioSesion,
+  resolverEspacioInicial,
+  nombreEspacioVisible,
+} from '../../lib/workspaceSession';
 
 const COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#6366f1', '#14b8a6', '#64748b'];
 
@@ -22,6 +31,8 @@ export default function AnalisisAvanzado() {
   
   const [empresaId, setEmpresaId] = useState("");
   const [empresas, setEmpresas] = useState<string[]>([]);
+  const [espaciosCliente, setEspaciosCliente] = useState<any[]>([]);
+  const [rolUsuario, setRolUsuario] = useState('LOADING');
   const [perfilEmpresa, setPerfilEmpresa] = useState({ sector: "", objetivo: "" });
   
   const [allData, setAllData] = useState<any[]>([]);
@@ -43,14 +54,40 @@ export default function AnalisisAvanzado() {
   // (evita mezclar los datos financieros de dos empresas distintas en pantalla).
   const empresaSolicitadaRef = useRef<string>("");
 
+  const esLectura = rolUsuario === 'LECTURA';
+
+  const cargarPerfilEmpresa = async (id: string, ajustes?: any) => {
+    if (esEspacioCliente(id)) {
+      const perfilRemoto = await obtenerPerfilEspacio(id);
+      if (empresaSolicitadaRef.current !== id) return;
+      if (perfilRemoto.success && perfilRemoto.perfil) {
+        setPerfilEmpresa({
+          sector: perfilRemoto.perfil.sector || "No definido",
+          objetivo: perfilRemoto.perfil.objetivo || "No definido",
+        });
+      } else {
+        setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
+      }
+      return;
+    }
+    const perfiles = ajustes?.perfiles;
+    if (perfiles && perfiles[id]) {
+      setPerfilEmpresa(perfiles[id]);
+    } else {
+      setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
     
     if (!isLoaded) return;
     if (!isSignedIn) return;
 
+    obtenerEmpresasCliente().then(setEspaciosCliente);
+
     obtenerAjustesSilencioso()
-      .then((ajustesGuardados: any) => {
+      .then(async (ajustesGuardados: any) => {
          const planDetectado = ajustesGuardados.planSuscripcion || 'free';
          
          if (planDetectado === 'free') {
@@ -62,15 +99,13 @@ export default function AnalisisAvanzado() {
 
          const listaEmpresas = ajustesGuardados.empresas || ["Mi Empresa"];
          setEmpresas(listaEmpresas);
-         const activa = ajustesGuardados.empresaActiva || listaEmpresas[0] || "";
+         const activa = resolverEspacioInicial(ajustesGuardados.empresaActiva, listaEmpresas);
          empresaSolicitadaRef.current = activa;
          setEmpresaId(activa);
+         if (esEspacioCliente(activa)) guardarEspacioSesion(activa);
+         else limpiarEspacioSesion();
 
-         if (activa && ajustesGuardados.perfiles && ajustesGuardados.perfiles[activa]) {
-            setPerfilEmpresa(ajustesGuardados.perfiles[activa]);
-         } else {
-            setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
-         }
+         await cargarPerfilEmpresa(activa, ajustesGuardados);
 
          if (activa) {
             setIsLoadingData(true);
@@ -85,20 +120,29 @@ export default function AnalisisAvanzado() {
       });
   }, [isLoaded, isSignedIn, router]);
 
-  const cambiarEmpresa = async (nuevaEmpresa: string) => {
-    const actuales = await obtenerAjustes();
-    if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
+  useEffect(() => {
+    if (!empresaId) return;
+    setRolUsuario('LOADING');
+    verificarRolUsuario(empresaId).then((res) => {
+      if (empresaSolicitadaRef.current === empresaId) setRolUsuario(res.rol);
+    });
+  }, [empresaId]);
 
+  const cambiarEmpresa = async (nuevaEmpresa: string) => {
     empresaSolicitadaRef.current = nuevaEmpresa;
     setEmpresaId(nuevaEmpresa);
+    setRolUsuario('LOADING');
     setAiAnalysis("## Análisis Preliminar\nHas cambiado de empresa. Selecciona un escenario para analizar este nuevo espacio de trabajo.");
 
-    await guardarAjustes({ ...actuales, empresaActiva: nuevaEmpresa });
-
-    if (actuales.perfiles && actuales.perfiles[nuevaEmpresa]) {
-       setPerfilEmpresa(actuales.perfiles[nuevaEmpresa]);
+    if (esEspacioCliente(nuevaEmpresa)) {
+      guardarEspacioSesion(nuevaEmpresa);
+      await cargarPerfilEmpresa(nuevaEmpresa);
     } else {
-       setPerfilEmpresa({ sector: "No definido", objetivo: "No definido" });
+      limpiarEspacioSesion();
+      const actuales = await obtenerAjustes();
+      if (!actuales) return; // 🛡️ Sin conexión: abortamos para no pisar los ajustes reales de la nube.
+      await guardarAjustes({ ...actuales, empresaActiva: nuevaEmpresa });
+      await cargarPerfilEmpresa(nuevaEmpresa, actuales);
     }
 
     setIsLoadingData(true);
@@ -107,6 +151,13 @@ export default function AnalisisAvanzado() {
       setAllData(d);
       setIsLoadingData(false);
     });
+  };
+
+  const salirModoAsesor = async () => {
+    limpiarEspacioSesion();
+    const propia = empresas[0] || 'Mi Empresa';
+    await cambiarEmpresa(propia);
+    toast.success('Modo Propietario', { description: 'Has vuelto a tu espacio personal.' });
   };
 
   const gestionarSuscripcion = async () => {
@@ -688,14 +739,15 @@ export default function AnalisisAvanzado() {
               <div className="mb-6 px-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Espacio de Trabajo</label>
                 <div className="flex gap-2 mt-1">
-                    <select 
-                      value={empresaId} 
-                      onChange={(e) => cambiarEmpresa(e.target.value)} 
-                      className="w-full bg-slate-800 text-white text-sm font-bold p-2.5 rounded-xl border border-slate-700 outline-none truncate"
-                    >
-                        {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                    <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    <EspacioTrabajoSelect
+                      empresaId={empresaId}
+                      empresas={empresas}
+                      espaciosCliente={espaciosCliente}
+                      onChange={cambiarEmpresa}
+                    />
+                    {!esLectura && (
+                      <button onClick={() => { toast.info("Configuración", { description: "Ve a la Consola General para configurar este espacio." }); router.push('/'); }} className="p-2.5 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 transition border border-slate-700">⚙️</button>
+                    )}
                 </div>
               </div>
               
@@ -749,10 +801,13 @@ export default function AnalisisAvanzado() {
           {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
           <main className="flex-1 p-4 pt-24 lg:pt-10 lg:p-10 overflow-y-auto w-full relative">
+            {esLectura && (
+              <BannerModoAsesor nombreCliente={nombreEspacioVisible(empresaId)} onSalir={salirModoAsesor} />
+            )}
             <header className="flex flex-col lg:flex-row lg:justify-between lg:items-start mb-10 gap-6">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Centro de Inteligencia</h1>
-                <p className="text-sm font-medium text-slate-500 mt-1">Evaluación financiera predictiva para <span className="font-bold text-blue-600">{empresaId}</span>.</p>
+                <p className="text-sm font-medium text-slate-500 mt-1">Evaluación financiera predictiva para <span className="font-bold text-blue-600">{nombreEspacioVisible(empresaId)}</span>.</p>
               </div>
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                  <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
