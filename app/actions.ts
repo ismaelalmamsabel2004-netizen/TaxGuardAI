@@ -309,6 +309,19 @@ export async function editarDatoSupabase(datos: any) {
           ...(datos.estado_pago !== undefined && { estado_pago: datos.estado_pago }),
           ...(datos.nombre_archivo !== undefined && { nombre_archivo: datos.nombre_archivo }),
           ...(datos.url_archivo !== undefined && { url_archivo: datos.url_archivo }),
+          ...(datos.notas_internas !== undefined && { notas_internas: datos.notas_internas }),
+          ...(datos.etiqueta_color !== undefined && { etiqueta_color: datos.etiqueta_color }),
+          ...(datos.metodo_pago !== undefined && { metodo_pago: datos.metodo_pago }),
+          ...(datos.fecha_vencimiento !== undefined
+            ? (() => {
+                if (datos.fecha_vencimiento === null || datos.fecha_vencimiento === "") {
+                  return { fecha_vencimiento: null };
+                }
+                const fv = new Date(datos.fecha_vencimiento);
+                if (Number.isNaN(fv.getTime())) return {};
+                return { fecha_vencimiento: fv };
+              })()
+            : {}),
         }
       });
       return { success: true };
