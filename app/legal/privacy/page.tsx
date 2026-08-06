@@ -25,14 +25,18 @@ export default function PrivacyPage() {
       <section className="space-y-3">
         <LegalH2>1. Responsable del tratamiento</LegalH2>
         <LegalP>
-          El responsable del tratamiento es <strong>[NOMBRE EMPRESA]</strong>, con NIF/CIF{' '}
-          <strong>[CIF/NIF]</strong>, domicilio en <strong>[DIRECCIÓN COMPLETA]</strong>, e-mail de
-          contacto en materia de protección de datos: <strong>[EMAIL PRIVACIDAD]</strong> (en
-          adelante, el «Responsable»).
+          El responsable del tratamiento es <strong>TaxGuard AI</strong> (nombre comercial
+          TaxGuard AI), con NIF/CIF <strong>pendiente de alta como autónomo</strong> (se
+          actualizará en esta Política tras el alta en Hacienda), domicilio en{' '}
+          <strong>
+            Calle Palomar nº 51, 21860 Villalba del Alcor, Huelva, España
+          </strong>
+          , e-mail de contacto en materia de protección de datos:{' '}
+          <strong>soporte.taxguard@gmail.com</strong> (en adelante, el «Responsable»).
         </LegalP>
         <LegalP>
-          En su caso, podrá designarse un Delegado de Protección de Datos (DPD/DPO) en{' '}
-          <strong>[EMAIL DPO / N/A]</strong>.
+          Actualmente <strong>no se ha designado</strong> Delegado de Protección de Datos (DPD/DPO).
+          Las solicitudes RGPD se atienden en <strong>soporte.taxguard@gmail.com</strong>.
         </LegalP>
       </section>
 
@@ -232,8 +236,8 @@ export default function PrivacyPage() {
         <LegalP>
           Puede ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del
           tratamiento, portabilidad y, cuando el tratamiento se base en consentimiento, su
-          retirada, dirigiendo una solicitud a <strong>[EMAIL PRIVACIDAD]</strong>, aportando prueba
-          de identidad cuando sea necesario.
+          retirada, dirigiendo una solicitud a <strong>soporte.taxguard@gmail.com</strong>, aportando
+          prueba de identidad cuando sea necesario.
         </LegalP>
         <LegalP>
           Asimismo, tiene derecho a reclamar ante la Agencia Española de Protección de Datos (AEPD):{' '}
@@ -282,9 +286,18 @@ export default function PrivacyPage() {
       <section className="space-y-3">
         <LegalH2>14. Contacto</LegalH2>
         <LegalP>
-          Para cualquier consulta sobre privacidad: <strong>[EMAIL PRIVACIDAD]</strong> ·{' '}
-          <strong>[NOMBRE EMPRESA]</strong> · <strong>[DIRECCIÓN COMPLETA]</strong>. Contacto
-          operativo actual: <strong>soporte.taxguard@gmail.com</strong>.
+          Para cualquier consulta sobre privacidad: <strong>soporte.taxguard@gmail.com</strong> ·{' '}
+          <strong>TaxGuard AI</strong> · Calle Palomar nº 51, 21860 Villalba del Alcor, Huelva,
+          España · Tel. <strong>+34 635 997 325</strong> · Web:{' '}
+          <a
+            href="https://www.taxguard-ai.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 font-bold hover:underline"
+          >
+            https://www.taxguard-ai.com/
+          </a>
+          .
         </LegalP>
       </section>
     </LegalPageShell>

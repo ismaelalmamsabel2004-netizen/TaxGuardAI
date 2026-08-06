@@ -21,10 +21,14 @@ export default function TermsPage() {
           accesible principalmente a través de <strong>www.taxguard-ai.com</strong>.
         </LegalP>
         <LegalP>
-          El Prestador del Servicio es la entidad titular de TaxGuard AI, cuyos datos de identificación
-          completos figuran en el <Link href="/legal/notice" className="text-blue-600 font-bold hover:underline">Aviso Legal</Link>.
-          Al crear una cuenta, suscribirse o utilizar el Servicio, usted (el «Cliente» o el «Usuario») declara
-          actuar en calidad de profesional, empresario o autónomo, y acepta estos Términos íntegramente.
+          El Prestador del Servicio es <strong>TaxGuard AI</strong> (nombre comercial TaxGuard AI),
+          con domicilio en Calle Palomar nº 51, 21860 Villalba del Alcor, Huelva, España, e-mail{' '}
+          <strong>soporte.taxguard@gmail.com</strong> y teléfono <strong>+34 635 997 325</strong>.
+          El NIF fiscal está pendiente de alta como autónomo y se actualizará en el{' '}
+          <Link href="/legal/notice" className="text-blue-600 font-bold hover:underline">Aviso Legal</Link>{' '}
+          en cuanto se formalice. Al crear una cuenta, suscribirse o utilizar el Servicio, usted
+          (el «Cliente» o el «Usuario») declara actuar en calidad de profesional, empresario o
+          autónomo, y acepta estos Términos íntegramente.
         </LegalP>
         <LegalP>
           El objeto del Servicio es proporcionar una herramienta tecnológica de asistencia para la
@@ -214,7 +218,18 @@ export default function TermsPage() {
       <section className="space-y-3">
         <LegalH2>13. Contacto</LegalH2>
         <LegalP>
-          Para cuestiones legales o contractuales: <strong>soporte.taxguard@gmail.com</strong>.
+          Para cuestiones legales o contractuales: <strong>soporte.taxguard@gmail.com</strong> ·
+          Tel. <strong>+34 635 997 325</strong> · Calle Palomar nº 51, 21860 Villalba del Alcor,
+          Huelva, España ·{' '}
+          <a
+            href="https://www.taxguard-ai.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 font-bold hover:underline"
+          >
+            https://www.taxguard-ai.com/
+          </a>
+          .
         </LegalP>
       </section>
     </LegalPageShell>

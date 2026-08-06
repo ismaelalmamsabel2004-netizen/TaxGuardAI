@@ -13,11 +13,11 @@ export default function NoticePage() {
       title="Aviso Legal"
       subtitle="Información general del prestador de servicios de la sociedad de la información conforme a la Ley 34/2002 (LSSI-CE)."
     >
-      <LegalAlert title="Plantilla pendiente de personalización">
+      <LegalAlert title="Situación actual del prestador">
         <p>
-          Sustituya los campos entre corchetes (p. ej. <strong>[NOMBRE EMPRESA]</strong>,{' '}
-          <strong>[CIF/NIF]</strong>) por los datos reales de su sociedad antes de publicar en
-          producción.
+          TaxGuard AI opera actualmente bajo el nombre comercial <strong>TaxGuard AI</strong>. El
+          alta como autónomo / NIF fiscal está <strong>pendiente</strong> y se actualizará en este
+          Aviso Legal en cuanto se formalice.
         </p>
       </LegalAlert>
 
@@ -31,29 +31,39 @@ export default function NoticePage() {
         <LegalUl
           items={[
             <>
-              <strong>Denominación social:</strong> [NOMBRE EMPRESA]
+              <strong>Denominación / titular:</strong> TaxGuard AI
             </>,
             <>
               <strong>Nombre comercial:</strong> TaxGuard AI
             </>,
             <>
-              <strong>NIF/CIF:</strong> [CIF/NIF]
+              <strong>NIF/CIF:</strong> Pendiente de alta como autónomo (se publicará aquí tras el
+              alta en Hacienda)
             </>,
             <>
-              <strong>Domicilio social:</strong> [DIRECCIÓN COMPLETA]
+              <strong>Domicilio:</strong> Calle Palomar nº 51, 21860 Villalba del Alcor, Huelva,
+              España
             </>,
             <>
-              <strong>Inscripción registral:</strong> [REGISTRO MERCANTIL / TOMO / FOLIO / HOJA /
-              N/A]
+              <strong>Inscripción registral:</strong> N/A (no inscrito en Registro Mercantil; alta
+              de autónomo pendiente)
             </>,
             <>
-              <strong>Correo electrónico de contacto:</strong> [EMAIL CONTACTO]
+              <strong>Correo electrónico de contacto:</strong> soporte.taxguard@gmail.com
             </>,
             <>
-              <strong>Teléfono:</strong> [TELÉFONO]
+              <strong>Teléfono:</strong> +34 635 997 325
             </>,
             <>
-              <strong>Sitio web:</strong> [URL SITIO WEB]
+              <strong>Sitio web:</strong>{' '}
+              <a
+                href="https://www.taxguard-ai.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 font-bold hover:underline"
+              >
+                https://www.taxguard-ai.com/
+              </a>
             </>,
           ]}
         />
@@ -104,9 +114,9 @@ export default function NoticePage() {
         <LegalH2>4. Propiedad intelectual e industrial</LegalH2>
         <LegalP>
           Todos los contenidos del Sitio (textos, diseños, logotipos, software, bases de datos,
-          interfaz, documentación y marcas, incluido «TaxGuard AI») son titularidad de [NOMBRE
-          EMPRESA] o de terceros licenciantes, y están protegidos por la normativa de propiedad
-          intelectual e industrial.
+          interfaz, documentación y marcas, incluido «TaxGuard AI») son titularidad de TaxGuard AI
+          o de terceros licenciantes, y están protegidos por la normativa de propiedad intelectual e
+          industrial.
         </LegalP>
         <LegalP>
           Queda prohibida la reproducción, distribución, comunicación pública, transformación o
@@ -118,8 +128,8 @@ export default function NoticePage() {
         <LegalH2>5. Enlaces a terceros</LegalH2>
         <LegalP>
           El Sitio puede incluir enlaces a sitios de terceros (p. ej. pasarelas de pago,
-          documentación oficial de la AEAT). [NOMBRE EMPRESA] no controla ni asume responsabilidad
-          por el contenido, políticas o prácticas de dichos sitios.
+          documentación oficial de la AEAT). TaxGuard AI no controla ni asume responsabilidad por el
+          contenido, políticas o prácticas de dichos sitios.
         </LegalP>
       </section>
 
@@ -127,7 +137,7 @@ export default function NoticePage() {
         <LegalH2>6. Exclusión de responsabilidad</LegalH2>
         <LegalP>
           Sin perjuicio de lo dispuesto en los Términos y Condiciones (incluida la Cláusula Escudo),
-          [NOMBRE EMPRESA]:
+          TaxGuard AI:
         </LegalP>
         <LegalUl
           items={[
@@ -154,9 +164,9 @@ export default function NoticePage() {
         <LegalP>
           Este Aviso Legal se rige por la legislación española. Para la resolución de
           controversias, las partes se someten a los Juzgados y Tribunales de{' '}
-          <strong>[CIUDAD / PARTIDO JUDICIAL]</strong>, con renuncia a cualquier otro fuero que
-          pudiera corresponderles, salvo normas imperativas de protección de consumidores que
-          resulten de aplicación (el Servicio se dirige principalmente a profesionales B2B).
+          <strong>Huelva</strong>, con renuncia a cualquier otro fuero que pudiera
+          corresponderles, salvo normas imperativas de protección de consumidores que resulten de
+          aplicación (el Servicio se dirige principalmente a profesionales B2B).
         </LegalP>
       </section>
 
@@ -164,9 +174,9 @@ export default function NoticePage() {
         <LegalH2>9. Contacto</LegalH2>
         <LegalP>
           Para cualquier comunicación legal relativa a este Aviso:{' '}
-          <strong>[EMAIL CONTACTO]</strong> · <strong>[NOMBRE EMPRESA]</strong> ·{' '}
-          <strong>[DIRECCIÓN COMPLETA]</strong>. Contacto operativo:{' '}
-          <strong>soporte.taxguard@gmail.com</strong>.
+          <strong>soporte.taxguard@gmail.com</strong> · <strong>TaxGuard AI</strong> · Calle
+          Palomar nº 51, 21860 Villalba del Alcor, Huelva, España · Tel.{' '}
+          <strong>+34 635 997 325</strong>.
         </LegalP>
       </section>
     </LegalPageShell>
