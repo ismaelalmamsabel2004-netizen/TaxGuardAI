@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { prisma } from '../../../lib/prisma'; // 🚀 IMPORTAMOS PRISMA
+import { consentimientoLegalSchema } from '../../../lib/validations';
 
 export async function POST(request: Request) {
   try {
@@ -14,7 +15,22 @@ export async function POST(request: Request) {
     const stripe = new Stripe(stripeKey, { apiVersion: '2024-06-20' as any });
 
     const body = await request.json();
-    const { priceId } = body;
+    const { priceId, acceptedTerms, acceptedPrivacy } = body;
+
+    const consentimiento = consentimientoLegalSchema.safeParse({
+      acceptTerms: acceptedTerms === true,
+      acceptPrivacy: acceptedPrivacy === true,
+    });
+    if (!consentimiento.success) {
+      return NextResponse.json(
+        {
+          error:
+            'Debe aceptar los Términos y Condiciones (incluida la exención de responsabilidad fiscal) y la Política de Privacidad antes de suscribirse.',
+        },
+        { status: 400 }
+      );
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.taxguard-ai.com';
 
     // 🚀 PASO 1: EL AWAIT DE CLERK

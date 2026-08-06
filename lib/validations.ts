@@ -213,6 +213,26 @@ export const ocrFacturaSchema = z.object({
 });
 
 // ============================================================
+// ⚖️ CONSENTIMIENTO LEGAL (registro / checkout B2B)
+// ============================================================
+
+/** Ambos checkboxes obligatorios: Términos (Cláusula Escudo) + Privacidad. */
+export const consentimientoLegalSchema = z.object({
+  acceptTerms: z.literal(true, {
+    errorMap: () => ({
+      message: 'Debe aceptar los Términos y Condiciones, incluida la exención de responsabilidad fiscal.',
+    }),
+  }),
+  acceptPrivacy: z.literal(true, {
+    errorMap: () => ({
+      message: 'Debe aceptar la Política de Privacidad.',
+    }),
+  }),
+});
+
+export type ConsentimientoLegal = z.infer<typeof consentimientoLegalSchema>;
+
+// ============================================================
 // 🔧 UTILIDAD: convierte errores de Zod en un mapa {campo: mensaje}
 // ============================================================
 

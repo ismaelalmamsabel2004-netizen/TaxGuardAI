@@ -2,7 +2,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useUser, UserButton, SignInButton, SignUpButton, Show } from "@clerk/nextjs";
+import { useUser, UserButton, SignInButton, Show } from "@clerk/nextjs";
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts';
 import Link from 'next/link';
@@ -2694,9 +2694,9 @@ export default function Home() {
                 <SignInButton mode="modal">
                   <button className="hidden sm:block text-sm font-bold text-slate-400 hover:text-white transition cursor-pointer">Iniciar Sesión</button>
                 </SignInButton>
-                <SignUpButton mode="modal">
-                  <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm cursor-pointer">Crear Cuenta</button>
-                </SignUpButton>
+                <Link href="/registro" className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition backdrop-blur-sm border border-white/5 shadow-sm cursor-pointer">
+                  Crear Cuenta
+                </Link>
               </div>
             </div>
           </nav>
@@ -2716,11 +2716,9 @@ export default function Home() {
                   Automatiza tu contabilidad, escanea tickets en segundos, controla quién te debe dinero y genera todos tus impuestos oficiales (303, 130, 390, 115, 347, 349) sin depender de terceros.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-                  <SignUpButton mode="modal">
-                    <button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20 flex items-center justify-center gap-2 cursor-pointer">
-                      Crear Cuenta Gratis <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-                    </button>
-                  </SignUpButton>
+                  <Link href="/registro" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-base font-bold transition shadow-xl shadow-blue-500/20 border border-blue-400/20 flex items-center justify-center gap-2 cursor-pointer">
+                    Crear Cuenta Gratis <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                  </Link>
                 </div>
 
                 {/* TRUST BADGES */}
@@ -2854,12 +2852,10 @@ export default function Home() {
                      <span className="text-slate-300 text-sm font-medium">Libro Mayor Excel/PDF y 'Escudo 50%' para vehículos.</span>
                    </li>
                 </ul>
-                <SignUpButton mode="modal">
-                  <button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition flex flex-col items-center cursor-pointer">
-                    <span>Empezar 7 días gratis</span>
-                    <span className="text-[10px] font-medium text-slate-400 font-normal mt-0.5">Cancela cuando quieras</span>
-                  </button>
-                </SignUpButton>
+                <Link href="/registro" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl border border-slate-700 transition flex flex-col items-center cursor-pointer">
+                  <span>Empezar 7 días gratis</span>
+                  <span className="text-[10px] font-medium text-slate-400 font-normal mt-0.5">Cancela cuando quieras</span>
+                </Link>
               </div>
 
               {/* TARJETA EMPRESA PRO */}
@@ -2896,12 +2892,10 @@ export default function Home() {
                      <span className="text-slate-300 text-sm font-medium"><strong className="text-white">Radar de Morosidad:</strong> Control de clientes impagados y facturas vencidas en tiempo real.</span>
                    </li>
                 </ul>
-                <SignUpButton mode="modal">
-                  <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition flex flex-col items-center cursor-pointer">
-                    <span>Probar PRO 7 días gratis</span>
-                    <span className="text-[10px] text-blue-200 font-normal mt-0.5">Sin compromiso de permanencia</span>
-                  </button>
-                </SignUpButton>
+                <Link href="/registro" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl border border-blue-400/20 shadow-xl shadow-blue-500/20 transition flex flex-col items-center cursor-pointer">
+                  <span>Probar PRO 7 días gratis</span>
+                  <span className="text-[10px] text-blue-200 font-normal mt-0.5">Sin compromiso de permanencia</span>
+                </Link>
               </div>
 
             </div>
@@ -2958,6 +2952,20 @@ export default function Home() {
           <footer className="border-t border-white/5 py-12 text-center text-slate-500 text-sm relative z-10 bg-slate-950">
             <p>© {new Date().getFullYear()} TaxGuard AI. Todos los derechos reservados.</p>
             <p className="mt-2">Plataforma SaaS de alto rendimiento para PYMEs y Autónomos.</p>
+            <div className="mt-6 flex flex-wrap justify-center gap-4 text-xs font-bold text-slate-500">
+              <Link href="/legal/terms" className="hover:text-blue-400 transition underline-offset-2 hover:underline">
+                Términos y Condiciones
+              </Link>
+              <Link href="/legal/privacy" className="hover:text-blue-400 transition underline-offset-2 hover:underline">
+                Política de Privacidad
+              </Link>
+              <Link href="/legal/notice" className="hover:text-blue-400 transition underline-offset-2 hover:underline">
+                Aviso Legal
+              </Link>
+              <Link href="/registro" className="hover:text-blue-400 transition underline-offset-2 hover:underline">
+                Crear Cuenta
+              </Link>
+            </div>
             <p className="mt-6 text-xs text-slate-600">Contacto comercial y soporte: soporte.taxguard@gmail.com</p>
           </footer>
         </div>

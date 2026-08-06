@@ -1,28 +1,72 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 // IMPORTAMOS LOS CONTROLES COMPLETOS DE CLERK Y SONNER
 import { SignInButton, useUser, UserButton, SignOutButton } from "@clerk/nextjs";
 import { Toaster, toast } from 'sonner';
+import { consentimientoLegalSchema, mapearErroresZod } from '@/lib/validations';
+import LegalConsentCheckboxes, {
+  bothConsentsAccepted,
+  type LegalConsentState,
+} from '@/components/legal/LegalConsentCheckboxes';
 
 export default function Precios() {
   const [loading, setLoading] = useState<string | null>(null);
+  const [consent, setConsent] = useState<LegalConsentState>({
+    acceptTerms: false,
+    acceptPrivacy: false,
+  });
+  const [consentErrors, setConsentErrors] = useState<
+    Partial<Record<keyof LegalConsentState, string>>
+  >({});
   const { isSignedIn } = useUser();
 
+  const puedeSuscribirse = useMemo(() => bothConsentsAccepted(consent), [consent]);
+
+  const handleConsentChange = (next: LegalConsentState) => {
+    setConsent(next);
+    const parsed = consentimientoLegalSchema.safeParse(next);
+    if (parsed.success) {
+      setConsentErrors({});
+    } else if (consent.acceptTerms || consent.acceptPrivacy || next.acceptTerms || next.acceptPrivacy) {
+      setConsentErrors(
+        mapearErroresZod(parsed.error) as Partial<Record<keyof LegalConsentState, string>>
+      );
+    }
+  };
+
   const comprarPlan = async (priceId: string) => {
+    const parsed = consentimientoLegalSchema.safeParse(consent);
+    if (!parsed.success) {
+      setConsentErrors(
+        mapearErroresZod(parsed.error) as Partial<Record<keyof LegalConsentState, string>>
+      );
+      toast.warning('Consentimiento obligatorio', {
+        description:
+          'Debe aceptar los Términos (incluida la exención fiscal) y la Política de Privacidad antes de suscribirse.',
+      });
+      return;
+    }
+
     setLoading(priceId);
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId })
+        body: JSON.stringify({
+          priceId,
+          acceptedTerms: true,
+          acceptedPrivacy: true,
+        }),
       });
       
       const data = await res.json();
       
       if (res.status === 401) {
         toast.warning("Acceso Restringido", { description: "Inicia sesión o crea una cuenta gratis primero para poder suscribirte a un plan." });
+      } else if (res.status === 400 && data.error) {
+        toast.warning('Consentimiento requerido', { description: data.error });
       } else if (data.url) {
         window.location.href = data.url; 
       } else {
@@ -62,11 +106,19 @@ export default function Precios() {
                 </div>
               </>
             ) : (
-              <SignInButton mode="modal">
-                <button className="text-slate-300 hover:text-white text-xs sm:text-sm font-bold transition px-4 sm:px-5 py-2.5 bg-blue-600/20 rounded-lg border border-blue-500/30 hover:bg-blue-600/40 shadow-lg shadow-blue-900/20 cursor-pointer">
-                  Acceder / Crear Cuenta
-                </button>
-              </SignInButton>
+              <>
+                <SignInButton mode="modal">
+                  <button className="text-slate-300 hover:text-white text-xs sm:text-sm font-bold transition px-3 sm:px-4 py-2.5 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 cursor-pointer">
+                    Acceder
+                  </button>
+                </SignInButton>
+                <Link
+                  href="/registro"
+                  className="text-slate-300 hover:text-white text-xs sm:text-sm font-bold transition px-4 sm:px-5 py-2.5 bg-blue-600/20 rounded-lg border border-blue-500/30 hover:bg-blue-600/40 shadow-lg shadow-blue-900/20"
+                >
+                  Crear Cuenta
+                </Link>
+              </>
             )}
           </div>
         </div>
@@ -84,6 +136,21 @@ export default function Precios() {
           <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto font-medium leading-relaxed">
             Nuestros clientes ahorran una media de 30 horas al mes y cientos de euros en deducciones fiscales optimizadas por Inteligencia Artificial.
           </p>
+        </div>
+
+        <div className="max-w-2xl mx-auto mb-10">
+          <LegalConsentCheckboxes
+            value={consent}
+            onChange={handleConsentChange}
+            errors={consentErrors}
+            variant="dark"
+            idPrefix="checkout"
+          />
+          {!puedeSuscribirse ? (
+            <p className="text-center text-[11px] text-slate-500 font-medium mt-3">
+              Marque ambos consentimientos para habilitar los botones de suscripción.
+            </p>
+          ) : null}
         </div>
         
         <div className="flex flex-col md:flex-row gap-8 w-full items-center md:items-stretch justify-center">
@@ -118,8 +185,8 @@ export default function Precios() {
             
             <button 
               onClick={() => comprarPlan('price_1TwN2RJADsdd8EhemCpvJbef')}
-              disabled={loading === 'price_1TwN2RJADsdd8EhemCpvJbef'}
-              className="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl border border-slate-700 hover:bg-slate-700 transition shadow-sm disabled:opacity-50 flex flex-col items-center"
+              disabled={!puedeSuscribirse || loading === 'price_1TwN2RJADsdd8EhemCpvJbef'}
+              className="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl border border-slate-700 hover:bg-slate-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center"
             >
               {loading === 'price_1TwN2RJADsdd8EhemCpvJbef' ? (
                 <span>Conectando...</span>
@@ -169,8 +236,8 @@ export default function Precios() {
             
             <button 
               onClick={() => comprarPlan('price_1TwN54JADsdd8EheCYnGZuaZ')}
-              disabled={loading === 'price_1TwN54JADsdd8EheCYnGZuaZ'}
-              className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-500 shadow-xl shadow-blue-500/20 border border-blue-400/20 transition disabled:opacity-50 flex flex-col items-center"
+              disabled={!puedeSuscribirse || loading === 'price_1TwN54JADsdd8EheCYnGZuaZ'}
+              className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-500 shadow-xl shadow-blue-500/20 border border-blue-400/20 transition disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center"
             >
               {loading === 'price_1TwN54JADsdd8EheCYnGZuaZ' ? (
                 <span>Conectando...</span>
@@ -185,7 +252,19 @@ export default function Precios() {
           </div>
         </div>
 
-        <div className="mt-32 max-w-3xl mx-auto border-t border-white/5 pt-16">
+        <div className="mt-16 flex flex-wrap justify-center gap-4 text-xs font-bold text-slate-500">
+          <Link href="/legal/terms" className="hover:text-blue-400 transition underline-offset-2 hover:underline">
+            Términos y Condiciones
+          </Link>
+          <Link href="/legal/privacy" className="hover:text-blue-400 transition underline-offset-2 hover:underline">
+            Política de Privacidad
+          </Link>
+          <Link href="/legal/notice" className="hover:text-blue-400 transition underline-offset-2 hover:underline">
+            Aviso Legal
+          </Link>
+        </div>
+
+        <div className="mt-20 max-w-3xl mx-auto border-t border-white/5 pt-16">
            <h3 className="text-2xl font-black text-white text-center mb-10">Dudas antes de empezar</h3>
            <div className="space-y-6">
               <div className="bg-slate-900/30 p-6 rounded-2xl border border-slate-800">
