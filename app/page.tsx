@@ -20,12 +20,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente, generarRecurrentesPendientes, obtenerPerfilEspacio } from './actions';
+import { obtenerDatosSupabase, guardarDatoSupabase, editarDatoSupabase, borrarDatoSupabase, escanearFacturaIA, actualizarEstadoPago, verificarRolUsuario, invitarAsesor, obtenerAsesores, revocarAsesor, obtenerEmpresasCliente, generarRecurrentesPendientes, obtenerPerfilEspacio, obtenerContactosCRM } from './actions';
 import { transaccionSchema, mapearErroresZod, parsearImporte } from '../lib/validations';
 import { obtenerAjustes, obtenerAjustesSilencioso, guardarAjustes } from '../lib/settingsClient';
 import { celdaCSVSegura } from '../lib/csvExport';
 import { esEspacioCliente, guardarEspacioSesion, limpiarEspacioSesion, resolverEspacioInicial, nombreEspacioVisible } from '../lib/workspaceSession';
 import SoporteVIPModal, { SoporteVIPNavButton } from '../components/SoporteVIP';
+import CentroCobrosExpress from '../components/CentroCobrosExpress';
 
 // 🚀 RENDIMIENTO: @react-pdf/renderer se carga en su propio chunk, solo en el navegador y solo
 // cuando este botón llega a pintarse, para no lastrar el JS inicial de la Consola General.
@@ -81,6 +82,7 @@ export default function Home() {
   const [asesorEmail, setAsesorEmail] = useState("");
   const [listaAsesores, setListaAsesores] = useState<any[]>([]);
   const [isInviting, setIsInviting] = useState(false);
+  const [contactosCRM, setContactosCRM] = useState<{nombre: string, nif?: string | null, email?: string | null, telefono?: string | null}[]>([]);
 
   const [mes, setMes] = useState("");
   const [ingreso, setIngreso] = useState("");
@@ -388,8 +390,20 @@ export default function Home() {
         obtenerDatosSupabase(empresaId).then(d => {
           if (empresaSolicitadaRef.current !== empresaId) return; // Ignoramos datos de una empresa que ya no está seleccionada
           if (d && d.length > 0) setData(d);
+          else setData([]);
           setIsLoadingData(false);
         }).catch(() => { if (empresaSolicitadaRef.current === empresaId) setIsLoadingData(false); });
+
+        // 💸 Centro de Cobros Express: emails/teléfonos del CRM para reclamar en 1 clic
+        obtenerContactosCRM(empresaId).then((lista) => {
+          if (empresaSolicitadaRef.current !== empresaId) return;
+          setContactosCRM(Array.isArray(lista) ? lista.map((c: any) => ({
+            nombre: c.nombre || '',
+            nif: c.nif || null,
+            email: c.email || null,
+            telefono: c.telefono || null,
+          })) : []);
+        }).catch(() => { if (empresaSolicitadaRef.current === empresaId) setContactosCRM([]); });
     });
 
     obtenerAjustesSilencioso()
@@ -1230,6 +1244,30 @@ export default function Home() {
       }
   };
 
+  const posponerVencimientoCobro = async (id: any, nuevaFechaISO: string) => {
+      try {
+          const res = await editarDatoSupabase({
+              id,
+              empresaId,
+              month: data.find(d => d.id === id)?.name,
+              total: data.find(d => d.id === id)?.total,
+              categoria: data.find(d => d.id === id)?.categoria,
+              iva: data.find(d => d.id === id)?.iva,
+              estado_pago: data.find(d => d.id === id)?.estado_pago,
+              fecha_vencimiento: nuevaFechaISO,
+          });
+          if (res.success) {
+              const actualizadosBD = await obtenerDatosSupabase(empresaId);
+              setData(actualizadosBD);
+              toast.success("Vencimiento aplazado", { description: "Se han sumado 7 días al plazo de cobro/pago." });
+          } else {
+              toast.error("Error", { description: (res as any).error || "No se pudo actualizar la fecha." });
+          }
+      } catch {
+          toast.error("Error", { description: "Fallo de conexión al aplazar el vencimiento." });
+      }
+  };
+
   const enviarMensajeChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentMessage.trim()) return;
@@ -1567,83 +1605,15 @@ export default function Home() {
                   </div>
                 </header>
 
-                {facturasPendientes.length > 0 && (
-                    <div className="bg-amber-50/50 border border-amber-200 p-5 rounded-2xl mb-8 shadow-sm">
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
-                            <div className="flex items-center gap-3">
-                                <span className="text-xl bg-amber-100 p-2 rounded-xl">⚠️</span>
-                                <div>
-                                    <h3 className="text-sm font-black text-amber-900 uppercase tracking-widest">Tesorería en Alerta</h3>
-                                    <p className="text-xs font-medium text-amber-700 mt-0.5">Tienes {facturasPendientes.length} facturas pendientes de cobro o pago.</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-4 bg-white px-4 py-2 rounded-xl border border-amber-100 shadow-sm">
-                                <div className="text-right">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Cobrar</p>
-                                    <p className="text-sm font-black text-emerald-600">+{cobrosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
-                                </div>
-                                <div className="w-px bg-amber-100"></div>
-                                <div className="text-right">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar</p>
-                                    <p className="text-sm font-black text-rose-600">-{pagosPendientesTotal.toLocaleString('es-ES', {minimumFractionDigits: 2})} €</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="overflow-x-auto bg-white rounded-xl border border-amber-100">
-                            <table className="min-w-full text-left whitespace-nowrap text-sm">
-                                <thead className="bg-amber-50 text-[10px] font-black text-amber-700 uppercase">
-                                    <tr>
-                                        <th className="px-4 py-2">Fecha</th>
-                                        <th className="px-4 py-2">Emisor / NIF</th>
-                                        <th className="px-4 py-2">Concepto</th>
-                                        <th className="px-4 py-2 text-right">Importe Total</th>
-                                        {rolUsuario !== 'LECTURA' && <th className="px-4 py-2 text-center">Acción Inmediata</th>}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-amber-50 font-semibold text-slate-700">
-                                    {facturasPendientes.map((item) => {
-                                        const totalConIva = Math.abs(Number(item.total)) * (1 + (Number(item.iva)||0)/100);
-                                        const esGasto = Number(item.total) < 0;
-                                        
-                                        const [d, m, y] = item.name.split('/');
-                                        const fechaDoc = new Date(Number(y), Number(m)-1, Number(d)).getTime();
-                                        const diasPasados = Math.floor((new Date().getTime() - fechaDoc) / (1000 * 60 * 60 * 24));
-                                        const riesgoAlto = diasPasados > 30;
-
-                                        return (
-                                            <tr key={item.id} className="hover:bg-amber-50/30 transition">
-                                                <td className="px-4 py-3">
-                                                    <span className="block">{item.name}</span>
-                                                    {riesgoAlto && (
-                                                        <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 mt-1 inline-block">
-                                                            🔴 +30 Días (Riesgo)
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="text-xs text-slate-900 block">{item.cif || "S/N"}</span>
-                                                    <span className="text-[9px] text-slate-400">{item.numero_factura}</span>
-                                                </td>
-                                                <td className="px-4 py-3 text-xs">{item.concepto_detalle || item.categoria}</td>
-                                                <td className={`px-4 py-3 text-right font-black ${esGasto ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                    {esGasto ? '-' : '+'}{totalConIva.toLocaleString('es-ES', {minimumFractionDigits: 2})} €
-                                                </td>
-                                                {rolUsuario !== 'LECTURA' && (
-                                                    <td className="px-4 py-3 text-center">
-                                                        <button onClick={() => marcarComoPagado(item.id)} className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition shadow-sm ${esGasto ? 'bg-rose-600 text-white hover:bg-rose-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
-                                                            {esGasto ? "Pagar Ahora" : "Marcar Cobrado"}
-                                                        </button>
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
+                <CentroCobrosExpress
+                  pendientes={facturasPendientes}
+                  contactosCRM={contactosCRM}
+                  puedeEscribir={rolUsuario !== 'LECTURA' && rolUsuario !== 'LOADING'}
+                  nombreEmpresa={nombreEmpresaVisual}
+                  miNif={datosFiscales?.nif || undefined}
+                  onMarcarPagado={marcarComoPagado}
+                  onPosponerVencimiento={posponerVencimientoCobro}
+                />
 
                 <div className="flex gap-2 lg:gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
                   <button onClick={() => setFiltro('all')} className={`px-4 py-2 whitespace-nowrap rounded-xl text-xs font-bold transition shadow-sm border ${filtro === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}>Histórico</button>
