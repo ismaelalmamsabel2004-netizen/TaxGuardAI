@@ -67,7 +67,8 @@ export async function obtenerDatosSupabase(empresaIdRaw?: string) {
         fecha_vencimiento: t.fecha_vencimiento ? t.fecha_vencimiento.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
         raw_fecha_vencimiento: t.fecha_vencimiento || null,
         metodo_pago: t.metodo_pago || null,
-        notas_internas: t.notas_internas || null
+        notas_internas: t.notas_internas || null,
+        etiqueta_color: t.etiqueta_color || null,
       }));
   } catch (error) {
       return [];

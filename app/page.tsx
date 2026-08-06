@@ -55,6 +55,19 @@ const parseFechaTS = (item: any) => {
   return new Date(Number(y), Number(m) - 1, Number(d)).getTime();
 };
 
+// 🎨 Etiquetas de color del Libro Mayor (campos ya en Prisma; sin migración)
+const ETIQUETAS_COLOR: { id: string; label: string; dot: string; ring: string; border: string }[] = [
+  { id: '', label: 'Sin color', dot: 'bg-slate-300', ring: 'ring-slate-200', border: 'border-l-transparent' },
+  { id: 'blue', label: 'Azul', dot: 'bg-blue-500', ring: 'ring-blue-400', border: 'border-l-blue-500' },
+  { id: 'emerald', label: 'Verde', dot: 'bg-emerald-500', ring: 'ring-emerald-400', border: 'border-l-emerald-500' },
+  { id: 'amber', label: 'Ámbar', dot: 'bg-amber-500', ring: 'ring-amber-400', border: 'border-l-amber-500' },
+  { id: 'rose', label: 'Rojo', dot: 'bg-rose-500', ring: 'ring-rose-400', border: 'border-l-rose-500' },
+  { id: 'violet', label: 'Violeta', dot: 'bg-violet-500', ring: 'ring-violet-400', border: 'border-l-violet-500' },
+  { id: 'cyan', label: 'Cian', dot: 'bg-cyan-500', ring: 'ring-cyan-400', border: 'border-l-cyan-500' },
+];
+
+const etiquetaMeta = (id?: string | null) => ETIQUETAS_COLOR.find((e) => e.id === (id || '')) || ETIQUETAS_COLOR[0];
+
 export default function Home() {
   const router = useRouter(); 
   const { isSignedIn, isLoaded, user } = useUser();
@@ -121,6 +134,7 @@ export default function Home() {
   const [tipoArchivoTemporal, setTipoArchivoTemporal] = useState<string | null>(null);
   
   const [filtroDoc, setFiltroDoc] = useState<"all" | "ingresos" | "gastos" | "presupuestos" | "abonos" | "proyectos" | "pendientes">("all");
+  const [filtroColor, setFiltroColor] = useState<string>("todos");
   const [subFiltroProyecto, setSubFiltroProyecto] = useState<"all" | "ingresos" | "gastos">("all");
   const [proyectoSeleccionadoFiltro, setProyectoSeleccionadoFiltro] = useState<string>("todos");
 
@@ -664,7 +678,16 @@ export default function Home() {
          const coincideCliente = item.cliente_nombre?.toLowerCase().includes(searchLower);
          const coincideProyecto = item.concepto_detalle?.toLowerCase().includes(searchLower);
          const coincideCif = item.cif?.toLowerCase().includes(searchLower);
-         if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente && !coincideProyecto && !coincideCif) return false;
+         const coincideNota = item.notas_internas?.toLowerCase().includes(searchLower);
+         if (!coincideCategoria && !coincideMonto && !coincideFactura && !coincideCliente && !coincideProyecto && !coincideCif && !coincideNota) return false;
+      }
+
+      if (filtroColor !== 'todos') {
+        if (filtroColor === 'sin') {
+          if (item.etiqueta_color) return false;
+        } else if (item.etiqueta_color !== filtroColor) {
+          return false;
+        }
       }
 
       const isPresupuesto = item.categoria === 'Presupuestos' || item.numero_factura?.startsWith('P-');
@@ -698,7 +721,7 @@ export default function Home() {
       else if (sortConfig.key === 'importe') comparacion = Math.abs(Number(a.total)) - Math.abs(Number(b.total));
       return sortConfig.direction === 'asc' ? comparacion : -comparacion;
     });
-  }, [datosTabla, chartFilter, filtro, searchTerm, filtroDoc, proyectoSeleccionadoFiltro, subFiltroProyecto, sortConfig]);
+  }, [datosTabla, chartFilter, filtro, searchTerm, filtroDoc, filtroColor, proyectoSeleccionadoFiltro, subFiltroProyecto, sortConfig]);
 
   const toggleSort = (key: 'fecha' | 'categoria' | 'importe') => {
     setSortConfig(prev => prev.key === key ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: key === 'fecha' ? 'desc' : 'asc' });
@@ -1160,7 +1183,9 @@ export default function Home() {
       ivaSeleccionado: item.iva?.toString() || '0',
       proyecto: tagMatch ? tagMatch[1] : "",
       conceptoOriginal: item.concepto_detalle || "",
-      estado_pago: estadoInicial
+      estado_pago: estadoInicial,
+      etiqueta_color: item.etiqueta_color || '',
+      notas_internas: item.notas_internas || '',
     });
   };
 
@@ -1194,6 +1219,9 @@ export default function Home() {
           nuevoConcepto += ` [PROYECTO: ${editFormData.proyecto.toUpperCase()}]`;
       }
 
+      const notasLimpias = (editFormData.notas_internas || '').trim().slice(0, 500);
+      const colorLimpio = editFormData.etiqueta_color || null;
+
       const res = await editarDatoSupabase({ 
         id: id, 
         month: fecha, 
@@ -1202,7 +1230,9 @@ export default function Home() {
         iva: editFormData.ivaSeleccionado,
         estado_pago: editFormData.estado_pago,
         concepto_detalle: nuevoConcepto.trim(),
-        empresaId: empresaId
+        empresaId: empresaId,
+        etiqueta_color: colorLimpio,
+        notas_internas: notasLimpias || null,
       });
 
       if (res.success) {
@@ -2112,6 +2142,33 @@ export default function Home() {
                          <button onClick={() => {setFiltroDoc('presupuestos'); setCurrentPage(1);}} className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition border ${filtroDoc === 'presupuestos' ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>Presupuestos</button>
                       </div>
 
+                      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                         <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0">Color</span>
+                         <button
+                           type="button"
+                           onClick={() => { setFiltroColor('todos'); setCurrentPage(1); }}
+                           className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition ${filtroColor === 'todos' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}
+                         >
+                           Todos
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => { setFiltroColor('sin'); setCurrentPage(1); }}
+                           className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition ${filtroColor === 'sin' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200'}`}
+                         >
+                           Sin etiqueta
+                         </button>
+                         {ETIQUETAS_COLOR.filter((c) => c.id).map((c) => (
+                           <button
+                             key={c.id}
+                             type="button"
+                             title={c.label}
+                             onClick={() => { setFiltroColor(c.id); setCurrentPage(1); }}
+                             className={`w-6 h-6 rounded-full ${c.dot} border-2 transition ${filtroColor === c.id ? `ring-2 ${c.ring} border-white scale-110` : 'border-white/80 opacity-80 hover:opacity-100'}`}
+                           />
+                         ))}
+                      </div>
+
                       {filtroDoc === 'proyectos' && (
                          <div className="flex flex-col sm:flex-row gap-3 mt-3 p-3 bg-purple-50/50 border border-purple-100 rounded-xl animate-fade-in-up">
                              <select value={proyectoSeleccionadoFiltro} onChange={(e) => {setProyectoSeleccionadoFiltro(e.target.value); setCurrentPage(1);}} className="p-2 bg-white border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 outline-none focus:ring-2 focus:ring-purple-500/20">
@@ -2179,42 +2236,85 @@ export default function Home() {
                           if (editingId === item.id) {
                             return (
                               <tr key={`edit-${item.id}`} className="bg-blue-50/30 transition">
-                                <td className="px-4 py-2 align-top">
-                                   <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className={`w-full p-1.5 border rounded text-xs outline-none ${editFormErrors.mes ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
-                                   {editFormErrors.mes && <p className="text-[10px] font-bold text-rose-500 mt-1">{editFormErrors.mes}</p>}
-                                </td>
-                                <td className="px-4 py-2 flex gap-1 align-top">
-                                   <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1">
-                                     {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
-                                   </select>
-                                   <select value={editFormData.estado_pago} onChange={(e) => setEditFormData({...editFormData, estado_pago: e.target.value})} className="w-1/2 p-1.5 border border-blue-300 rounded text-xs outline-none mb-1 font-bold">
-                                      <option value={editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}>{editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}</option>
-                                      <option value="PENDIENTE">PENDIENTE</option>
-                                   </select>
-                                </td>
-                                <td className="px-4 py-2 align-top">
-                                   <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className={`w-full w-24 p-1.5 border rounded text-xs outline-none ${editFormErrors.ingreso ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
-                                   {editFormErrors.ingreso && <p className="text-[10px] font-bold text-rose-500 mt-1 whitespace-normal">{editFormErrors.ingreso}</p>}
-                                </td>
-                                <td className="px-4 py-2">
-                                   <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
-                                      <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                                   </select>
-                                </td>
-                                <td className="px-4 py-2 text-slate-400 text-xs italic">Auto</td>
-                                <td className="px-4 py-2 text-right space-x-2">
-                                   <button onClick={() => guardarEdicion(item.id)} className="text-emerald-600 font-bold text-xs hover:underline">Guardar</button>
-                                   <button onClick={() => setEditingId(null)} className="text-slate-500 font-bold text-xs hover:underline">Cancelar</button>
+                                <td className="px-4 py-2 align-top" colSpan={rolUsuario !== 'LECTURA' ? 6 : 5}>
+                                   <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-start">
+                                     <div>
+                                       <label className="text-[9px] font-bold text-slate-400 uppercase">Fecha</label>
+                                       <input type="date" value={editFormData.mes} onChange={(e) => setEditFormData({...editFormData, mes: e.target.value})} className={`w-full p-1.5 border rounded text-xs outline-none ${editFormErrors.mes ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                       {editFormErrors.mes && <p className="text-[10px] font-bold text-rose-500 mt-1">{editFormErrors.mes}</p>}
+                                     </div>
+                                     <div>
+                                       <label className="text-[9px] font-bold text-slate-400 uppercase">Categoría</label>
+                                       <select value={editFormData.categoria} onChange={(e) => setEditFormData({...editFormData, categoria: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
+                                         {(editFormData.tipo === 'ingreso' ? categoriasIngreso : categoriasGasto).map(c => <option key={c} value={c}>{c}</option>)}
+                                       </select>
+                                     </div>
+                                     <div>
+                                       <label className="text-[9px] font-bold text-slate-400 uppercase">Estado</label>
+                                       <select value={editFormData.estado_pago} onChange={(e) => setEditFormData({...editFormData, estado_pago: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none font-bold">
+                                          <option value={editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}>{editFormData.tipo === 'ingreso' ? 'COBRADO' : 'PAGADO'}</option>
+                                          <option value="PENDIENTE">PENDIENTE</option>
+                                       </select>
+                                     </div>
+                                     <div>
+                                       <label className="text-[9px] font-bold text-slate-400 uppercase">Base €</label>
+                                       <input type="text" inputMode="decimal" value={editFormData.ingreso} onChange={(e) => setEditFormData({...editFormData, ingreso: e.target.value})} className={`w-full p-1.5 border rounded text-xs outline-none ${editFormErrors.ingreso ? 'border-rose-400 bg-rose-50' : 'border-blue-300'}`} />
+                                       {editFormErrors.ingreso && <p className="text-[10px] font-bold text-rose-500 mt-1 whitespace-normal">{editFormErrors.ingreso}</p>}
+                                     </div>
+                                     <div>
+                                       <label className="text-[9px] font-bold text-slate-400 uppercase">IVA</label>
+                                       <select value={editFormData.ivaSeleccionado} onChange={(e) => setEditFormData({...editFormData, ivaSeleccionado: e.target.value})} className="w-full p-1.5 border border-blue-300 rounded text-xs outline-none">
+                                          <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
+                                       </select>
+                                     </div>
+                                     <div className="flex items-end gap-2 justify-end">
+                                       <button onClick={() => guardarEdicion(item.id)} className="text-emerald-600 font-bold text-xs hover:underline px-2 py-1.5">Guardar</button>
+                                       <button onClick={() => setEditingId(null)} className="text-slate-500 font-bold text-xs hover:underline px-2 py-1.5">Cancelar</button>
+                                     </div>
+                                   </div>
+                                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-blue-100 pt-3">
+                                     <div>
+                                       <label className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 block">Etiqueta de color</label>
+                                       <div className="flex flex-wrap gap-1.5">
+                                         {ETIQUETAS_COLOR.map((c) => (
+                                           <button
+                                             key={c.id || 'none'}
+                                             type="button"
+                                             title={c.label}
+                                             onClick={() => setEditFormData({ ...editFormData, etiqueta_color: c.id })}
+                                             className={`w-7 h-7 rounded-full ${c.dot || 'bg-slate-200'} border-2 transition ${
+                                               (editFormData.etiqueta_color || '') === c.id
+                                                 ? `ring-2 ${c.ring} border-white scale-110`
+                                                 : 'border-white opacity-70 hover:opacity-100'
+                                             }`}
+                                           />
+                                         ))}
+                                       </div>
+                                     </div>
+                                     <div>
+                                       <label className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 block">Nota interna (solo tú la ves)</label>
+                                       <textarea
+                                         value={editFormData.notas_internas || ''}
+                                         onChange={(e) => setEditFormData({ ...editFormData, notas_internas: e.target.value.slice(0, 500) })}
+                                         rows={2}
+                                         placeholder="Ej: Revisar con el gestor / Esperar abono del proveedor…"
+                                         className="w-full p-2 border border-blue-300 rounded-lg text-xs font-medium text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                                       />
+                                       <p className="text-[9px] text-slate-400 mt-1">{(editFormData.notas_internas || '').length}/500</p>
+                                     </div>
+                                   </div>
                                 </td>
                               </tr>
                             );
                           }
 
+                          const metaColor = etiquetaMeta(item.etiqueta_color);
+
                           return (
-                            <tr key={`view-${item.id || index}`} className="hover:bg-slate-50/80 transition">
+                            <tr key={`view-${item.id || index}`} className={`hover:bg-slate-50/80 transition border-l-4 ${metaColor.border}`}>
                               <td className="px-4 md:px-6 py-3.5 text-slate-600">{item.name}</td>
                               <td className="px-4 md:px-6 py-3.5 flex flex-col gap-1 items-start">
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 flex-wrap">
                                     <span className={`${bgBadge} px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border border-white/20`}>
                                        {tagLabel}
                                     </span>
@@ -2223,10 +2323,26 @@ export default function Home() {
                                             🎯 {proyectoEtiqueta}
                                         </span>
                                     )}
+                                    {item.etiqueta_color && (
+                                        <span className={`inline-flex items-center gap-1 text-[9px] font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200`} title={`Etiqueta ${metaColor.label}`}>
+                                          <span className={`w-2 h-2 rounded-full ${metaColor.dot}`}></span>
+                                          {metaColor.label}
+                                        </span>
+                                    )}
+                                    {item.notas_internas && (
+                                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 cursor-help" title={item.notas_internas}>
+                                          📝 Nota
+                                        </span>
+                                    )}
                                 </div>
                                 
                                 {(item.numero_factura || item.cif) && (
                                     <span className="text-[10px] font-bold text-slate-400">{item.cif ? `${item.cif} | ` : ''}{item.numero_factura}</span>
+                                )}
+                                {item.notas_internas && (
+                                  <p className="text-[10px] text-slate-500 font-medium italic max-w-xs truncate" title={item.notas_internas}>
+                                    {item.notas_internas}
+                                  </p>
                                 )}
                                 <div className="flex gap-1 mt-0.5">
                                     {item.isRecurrent && (
