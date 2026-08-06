@@ -367,6 +367,7 @@ export default function Home() {
 
     setRolUsuario("LOADING");
     setData([]);
+    setContactosCRM([]);
     setIsLoadingData(true);
 
     verificarRolUsuario(empresaId).then(async (res) => {
@@ -642,9 +643,6 @@ export default function Home() {
   }).filter(Boolean))) as string[], [datosTabla]);
 
   const facturasPendientes = useMemo(() => datosFinancieros.filter(d => d.estado_pago === 'PENDIENTE'), [datosFinancieros]);
-  
-  const cobrosPendientesTotal = useMemo(() => facturasPendientes.filter(d => Number(d.total) > 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0), [facturasPendientes]);
-  const pagosPendientesTotal = useMemo(() => facturasPendientes.filter(d => Number(d.total) < 0).reduce((acc, curr) => acc + (Math.abs(Number(curr.total)) * (1 + (Number(curr.iva)||0)/100)), 0), [facturasPendientes]);
 
   const datosTablaFiltrados = useMemo(() => {
     const filtrados = datosTabla.filter(item => {
